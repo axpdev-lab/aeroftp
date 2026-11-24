@@ -19897,9 +19897,17 @@ mod tests {
                             Ok(n) => request.extend_from_slice(&buffer[..n]),
                         }
                     }
-                    // Take the hold barrier ONLY after a complete HTTP request
-                    // arrived: a probe that closed early left it for this one.
-                    let hold_rx = hold_rx.lock().await.take();
+                    // Take the hold barrier ONLY when the complete request is
+                    // the authenticated bucket-list call: an unauthenticated
+                    // probe (no Authorization header) must not consume it.
+                    let is_authenticated = request
+                        .windows(b"authorization:".len())
+                        .any(|w| w.eq_ignore_ascii_case(b"authorization:"));
+                    let hold_rx = if is_authenticated {
+                        hold_rx.lock().await.take()
+                    } else {
+                        None
+                    };
                     let _ = requested_tx.send(()).await;
                     // Hold the reply so the account switch lands while the
                     // discovery is still awaiting it.

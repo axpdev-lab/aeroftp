@@ -704,10 +704,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     }
 
                     // Load servers from the active user's vault partition, with
-                    // the account id captured in the same read.
-                    const vaultRead = await loadSavedServerProfilesWithAccount();
-                    setServers(vaultRead.profiles);
-                    setServersAccountId(vaultRead.userId ?? null);
+                    // the account id captured in the same read. A locked vault
+                    // (STORE_NOT_READY / USER_LOCKED) must not abort the rest of
+                    // the settings init below: servers stay empty and the vault /
+                    // account status still loads.
+                    try {
+                        const vaultRead = await loadSavedServerProfilesWithAccount();
+                        setServers(vaultRead.profiles);
+                        setServersAccountId(vaultRead.userId ?? null);
+                    } catch {
+                        setServers([]);
+                        setServersAccountId(null);
+                    }
 
                     // Resolve modern and legacy app pairs inside the vault only.
                     const loadOAuthFromStore = async () => {

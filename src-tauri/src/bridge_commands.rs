@@ -243,6 +243,7 @@ fn dispatch_import(source: &str, path: &Path) -> Result<Value, String> {
 /// locked; the server-credential loop in `import_bridge_config` already
 /// surfaces that case to the caller.
 fn store_rclone_provider_secrets(
+    store: Option<&CredentialStore>,
     result: &rclone_import::RcloneImportResult,
     captured_user: Option<i64>,
 ) -> Vec<(String, String)> {
@@ -251,7 +252,10 @@ fn store_rclone_provider_secrets(
     // legacy-only sentinel writes the shared vault only.
     let write_user = captured_user.unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT);
     let mut failures = Vec::new();
-    let store = match CredentialStore::from_cache() {
+    // Use the store the caller captured at scan start, never a fresh
+    // from_cache(): a vault that unlocks mid-parse must not receive writes
+    // from a scan that started while it was locked.
+    let store = match store {
         Some(s) => s,
         None => {
             return result
@@ -285,7 +289,7 @@ fn store_rclone_provider_secrets(
             if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
                 // MUV-4: dual-write into vault + active user's partition.
                 if let Err(e) = crate::user_partitions::store_credential_for_user_typed_dual(
-                    &store,
+                    store,
                     write_user,
                     &format!("oauth_{}_{}", slug, profile_id),
                     "oauth",
@@ -302,7 +306,7 @@ fn store_rclone_provider_secrets(
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
                 if let Err(e) = crate::user_partitions::store_credential_for_user_typed_dual(
-                    &store,
+                    store,
                     write_user,
                     &format!("jottacloud_refresh_{}", profile_id),
                     "jottacloud_refresh",
@@ -321,7 +325,7 @@ fn store_rclone_provider_secrets(
         if let Some(ref session_json) = secrets.proton_native_session {
             if protocol == "proton" {
                 if let Err(e) = crate::user_partitions::store_credential_for_user_typed_dual(
-                    &store,
+                    store,
                     write_user,
                     &format!("proton_native_session_{}", profile_id),
                     "proton_native_session",
@@ -341,7 +345,7 @@ fn store_rclone_provider_secrets(
         // importing a config never clobbers an app the user already configured.
         if let Some(cred_key) = rclone_oauth_client_cred_key(protocol) {
             match crate::fill_oauth_app(
-                &store,
+                store,
                 cred_key,
                 secrets.oauth_client_id.as_deref(),
                 secrets.oauth_client_secret.as_deref(),
@@ -752,6 +756,13 @@ pub(crate) fn store_bridge_import_secret_for_user(
             result
         }
         None => {
+            // Confirmed legacy-only caller: if an account has become active
+            // since the scan confirmed legacy-only, refuse instead of writing
+            // into that account (the inner write must never re-resolve the
+            // active account on its own).
+            if crate::user_partitions::cli_get_active_user(store)?.is_some() {
+                return Err(crate::user_partitions::ACCOUNT_CHANGED.to_string());
+            }
             // Legacy-only caller: the shared vault is the only slot. A read
             // error other than "absent" aborts before any write.
             let prior = match store.get(key) {
@@ -798,19 +809,22 @@ fn store_bridge_import_secret_for_user_inner(
                 "aws_session_token",
                 secret,
             ),
-            None => crate::user_partitions::store_active_credential_typed_dual(
-                store,
-                key,
-                "aws_session_token",
-                secret,
-            ),
+            // Confirmed legacy-only (the wrapper refused an active account):
+            // the shared vault is the token's only home, never a re-resolved
+            // active account's partition.
+            None => store
+                .store(key, secret)
+                .map_err(|e| format!("Store credential in vault: {e}")),
         };
     }
     match user_id {
         Some(uid) => {
             crate::user_partitions::store_credential_for_user_dual(store, uid, key, secret)
         }
-        None => crate::user_partitions::store_active_credential_dual(store, key, secret),
+        // Same legacy-only rule as the token branch above.
+        None => store
+            .store(key, secret)
+            .map_err(|e| format!("Store credential in vault: {e}")),
     }
 }
 
@@ -882,7 +896,7 @@ pub async fn import_bridge_config(
     };
     let value = if source == "rclone" {
         let result = rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
-        secret_failures = store_rclone_provider_secrets(&result, captured_user);
+        secret_failures = store_rclone_provider_secrets(store.as_ref(), &result, captured_user);
         serde_json::to_value(&result).map_err(|e| e.to_string())?
     } else {
         dispatch_import(&source, &canonical)?
@@ -4953,7 +4967,7 @@ mod tests {
             let conn = crate::user_partitions::open_or_init_cli().unwrap();
             crate::user_partitions::set_active_user(&conn, second).unwrap();
         }
-        let failures = store_rclone_provider_secrets(&result, Some(first));
+        let failures = store_rclone_provider_secrets(Some(&store), &result, Some(first));
         assert!(
             failures.is_empty(),
             "prepass must store cleanly: {failures:?}"
@@ -4983,6 +4997,78 @@ mod tests {
                 .unwrap()
                 .is_none(),
             "the account active at write time must not receive the captured account's token"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
+
+    /// A locked-vault scan must write nothing even when the vault unlocks
+    /// before the prepass runs: `store_rclone_provider_secrets(None, ...)`
+    /// uses the store captured at scan start (None = locked) and reports every
+    /// secret as a locked-vault failure instead of writing into the vault that
+    /// unlocked mid-parse.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_locked_vault_prepass_writes_nothing_even_if_the_vault_unlocks_before_it() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::a_locked_vault_prepass_writes_nothing_even_if_the_vault_unlocks_before_it",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        // The scan starts with a locked vault.
+        assert!(CredentialStore::from_cache().is_none());
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "[gdrive]\ntype = drive\nclient_id = app\nclient_secret = s\n\
+             token = {\"access_token\":\"LATE-UNLOCK-TOKEN\",\"refresh_token\":\"r\"}\n",
+        )
+        .unwrap();
+        let result = crate::rclone_import::import_rclone(&conf).unwrap();
+        let (profile_id, _) = result.secrets_in_server_order()[0];
+        let profile_id = profile_id.clone();
+        // The vault unlocks mid-parse, before the prepass would run.
+        CredentialStore::bootstrap_master_password("synthetic late unlock master").unwrap();
+        CredentialStore::unlock_with_master("synthetic late unlock master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+
+        let failures = store_rclone_provider_secrets(None, &result, None);
+        assert_eq!(
+            failures.len(),
+            1,
+            "every secret must be reported as a locked-vault failure: {failures:?}"
+        );
+        assert_eq!(failures[0].0, profile_id);
+        assert!(
+            failures[0].1.contains("vault is locked"),
+            "unexpected failure text: {:?}",
+            failures[0].1
+        );
+        let key = format!(
+            "oauth_{}_{}",
+            crate::oauth_vault_slug_for_protocol("googledrive").unwrap(),
+            profile_id
+        );
+        assert!(
+            store.get(&key).is_err(),
+            "the vault that unlocked mid-parse must not receive the locked scan's secrets"
         );
 
         match previous_xdg {
@@ -5488,6 +5574,84 @@ mod tests {
         assert!(
             store.get("server_rb16new").is_err(),
             "the half-written new entry must be deleted, not left behind"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
+
+    /// A confirmed legacy-only capture (`user_id = None`, no account active at
+    /// capture) must refuse with ACCOUNT_CHANGED when an account has become
+    /// active by the time the write runs, and the shared vault must be left
+    /// untouched: the None branch never re-resolves the active account, neither
+    /// for a plain secret nor for an `aws_session_token_*` key.
+    #[test]
+    fn a_legacy_capture_refuses_the_write_when_an_account_activates_before_it() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::a_legacy_capture_refuses_the_write_when_an_account_activates_before_it",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic legacy capture master").unwrap();
+        CredentialStore::unlock_with_master("synthetic legacy capture master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        assert!(
+            crate::user_partitions::cli_get_active_user(&store)
+                .unwrap()
+                .is_none(),
+            "fresh CLI state must confirm the legacy-only capture"
+        );
+        store.store("server_rb20", "LEGACY-PRIOR").unwrap();
+        store
+            .store("aws_session_token_rb20", "LEGACY-TOKEN")
+            .unwrap();
+
+        // An account activates between the confirmed-legacy capture and the write.
+        {
+            let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let root_key = store.derive_user_partition_wrapping_key();
+            let first = crate::user_partitions::create_user(
+                &mut conn, &root_key, "First", None, None, None,
+            )
+            .unwrap()
+            .id;
+            crate::user_partitions::set_active_user(&conn, first).unwrap();
+        }
+
+        for key in ["server_rb20", "aws_session_token_rb20"] {
+            let err = store_bridge_import_secret_for_user(&store, None, key, "NEW-VALUE")
+                .expect_err("a legacy capture must refuse once an account is active");
+            assert_eq!(
+                err,
+                crate::user_partitions::ACCOUNT_CHANGED,
+                "key {key}: {err}"
+            );
+        }
+        assert_eq!(
+            store.get("server_rb20").unwrap(),
+            "LEGACY-PRIOR",
+            "the vault must be untouched by the refused write"
+        );
+        assert_eq!(
+            store.get("aws_session_token_rb20").unwrap(),
+            "LEGACY-TOKEN",
+            "the vault token must be untouched by the refused write"
         );
 
         match previous_xdg {

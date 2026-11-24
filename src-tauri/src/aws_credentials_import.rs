@@ -6391,13 +6391,22 @@ region = eu-west-1
     /// `Some("")`, which read_dir cannot enumerate. The parent must be
     /// normalized to "." so occupied slots on disk are still detected and
     /// skipped instead of Pass 2 blindly allocating slot 0.
+    /// Restores the process working directory when dropped, so a panic in the
+    /// test cannot leak the tempdir cwd into the next cwd-sensitive test.
+    struct CwdGuard(std::path::PathBuf);
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.0);
+        }
+    }
+
     #[test]
     fn relative_output_name_still_sees_occupied_slots_on_disk() {
-        static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = CWD_LOCK.lock().unwrap();
+        let _env = crate::test_env::lock();
         let dir = tempfile::tempdir().unwrap();
         let prev = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
+        let _cwd = CwdGuard(prev);
         std::fs::write("credentials.aeroftp", b"occupied").unwrap();
         let res = aws_side_pair_modes_with_limit(
             Path::new("config"),
@@ -6406,7 +6415,6 @@ region = eu-west-1
             "credm",
             AWS_MAX_SIDE_SLOTS,
         );
-        std::env::set_current_dir(prev).unwrap();
         let (m1, m2) = res.unwrap();
         assert!(
             matches!(m1, AwsProtectedWriteMode::SideAt(1))
@@ -6429,7 +6437,10 @@ region = eu-west-1
         let (m1, m2) =
             aws_side_pair_modes_with_limit(&cfg, &cred, "cfgm", "credm", AWS_MAX_SIDE_SLOTS)
                 .unwrap();
-        if cfg!(any(target_os = "windows", target_os = "macos")) {
+        // Ask the filesystem, not cfg!: on a case-insensitive filesystem the
+        // lowercase probe resolves to the case-variant file that exists.
+        let case_insensitive = std::fs::symlink_metadata(dir.path().join("config.aeroftp")).is_ok();
+        if case_insensitive {
             assert!(
                 matches!(m1, AwsProtectedWriteMode::SideAt(1))
                     && matches!(m2, AwsProtectedWriteMode::SideAt(1)),
