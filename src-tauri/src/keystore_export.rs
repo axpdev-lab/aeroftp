@@ -3266,10 +3266,41 @@ fn import_keystore_with_store(
         if let Some((inputs, _)) = &profile_plan {
             if inputs.legacy_owner_reads_vault {
                 for (key, expected) in &inputs.vault_foreign_private {
-                    if let Err(e) = store.delete_secret_if_unchanged(key, expected) {
+                    #[cfg(test)]
+                    let deleted = if tests::foreign_token_delete_fails() {
+                        Err(crate::credential_store::CredentialError::Encryption(
+                            "refused (test)".to_string(),
+                        ))
+                    } else {
+                        store.delete_secret_if_unchanged(key, expected)
+                    };
+                    #[cfg(not(test))]
+                    let deleted = store.delete_secret_if_unchanged(key, expected);
+                    if let Err(e) = deleted {
                         tracing::warn!(
                             "Keystore import: foreign vault token {key} not removed: {e}"
                         );
+                        // The partition is already published: while the
+                        // vault still holds the value the plan read, the
+                        // key is recorded as blocked so the owner's read
+                        // treats it as absent. A value another writer
+                        // moved is not blocked.
+                        if matches!(store.get(key), Ok(current) if current == expected.as_str()) {
+                            if let Some(cfg) = config_dir {
+                                let db = cfg.join("user_partitions.db");
+                                let blocked = crate::user_partitions::open_restored_db(&db)
+                                    .and_then(|conn| {
+                                        crate::user_partitions::block_vault_secret(
+                                            &conn, key, expected,
+                                        )
+                                    });
+                                if let Err(e) = blocked {
+                                    tracing::warn!(
+                                        "Keystore import: foreign vault token {key} not blocked: {e}"
+                                    );
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -3848,6 +3879,23 @@ mod tests {
         if let Some(hook) = BEFORE_FOREIGN_TOKEN_SWEEP.with(|hook| hook.borrow_mut().take()) {
             hook(store);
         }
+    }
+
+    thread_local! {
+        static FOREIGN_TOKEN_DELETE_FAILS: std::cell::Cell<bool> =
+            const { std::cell::Cell::new(false) };
+    }
+
+    /// Arm the next foreign-token sweep delete to fail as a vault error
+    /// would, leaving the entry in place. Consumed once.
+    pub(super) fn fail_next_foreign_token_delete() {
+        FOREIGN_TOKEN_DELETE_FAILS.with(|slot| slot.set(true));
+    }
+
+    /// Whether the armed failure is due, consumed once armed by
+    /// [`fail_next_foreign_token_delete`].
+    pub(super) fn foreign_token_delete_fails() -> bool {
+        FOREIGN_TOKEN_DELETE_FAILS.with(|slot| slot.replace(false))
     }
 
     fn before_profile_decisions(
@@ -6289,6 +6337,118 @@ mod tests {
         let root = store.derive_user_partition_wrapping_key();
         let read = read_effective_secret(&store, Some(&conn), &root, key).unwrap();
         assert_eq!(read, None, "the restored owner reads no foreign token");
+    }
+
+    /// A foreign-token sweep whose delete fails after the partition is
+    /// published must not leave the token readable: while the vault still
+    /// holds the value the plan read, the key is recorded as blocked in the
+    /// published partition and the legacy owner's read treats it as
+    /// absent. A value another writer moved is not blocked. Red if the
+    /// blocklist is not written or not honored.
+    #[test]
+    fn a_failed_foreign_token_sweep_keeps_the_token_unreadable() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let db = cfg.join("user_partitions.db");
+
+        for moved in [false, true] {
+            crate::user_partitions::clear_user_session();
+            store.store(key, "local-token").unwrap();
+            let vault_key = key.to_string();
+            let move_value = moved;
+            before_foreign_token_sweep(move |store| {
+                if move_value {
+                    store.store(&vault_key, "other-writer").unwrap();
+                }
+                fail_next_foreign_token_delete();
+            });
+
+            let result = import_keystore_with_store(
+                &store,
+                PASSWORD_736,
+                &backup,
+                "skip_existing",
+                ImportSections::default(),
+                Some(&cfg),
+                None,
+                None,
+            )
+            .unwrap();
+            assert!(
+                result.sqlite_dbs_failed.is_empty(),
+                "{moved}: {:?}",
+                result.sqlite_dbs_failed
+            );
+            let conn = rusqlite::Connection::open(&db).unwrap();
+            let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&conn)
+                .unwrap()
+                .expect("the published partition has a legacy owner");
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let read = crate::user_partitions::read_credential_with_fallback(
+                &conn, &store, &root, owner, key,
+            )
+            .unwrap();
+            if moved {
+                assert_eq!(
+                    read.as_ref().map(|v| v.as_str()),
+                    Some("other-writer"),
+                    "a value another writer moved is not blocked"
+                );
+            } else {
+                assert!(read.is_none(), "the blocked token reads as absent");
+                // The vault still holds it: only the block hides it.
+                assert_eq!(store.get(key).unwrap(), "local-token");
+                // A later delete that succeeds lifts the block.
+                store.delete(key).unwrap();
+                let read = crate::user_partitions::read_credential_with_fallback(
+                    &conn, &store, &root, owner, key,
+                )
+                .unwrap();
+                assert!(read.is_none());
+                let blocked: Option<String> = conn
+                    .query_row(
+                        "SELECT value FROM global_state WHERE key = ?1",
+                        rusqlite::params!["vault_blocked_secret:oauth_dropbox_srv_drive"],
+                        |row| row.get(0),
+                    )
+                    .ok();
+                assert_eq!(blocked, None, "the block lifted with the delete");
+            }
+            drop(conn);
+        }
     }
 
     /// The backup carries its own token, so the profile is changed and

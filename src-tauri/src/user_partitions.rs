@@ -6765,6 +6765,50 @@ pub fn realign_private_tokens_after_restore(
     }
 }
 
+/// A vault value a failed import sweep could not remove, recorded in the
+/// partition's global state with the value it still holds: the legacy
+/// owner's read of a rowless private token treats the key as absent until
+/// a later delete takes that value out.
+const BLOCKED_VAULT_SECRET_PREFIX: &str = "vault_blocked_secret:";
+
+fn blocked_vault_secret_key(key: &str) -> String {
+    format!("{BLOCKED_VAULT_SECRET_PREFIX}{key}")
+}
+
+/// Record `key`'s vault value `expected` as blocked: the partition's
+/// legacy owner reads the key as absent while the vault still holds it.
+pub(crate) fn block_vault_secret(
+    conn: &Connection,
+    key: &str,
+    expected: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
+        params![blocked_vault_secret_key(key), expected, now_ms()],
+    )
+    .map_err(|e| format!("Block vault secret: {e}"))?;
+    Ok(())
+}
+
+fn blocked_vault_secret(conn: &Connection, key: &str) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT value FROM global_state WHERE key = ?1",
+        params![blocked_vault_secret_key(key)],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|e| format!("Read blocked vault secret: {e}"))
+}
+
+fn unblock_vault_secret(conn: &Connection, key: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM global_state WHERE key = ?1",
+        params![blocked_vault_secret_key(key)],
+    )
+    .map_err(|e| format!("Unblock vault secret: {e}"))?;
+    Ok(())
+}
+
 /// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted
 /// store, falling back to the legacy vault only when its per-user row is absent.
 /// A locked partition refuses access; MUV-6 drops the fallback once purged.
@@ -6784,6 +6828,16 @@ fn read_credential_with_fallback_inner(
     // key of that name is the legacy owner's ([`private_token_user`]).
     if vault_copy_is_another_accounts(conn, user_id, credential_id)? {
         return Ok(None);
+    }
+    // A vault value a failed import sweep could not remove is recorded in
+    // the partition: while it still holds that value the key reads as
+    // absent. Gone or moved by another writer, the block lifts and the real
+    // value reads.
+    if let Some(expected) = blocked_vault_secret(conn, credential_id)? {
+        match read_secret(credential_id)? {
+            Some(value) if value.as_str() == expected => return Ok(None),
+            _ => unblock_vault_secret(conn, credential_id)?,
+        }
     }
     read_secret(credential_id)
 }
