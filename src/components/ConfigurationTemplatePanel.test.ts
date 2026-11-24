@@ -70,6 +70,7 @@ describe('ConfigurationTemplatePanel', () => {
                         {
                             fileIndex: 0,
                             blockName: 'alpha',
+                            selectionId: 'source-alpha',
                             targetName: 'alpha',
                             startLine: 1,
                             protocol: 'sftp',
@@ -219,7 +220,7 @@ describe('ConfigurationTemplatePanel', () => {
             expect.objectContaining({
                 options: expect.objectContaining({
                     secretForms: { alpha: 'clear' },
-                    selectedBlocks: ['alpha'],
+                    selectedBlocks: ['source-alpha'],
                     expectedDigestSha256: 'abc123',
                     expectedPlanDigestSha256: 'plan-sha-1',
                     expectedUserId: 7,
