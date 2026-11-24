@@ -1439,7 +1439,10 @@
             "templateLogImported": "კონფიგურაციის შაბლონი იმპორტირებულია: {imported} იმპორტირებული, {skipped} გამოტოვებული, {invalid} არასწორი",
             "templateLogBlocks": "ბლოკები: {blocks}",
             "templateDuplicateInTemplate": "დუბლიკატი შაბლონში",
-            "templateSelectProfile": "{name}-ის იმპორტი"
+            "templateSelectProfile": "{name}-ის იმპორტი",
+            "exportAccountUnbound": "პროფილების სია არ არის მიბმული ანგარიშზე; არაფერი ექსპორტირდა.",
+            "exportAccountChanged": "აქტიური ანგარიში შეიცვალა; არაფერი ექსპორტირდა.",
+            "exportAccountChangedDuringSave": "აქტიური ანგარიში შეიცვალა შენახვის დიალოგის ღია მდგომარეობისას; არაფერი ექსპორტირდა."
         },
         "devtools": {
             "title": "AeroTools",

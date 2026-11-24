@@ -1439,7 +1439,10 @@
             "templateLogImported": "Stillingasniðmát flutt inn: {imported} flutt inn, {skipped} sleppt, {invalid} ógild",
             "templateLogBlocks": "Blokkir: {blocks}",
             "templateDuplicateInTemplate": "tvítekning í sniðmáti",
-            "templateSelectProfile": "Flytja inn {name}"
+            "templateSelectProfile": "Flytja inn {name}",
+            "exportAccountUnbound": "Prófillistinn er ekki tengdur við reikning; ekkert var flutt út.",
+            "exportAccountChanged": "Virkalegur reikningur breyttist; ekkert var flutt út.",
+            "exportAccountChangedDuringSave": "Virkalegur reikningur breyttist á meðan vista glugginn var opinn; ekkert var flutt út."
         },
         "devtools": {
             "title": "AeroTools",

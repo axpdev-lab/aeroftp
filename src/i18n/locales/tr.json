@@ -1439,7 +1439,10 @@
             "templateLogImported": "Yapılandırma şablonu içe aktarıldı: {imported} içe aktarıldı, {skipped} atlandı, {invalid} geçersiz",
             "templateLogBlocks": "Bloklar: {blocks}",
             "templateDuplicateInTemplate": "şablonda yinelenen",
-            "templateSelectProfile": "{name} öğesini içe aktar"
+            "templateSelectProfile": "{name} öğesini içe aktar",
+            "exportAccountUnbound": "Profil listesi bir hesaba bağlı değil; hiçbir şey dışa aktarılmadı.",
+            "exportAccountChanged": "Etkin hesap değişti; hiçbir şey dışa aktarılmadı.",
+            "exportAccountChangedDuringSave": "Kaydetme iletişim kutusu açıkken etkin hesap değişti; hiçbir şey dışa aktarılmadı."
         },
         "devtools": {
             "title": "AeroTools",

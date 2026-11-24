@@ -1439,7 +1439,10 @@
             "templateLogImported": "Шаблонът за конфигурация е импортиран: {imported} импортирани, {skipped} пропуснати, {invalid} невалидни",
             "templateLogBlocks": "Блокове: {blocks}",
             "templateDuplicateInTemplate": "дубликат в шаблона",
-            "templateSelectProfile": "Импортиране на {name}"
+            "templateSelectProfile": "Импортиране на {name}",
+            "exportAccountUnbound": "Списък с профили не е свързан с акаунт; нищо не беше експортирано.",
+            "exportAccountChanged": "Активният акаунт се промени; нищо не беше експортирано.",
+            "exportAccountChangedDuringSave": "Активният акаунт се промени, откакто този диалог за запазване беше отворен; нищо не беше експортирано."
         },
         "devtools": {
             "title": "AeroTools",

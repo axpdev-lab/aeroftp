@@ -1439,7 +1439,10 @@
             "templateLogImported": "Șablon de configurare importat: {imported} importate, {skipped} omise, {invalid} nevalide",
             "templateLogBlocks": "Blocuri: {blocks}",
             "templateDuplicateInTemplate": "duplicat în șablon",
-            "templateSelectProfile": "Importă {name}"
+            "templateSelectProfile": "Importă {name}",
+            "exportAccountUnbound": "Lista de profiluri nu este asociată cu un cont; nimic nu a fost exportat.",
+            "exportAccountChanged": "Contul activ s-a schimbat; nimic nu a fost exportat.",
+            "exportAccountChangedDuringSave": "Contul activ s-a schimbat în timp ce dialogul de salvare era deschis; nimic nu a fost exportat."
         },
         "devtools": {
             "title": "AeroTools",

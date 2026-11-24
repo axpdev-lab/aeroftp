@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigūracijos šablonas importuotas: {imported} importuota, {skipped} praleista, {invalid} netinkamų",
             "templateLogBlocks": "Blokai: {blocks}",
             "templateDuplicateInTemplate": "dublikatas šablone",
-            "templateSelectProfile": "Importuoti {name}"
+            "templateSelectProfile": "Importuoti {name}",
+            "exportAccountUnbound": "Profiliai neriebę su paskyra; nieko neeksportuota.",
+            "exportAccountChanged": "Aktyvi paskyra pasikeitė; nieko neeksportuota.",
+            "exportAccountChangedDuringSave": "Aktyvi paskyra pasikeitė, kol išsaugoti dialogas buvo atviras; nieko neeksportuota."
         },
         "devtools": {
             "title": "AeroTools",

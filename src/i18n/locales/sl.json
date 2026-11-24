@@ -1439,7 +1439,10 @@
             "templateLogImported": "Predloga konfiguracije uvožena: {imported} uvoženih, {skipped} preskočenih, {invalid} neveljavnih",
             "templateLogBlocks": "Bloki: {blocks}",
             "templateDuplicateInTemplate": "dvojnik v predlogi",
-            "templateSelectProfile": "Uvozi {name}"
+            "templateSelectProfile": "Uvozi {name}",
+            "exportAccountUnbound": "Seznam profilov ni povezan z računom; nič ni bilo izvoženo.",
+            "exportAccountChanged": "Aktivni račun se je spremenil; nič ni bilo izvoženo.",
+            "exportAccountChangedDuringSave": "Aktivni račun se je spremenil, medtem ko je bilo pogovorno okno za shranjevanje odprto; nič ni bilo izvoženo."
         },
         "devtools": {
             "title": "AeroTools",

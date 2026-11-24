@@ -1439,7 +1439,10 @@
             "templateLogImported": "কনফিগারেশন টেমপ্লেট আমদানি হয়েছে: {imported}টি আমদানি, {skipped}টি এড়ানো হয়েছে, {invalid}টি অবৈধ",
             "templateLogBlocks": "ব্লকসমূহ: {blocks}",
             "templateDuplicateInTemplate": "টেমপ্লেটে অনুলিপি",
-            "templateSelectProfile": "{name} আমদানি করুন"
+            "templateSelectProfile": "{name} আমদানি করুন",
+            "exportAccountUnbound": "প্রোফাইল তালিকাটি কোনো অ্যাকাউন্টের সাথে যুক্ত নয়; কিছুই রপ্তানি করা হয়নি।",
+            "exportAccountChanged": "সক্রিয় অ্যাকাউন্ট বদলে গেছে; কিছুই রপ্তানি করা হয়নি।",
+            "exportAccountChangedDuringSave": "সেভ ডায়ালগ খোলা থাকাকালীন সক্রিয় অ্যাকাউন্ট বদলে গেছে; কিছুই রপ্তানি করা হয়নি।"
         },
         "devtools": {
             "title": "AeroTools",

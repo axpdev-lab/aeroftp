@@ -1439,7 +1439,10 @@
             "templateLogImported": "Templat konfigurasi diimpor: {imported} diimpor, {skipped} dilewati, {invalid} tidak valid",
             "templateLogBlocks": "Blok: {blocks}",
             "templateDuplicateInTemplate": "duplikat dalam templat",
-            "templateSelectProfile": "Impor {name}"
+            "templateSelectProfile": "Impor {name}",
+            "exportAccountUnbound": "Daftar profil tidak terikat ke akun; tidak ada yang diekspor.",
+            "exportAccountChanged": "Akun aktif berubah; tidak ada yang diekspor.",
+            "exportAccountChangedDuringSave": "Akun aktif berubah saat dialog penyimpanan terbuka; tidak ada yang diekspor."
         },
         "devtools": {
             "title": "AeroTools",

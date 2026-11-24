@@ -1439,7 +1439,10 @@
             "templateLogImported": "Templed ffurfweddu wedi'i fewnforio: {imported} wedi'u mewnforio, {skipped} wedi'u hepgor, {invalid} yn annilys",
             "templateLogBlocks": "Blociau: {blocks}",
             "templateDuplicateInTemplate": "dyblyg yn y templed",
-            "templateSelectProfile": "Mewnforio {name}"
+            "templateSelectProfile": "Mewnforio {name}",
+            "exportAccountUnbound": "Nid yw y rhestr proffiliau'n gysylltiedig â chyfrif; does dim byd wedi'i allforio.",
+            "exportAccountChanged": "Newidiwyd y cyfrif yn weithredol; does dim byd wedi'i allforio.",
+            "exportAccountChangedDuringSave": "Newidiwyd y cyfrif yn weithredol tra dangosai'r deialog cadw; does dim byd wedi'i allforio."
         },
         "devtools": {
             "title": "AeroTools",

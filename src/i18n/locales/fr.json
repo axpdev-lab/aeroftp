@@ -1439,7 +1439,10 @@
             "templateLogImported": "Modèle de configuration importé : {imported} importé(s), {skipped} ignoré(s), {invalid} invalide(s)",
             "templateLogBlocks": "Blocs : {blocks}",
             "templateDuplicateInTemplate": "doublon dans le modèle",
-            "templateSelectProfile": "Importer {name}"
+            "templateSelectProfile": "Importer {name}",
+            "exportAccountUnbound": "La liste des profils n'est pas liée à un compte ; rien n'a été exporté.",
+            "exportAccountChanged": "Le compte actif a changé ; rien n'a été exporté.",
+            "exportAccountChangedDuringSave": "Le compte actif a changé pendant que la boîte de dialogue d'enregistrement était ouverte ; rien n'a été exporté."
         },
         "devtools": {
             "title": "AeroTools",

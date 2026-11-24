@@ -1439,7 +1439,10 @@
             "templateLogImported": "Na-import ang template ng configuration: {imported} na-import, {skipped} nilaktawan, {invalid} hindi wasto",
             "templateLogBlocks": "Mga Bloke: {blocks}",
             "templateDuplicateInTemplate": "doble sa template",
-            "templateSelectProfile": "I-import ang {name}"
+            "templateSelectProfile": "I-import ang {name}",
+            "exportAccountUnbound": "Ang listahan ng profile ay hindi nakatali sa isang account; walang na-export.",
+            "exportAccountChanged": "Nagbago ang aktibong account; walang na-export.",
+            "exportAccountChangedDuringSave": "Nagbago ang aktibong account habang bukas ang dialog ng pag-save; walang na-export."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurācijas veidne importēta: {imported} importēti, {skipped} izlaisti, {invalid} nederīgi",
             "templateLogBlocks": "Bloki: {blocks}",
             "templateDuplicateInTemplate": "dublikāts veidnē",
-            "templateSelectProfile": "Importēt {name}"
+            "templateSelectProfile": "Importēt {name}",
+            "exportAccountUnbound": "Profila saraksts nav saistīts ar kontu; nekas netika eksportēts.",
+            "exportAccountChanged": "Aktīvais konts tika mainīts; nekas netika eksportēts.",
+            "exportAccountChangedDuringSave": "Aktīvais konts tika mainīts, kamēr saglabāšanas dialoglodziņš bija atvērts; nekas netika eksportēts."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1439,7 +1439,10 @@
             "templateLogImported": "Đã nhập mẫu cấu hình: {imported} đã nhập, {skipped} đã bỏ qua, {invalid} không hợp lệ",
             "templateLogBlocks": "Các khối: {blocks}",
             "templateDuplicateInTemplate": "trùng lặp trong mẫu",
-            "templateSelectProfile": "Nhập {name}"
+            "templateSelectProfile": "Nhập {name}",
+            "exportAccountUnbound": "Danh sách hồ sơ không được liên kết với tài khoản; không có gì được xuất.",
+            "exportAccountChanged": "Tài khoản đang hoạt động đã thay đổi; không có gì được xuất.",
+            "exportAccountChangedDuringSave": "Tài khoản đang hoạt động đã thay đổi trong khi hộp thoại lưu đang mở; không có gì được xuất."
         },
         "devtools": {
             "title": "AeroTools",

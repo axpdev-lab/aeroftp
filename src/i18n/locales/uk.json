@@ -1439,7 +1439,10 @@
             "templateLogImported": "Шаблон конфігурації імпортовано: {imported} імпортовано, {skipped} пропущено, {invalid} недійсних",
             "templateLogBlocks": "Блоки: {blocks}",
             "templateDuplicateInTemplate": "дублікат у шаблоні",
-            "templateSelectProfile": "Імпортувати {name}"
+            "templateSelectProfile": "Імпортувати {name}",
+            "exportAccountUnbound": "Список профілів не пов'язаний з обліковим записом; нічого не було експортовано.",
+            "exportAccountChanged": "Активний обліковий запис змінився; нічого не було експортовано.",
+            "exportAccountChangedDuringSave": "Активний обліковий запис змінився з моменту відкриття діалогу збереження; нічого не було експортовано."
         },
         "devtools": {
             "title": "AeroTools",

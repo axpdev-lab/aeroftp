@@ -1439,7 +1439,10 @@
             "templateLogImported": "Seadistusmall imporditud: {imported} imporditud, {skipped} vahele jäetud, {invalid} vigast",
             "templateLogBlocks": "Plokid: {blocks}",
             "templateDuplicateInTemplate": "duplikaat mallis",
-            "templateSelectProfile": "Impordi {name}"
+            "templateSelectProfile": "Impordi {name}",
+            "exportAccountUnbound": "Profiilide loend pole kontoga seotud; midagi ei eksporditud.",
+            "exportAccountChanged": "Aktiivne konto muutus; midagi ei eksporditud.",
+            "exportAccountChangedDuringSave": "Aktiivne konto muutus salvestusdialoogi avatud olemise ajal; midagi ei eksporditud."
         },
         "devtools": {
             "title": "AeroTools",

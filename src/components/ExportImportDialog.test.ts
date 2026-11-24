@@ -366,7 +366,7 @@ describe('ExportImportDialog export account binding', () => {
         await typePasswords();
         await click(exportButton()!);
         expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('export_server_profiles', expect.anything());
-        expect(host.textContent).toContain('ACCOUNT_CHANGED');
+        expect(host.textContent).toContain('settings.exportAccountChanged');
         expect(pickSave).not.toHaveBeenCalled();
     });
 
@@ -376,7 +376,7 @@ describe('ExportImportDialog export account binding', () => {
         await typePasswords();
         await click(exportButton()!);
         expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('export_server_profiles', expect.anything());
-        expect(host.textContent).toContain('ACCOUNT_CHANGED');
+        expect(host.textContent).toContain('settings.exportAccountUnbound');
     });
 
     it('exports with the list account id when it still matches the active one', async () => {

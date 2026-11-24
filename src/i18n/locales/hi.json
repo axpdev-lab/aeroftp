@@ -1439,7 +1439,10 @@
             "templateLogImported": "कॉन्फ़िगरेशन टेम्प्लेट आयात किया गया: {imported} आयात किए गए, {skipped} छोड़े गए, {invalid} अमान्य",
             "templateLogBlocks": "ब्लॉक: {blocks}",
             "templateDuplicateInTemplate": "टेम्प्लेट में डुप्लिकेट",
-            "templateSelectProfile": "{name} आयात करें"
+            "templateSelectProfile": "{name} आयात करें",
+            "exportAccountUnbound": "प्रोफ़ाइल सूची किसी खाते से बंधी नहीं है; कुछ भी निर्यात नहीं किया गया।",
+            "exportAccountChanged": "सक्रिय खाता बदल गया; कुछ भी निर्यात नहीं किया गया।",
+            "exportAccountChangedDuringSave": "सहेजने का संवाद खुले रहते सक्रिय खाता बदल गया; कुछ भी निर्यात नहीं किया गया।"
         },
         "devtools": {
             "title": "AeroTools",

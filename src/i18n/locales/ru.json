@@ -1439,7 +1439,10 @@
             "templateLogImported": "Шаблон конфигурации импортирован: импортировано {imported}, пропущено {skipped}, недопустимых {invalid}",
             "templateLogBlocks": "Блоки: {blocks}",
             "templateDuplicateInTemplate": "дубликат в шаблоне",
-            "templateSelectProfile": "Импортировать {name}"
+            "templateSelectProfile": "Импортировать {name}",
+            "exportAccountUnbound": "Список профилей не связан с аккаунтом; ничего не было экспортировано.",
+            "exportAccountChanged": "Активный аккаунт изменился; ничего не было экспортировано.",
+            "exportAccountChangedDuringSave": "Активный аккаунт изменился с момента открытия диалога сохранения; ничего не было экспортировано."
         },
         "devtools": {
             "title": "AeroTools",

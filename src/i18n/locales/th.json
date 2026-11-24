@@ -1439,7 +1439,10 @@
             "templateLogImported": "นำเข้าเทมเพลตการกำหนดค่าแล้ว: นำเข้า {imported}, ข้าม {skipped}, ไม่ถูกต้อง {invalid}",
             "templateLogBlocks": "บล็อก: {blocks}",
             "templateDuplicateInTemplate": "ซ้ำกันในเทมเพลต",
-            "templateSelectProfile": "นำเข้า {name}"
+            "templateSelectProfile": "นำเข้า {name}",
+            "exportAccountUnbound": "รายการโปรไฟล์ไม่ได้เชื่อมโยงกับบัญชี จึงไม่มีการส่งออก",
+            "exportAccountChanged": "บัญชีที่ใช้งานอยู่ถูกเปลี่ยนแปลง จึงไม่มีการส่งออก",
+            "exportAccountChangedDuringSave": "บัญชีที่ใช้งานอยู่ถูกเปลี่ยนแปลงขณะกล่องโต้ตอบการบันทึกเปิดอยู่ จึงไม่มีการส่งออก"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1439,7 +1439,10 @@
             "templateLogImported": "Configuratiesjabloon geïmporteerd: {imported} geïmporteerd, {skipped} overgeslagen, {invalid} ongeldig",
             "templateLogBlocks": "Blokken: {blocks}",
             "templateDuplicateInTemplate": "duplicaat in sjabloon",
-            "templateSelectProfile": "{name} importeren"
+            "templateSelectProfile": "{name} importeren",
+            "exportAccountUnbound": "De profielenlijst is niet gekoppeld aan een account; er is niets geëxporteerd.",
+            "exportAccountChanged": "Het actieve account is gewijzigd; er is niets geëxporteerd.",
+            "exportAccountChangedDuringSave": "Het actieve account is gewijzigd terwijl het opslaandialoogvenster open was; er is niets geëxporteerd."
         },
         "devtools": {
             "title": "AeroTools",

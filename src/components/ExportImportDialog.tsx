@@ -261,14 +261,14 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         // refuses the export, like the import path's accountChangeGeneration
         // check.
         if (listAccountId === undefined) {
-            setError('ACCOUNT_CHANGED: the profile list is not bound to an account; nothing was exported');
+            setError(t('settings.exportAccountUnbound'));
             return;
         }
         const accountBefore = accountChangeGeneration();
         const status = await getUnlockStatus().catch(() => null);
         const activeId = status?.activeUserId ?? null;
         if (accountChangeGeneration() !== accountBefore || activeId !== listAccountId) {
-            setError('ACCOUNT_CHANGED: the active account changed; nothing was exported');
+            setError(t('settings.exportAccountChanged'));
             return;
         }
 
@@ -284,7 +284,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             accountChangeGeneration() !== accountBefore ||
             (statusAfter?.activeUserId ?? null) !== listAccountId
         ) {
-            setError('ACCOUNT_CHANGED: the active account changed while the save dialog was open; nothing was exported');
+            setError(t('settings.exportAccountChangedDuringSave'));
             return;
         }
 

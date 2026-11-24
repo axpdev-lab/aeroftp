@@ -1925,7 +1925,10 @@
             "templateLogImported": "Modello di configurazione importato: {imported} importati, {skipped} saltati, {invalid} non validi",
             "templateLogBlocks": "Blocchi: {blocks}",
             "templateDuplicateInTemplate": "duplicato nel modello",
-            "templateSelectProfile": "Importa {name}"
+            "templateSelectProfile": "Importa {name}",
+            "exportAccountUnbound": "L'elenco dei profili non è associato a un account; non è stato esportato nulla.",
+            "exportAccountChanged": "L'account attivo è cambiato; non è stato esportato nulla.",
+            "exportAccountChangedDuringSave": "L'account attivo è cambiato mentre la finestra di salvataggio era aperta; non è stato esportato nulla."
         },
         "appearance": {
             "patternCross": "Croce",

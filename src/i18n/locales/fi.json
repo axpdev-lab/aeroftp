@@ -1439,7 +1439,10 @@
             "templateLogImported": "Määritysmalli tuotu: {imported} tuotu, {skipped} ohitettu, {invalid} virheellistä",
             "templateLogBlocks": "Lohkot: {blocks}",
             "templateDuplicateInTemplate": "kaksoiskappale mallissa",
-            "templateSelectProfile": "Tuo {name}"
+            "templateSelectProfile": "Tuo {name}",
+            "exportAccountUnbound": "Profililista ei ole sidottu tiliin; mitään ei viety.",
+            "exportAccountChanged": "Aktiivinen tili muuttui; mitään ei viety.",
+            "exportAccountChangedDuringSave": "Aktiivinen tili muuttui tallennusikkunan ollessa auki; mitään ei viety."
         },
         "devtools": {
             "title": "AeroTools",

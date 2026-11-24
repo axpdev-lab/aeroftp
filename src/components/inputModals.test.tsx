@@ -532,7 +532,10 @@ describe('MultiFilePropertiesDialog (Discussion #1527)', () => {
 describe('ExportImportDialog (Discussion #1527)', () => {
     const servers = [{ id: 'a', name: 'lab-a', host: 'a.example.com', port: 21, username: 'tester', protocol: 'ftp' }] as unknown as ServerProfile[];
     const open = async (onClose: () => void, initialMode?: 'export') => {
-        await render(<ExportImportDialog servers={servers} onImport={() => undefined} onProfilesStored={() => undefined} onClose={onClose} initialMode={initialMode} />);
+        // `listAccountId={null}` binds the list to the unbound account the
+        // mocked unlock status reports (`activeUserId` absent), so the
+        // export's account guard lets the write through.
+        await render(<ExportImportDialog servers={servers} listAccountId={null} onImport={() => undefined} onProfilesStored={() => undefined} onClose={onClose} initialMode={initialMode} />);
     };
     const typePasswords = async () => {
         await typeInto(input('input[placeholder="settings.encryptionPassword"]'), 'sentinel-pass-1');

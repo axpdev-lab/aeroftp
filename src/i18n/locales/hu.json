@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurációs sablon importálva: {imported} importálva, {skipped} kihagyva, {invalid} érvénytelen",
             "templateLogBlocks": "Blokkok: {blocks}",
             "templateDuplicateInTemplate": "duplikátum a sablonban",
-            "templateSelectProfile": "{name} importálása"
+            "templateSelectProfile": "{name} importálása",
+            "exportAccountUnbound": "A profillista nincs fiókhoz kötve; semmi sem került exportálásra.",
+            "exportAccountChanged": "Az aktív fiók megváltozott; semmi sem került exportálásra.",
+            "exportAccountChangedDuringSave": "Az aktív fiók megváltozott, miközben a mentési párbeszédpanel nyitva volt; semmi sem került exportálásra."
         },
         "devtools": {
             "title": "AeroTools",

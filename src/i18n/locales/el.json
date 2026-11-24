@@ -1439,7 +1439,10 @@
             "templateLogImported": "Το πρότυπο διαμόρφωσης εισήχθη: {imported} εισήχθησαν, {skipped} παραλείφθηκαν, {invalid} μη έγκυρα",
             "templateLogBlocks": "Μπλοκ: {blocks}",
             "templateDuplicateInTemplate": "διπλότυπο στο πρότυπο",
-            "templateSelectProfile": "Εισαγωγή {name}"
+            "templateSelectProfile": "Εισαγωγή {name}",
+            "exportAccountUnbound": "Η λίστα προφίλ δεν είναι συνδεδεμένη με λογαριασμό· τίποτα δεν εξήχθη.",
+            "exportAccountChanged": "Ο ενεργός λογαριασμός άλλαξε· τίποτα δεν εξήχθη.",
+            "exportAccountChangedDuringSave": "Ο ενεργός λογαριασμός άλλαξε ενώ ήταν ανοιχτό το παράθυρο αποθήκευσης· τίποτα δεν εξήχθη."
         },
         "devtools": {
             "title": "AeroTools",

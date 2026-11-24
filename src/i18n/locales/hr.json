@@ -1439,7 +1439,10 @@
             "templateLogImported": "Predložak konfiguracije uvezen: {imported} uvezeno, {skipped} preskočeno, {invalid} nevažećih",
             "templateLogBlocks": "Blokovi: {blocks}",
             "templateDuplicateInTemplate": "duplikat u predlošku",
-            "templateSelectProfile": "Uvezi {name}"
+            "templateSelectProfile": "Uvezi {name}",
+            "exportAccountUnbound": "Popis profila nije povezan s računom; ništa nije izvezeno.",
+            "exportAccountChanged": "Aktivni račun se promijenio; ništa nije izvezeno.",
+            "exportAccountChangedDuringSave": "Aktivni račun se promijenio dok je dijalog za spremanje bio otvoren; ništa nije izvezeno."
         },
         "devtools": {
             "title": "AeroTools",

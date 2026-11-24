@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurationsmall importerad: {imported} importerade, {skipped} överhoppade, {invalid} ogiltiga",
             "templateLogBlocks": "Block: {blocks}",
             "templateDuplicateInTemplate": "dubblett i mallen",
-            "templateSelectProfile": "Importera {name}"
+            "templateSelectProfile": "Importera {name}",
+            "exportAccountUnbound": "Profilistan är inte knuten till ett konto; ingenting exporterades.",
+            "exportAccountChanged": "Det aktiva kontot ändrades; ingenting exporterades.",
+            "exportAccountChangedDuringSave": "Det aktiva kontot ändrades medan spara-dialogen var öppen; ingenting exporterades."
         },
         "devtools": {
             "title": "AeroTools",

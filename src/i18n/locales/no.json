@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurasjonsmal importert: {imported} importert, {skipped} hoppet over, {invalid} ugyldige",
             "templateLogBlocks": "Blokker: {blocks}",
             "templateDuplicateInTemplate": "duplikat i malen",
-            "templateSelectProfile": "Importer {name}"
+            "templateSelectProfile": "Importer {name}",
+            "exportAccountUnbound": "Profilisten er ikke knyttet til en konto; ingenting ble eksportert.",
+            "exportAccountChanged": "Den aktive kontoen endret seg; ingenting ble eksportert.",
+            "exportAccountChangedDuringSave": "Den aktive kontoen endret seg mens lagringsdialogen var åpen; ingenting ble eksportert."
         },
         "devtools": {
             "title": "AeroTools",

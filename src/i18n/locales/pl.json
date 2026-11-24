@@ -1439,7 +1439,10 @@
             "templateLogImported": "Zaimportowano szablon konfiguracji: {imported} zaimportowano, {skipped} pominięto, {invalid} nieprawidłowych",
             "templateLogBlocks": "Bloki: {blocks}",
             "templateDuplicateInTemplate": "duplikat w szablonie",
-            "templateSelectProfile": "Importuj {name}"
+            "templateSelectProfile": "Importuj {name}",
+            "exportAccountUnbound": "Lista profili nie jest powiązana z kontem; nic nie zostało wyeksportowane.",
+            "exportAccountChanged": "Aktywne konto uległo zmianie; nic nie zostało wyeksportowane.",
+            "exportAccountChangedDuringSave": "Aktywne konto uległo zmianie, gdy okno dialogowe zapisu było otwarte; nic nie zostało wyeksportowane."
         },
         "devtools": {
             "title": "AeroTools",

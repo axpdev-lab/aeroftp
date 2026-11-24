@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurazio-txantiloia inportatu da: {imported} inportatuta, {skipped} saltatuta, {invalid} baliogabe",
             "templateLogBlocks": "Blokeak: {blocks}",
             "templateDuplicateInTemplate": "bikoiztua txantiloian",
-            "templateSelectProfile": "Inportatu {name}"
+            "templateSelectProfile": "Inportatu {name}",
+            "exportAccountUnbound": "Profilen zerrenda ez dago kontu bati lotuta; ezer ez da esportatu.",
+            "exportAccountChanged": "Kontu aktiboa aldatu da; ezer ez da esportatu.",
+            "exportAccountChangedDuringSave": "Kontu aktiboa aldatu da gorde elkarrizketa irekitakoan; ezer ez da esportatu."
         },
         "devtools": {
             "title": "AeroTools",

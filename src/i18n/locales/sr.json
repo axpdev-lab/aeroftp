@@ -1439,7 +1439,10 @@
             "templateLogImported": "Шаблон конфигурације увезен: {imported} увезено, {skipped} прескочено, {invalid} неважећих",
             "templateLogBlocks": "Блокови: {blocks}",
             "templateDuplicateInTemplate": "дупликат у шаблону",
-            "templateSelectProfile": "Увези {name}"
+            "templateSelectProfile": "Увези {name}",
+            "exportAccountUnbound": "Листа профила није повезана са налогом; ништа није извезено.",
+            "exportAccountChanged": "Активни налог се променио; ништа није извезено.",
+            "exportAccountChangedDuringSave": "Активни налог се променио откако је овај дијалог за чување отворен; ништа није извезено."
         },
         "devtools": {
             "title": "AeroTools",

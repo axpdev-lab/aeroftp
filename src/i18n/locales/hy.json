@@ -1439,7 +1439,10 @@
             "templateLogImported": "Կարգավորման ձևանմուշը ներմուծվել է՝ {imported} ներմուծված, {skipped} բաց թողնված, {invalid} անվավեր",
             "templateLogBlocks": "Բլոկներ՝ {blocks}",
             "templateDuplicateInTemplate": "կրկնօրինակ ձևանմուշում",
-            "templateSelectProfile": "Ներմուծել {name}"
+            "templateSelectProfile": "Ներմուծել {name}",
+            "exportAccountUnbound": "Պրոֆիլների ցանկը կապված չի հաշվի հետ; ոչինչ չի արտահանվեց։",
+            "exportAccountChanged": "Ակտիվ Հաշիվը փոխվել է; ոչինչ չի արտահանվեց։",
+            "exportAccountChangedDuringSave": "Ակտիվ Հաշիվը փոխվել է, այս երկխոսության պահպանման բացվելուց հետո; ոչինչ չի արտահանվեց։"
         },
         "devtools": {
             "title": "AeroTools",

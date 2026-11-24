@@ -1439,7 +1439,10 @@
             "templateLogImported": "構成テンプレートをインポートしました: {imported} 件インポート、{skipped} 件スキップ、{invalid} 件無効",
             "templateLogBlocks": "ブロック: {blocks}",
             "templateDuplicateInTemplate": "テンプレート内で重複",
-            "templateSelectProfile": "{name} をインポート"
+            "templateSelectProfile": "{name} をインポート",
+            "exportAccountUnbound": "プロファイル一覧はアカウントに関連付けられていません。何もエクスポートされませんでした。",
+            "exportAccountChanged": "アクティブなアカウントが変更されました。何もエクスポートされませんでした。",
+            "exportAccountChangedDuringSave": "保存ダイアログを開いてから、アクティブなアカウントが変更されました。何もエクスポートされませんでした。"
         },
         "devtools": {
             "title": "AeroTools",

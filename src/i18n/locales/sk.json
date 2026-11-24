@@ -1439,7 +1439,10 @@
             "templateLogImported": "Šablóna konfigurácie importovaná: {imported} importovaných, {skipped} preskočených, {invalid} neplatných",
             "templateLogBlocks": "Bloky: {blocks}",
             "templateDuplicateInTemplate": "duplikát v šablóne",
-            "templateSelectProfile": "Importovať {name}"
+            "templateSelectProfile": "Importovať {name}",
+            "exportAccountUnbound": "Zoznam profilov nie je priradený k účtu; nič nebolo exportované.",
+            "exportAccountChanged": "Aktívny účet sa zmenil; nič nebolo exportované.",
+            "exportAccountChangedDuringSave": "Aktívny účet sa zmenil, kým bolo otvorené dialógové okno uloženia; nič nebolo exportované."
         },
         "devtools": {
             "title": "AeroTools",

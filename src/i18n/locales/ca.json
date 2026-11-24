@@ -1439,7 +1439,10 @@
             "templateLogImported": "Plantilla de configuració importada: {imported} importats, {skipped} omesos, {invalid} no vàlids",
             "templateLogBlocks": "Blocs: {blocks}",
             "templateDuplicateInTemplate": "duplicat a la plantilla",
-            "templateSelectProfile": "Importa {name}"
+            "templateSelectProfile": "Importa {name}",
+            "exportAccountUnbound": "La llista de perfils no està vinculada a cap compte; no s'ha exportat res.",
+            "exportAccountChanged": "El compte actiu ha canviat; no s'ha exportat res.",
+            "exportAccountChangedDuringSave": "El compte actiu ha canviat mentre el diàleg de desament estava obert; no s'ha exportat res."
         },
         "devtools": {
             "title": "AeroTools",

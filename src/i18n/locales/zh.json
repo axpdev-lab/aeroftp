@@ -1439,7 +1439,10 @@
             "templateLogImported": "已导入配置模板：已导入 {imported} 个，已跳过 {skipped} 个，无效 {invalid} 个",
             "templateLogBlocks": "区块：{blocks}",
             "templateDuplicateInTemplate": "模板中重复",
-            "templateSelectProfile": "导入 {name}"
+            "templateSelectProfile": "导入 {name}",
+            "exportAccountUnbound": "配置文件列表未绑定到账户；未导出任何内容。",
+            "exportAccountChanged": "活动账户已更改；未导出任何内容。",
+            "exportAccountChangedDuringSave": "自打开保存对话框以来，活动账户已更改；未导出任何内容。"
         },
         "devtools": {
             "title": "AeroTools",
