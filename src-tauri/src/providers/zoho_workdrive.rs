@@ -12074,6 +12074,7 @@ mod tests {
     /// The rclone export's Zoho discovery stays bound to the account the
     /// profile list was read under: the fixture moves the active account to
     /// B inside `discover_team`, and the recorded binding must still be A.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn rclone_root_folder_discovery_keeps_the_captured_account() {
         let _env = crate::test_env::lock();
