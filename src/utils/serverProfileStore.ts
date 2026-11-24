@@ -185,7 +185,9 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
         // the wrong account. Without an active account the list stays
         // unbound; with one, the owner must be that same account.
         const locked = await readLegacyServerProfilesBound();
-        const legacy = locked.profiles ?? await loadLegacySavedServerProfiles();
+        // `profiles` null means the locked read found no list: the blob is
+        // not read again outside the lock, the empty list below refuses.
+        const legacy = locked.profiles ?? [];
         if (legacy.length === 0) throw error;
         const active = locked.activeUserId ?? undefined;
         if (active !== undefined && locked.ownerUserId !== active) {

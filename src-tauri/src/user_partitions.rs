@@ -12121,6 +12121,7 @@ fn active_user_id_readonly(path: &std::path::Path) -> Result<Option<i64>, String
 /// [`ProfileListLock`] so a mirror cannot swap them apart. `profiles` is
 /// `None` when the blob holds no list.
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LegacyServerProfilesRead {
     pub profiles: Option<Vec<Value>>,
     pub active_user_id: Option<i64>,
@@ -12920,6 +12921,26 @@ mod tests {
     use super::*;
     use rusqlite::params;
     use serde_json::json;
+
+    /// The locked legacy read answers in the camelCase the frontend reads:
+    /// snake_case keys would leave `activeUserId`, `ownerUserId` and
+    /// `accountsUnknown` undefined and silently unbind every list.
+    #[test]
+    fn legacy_server_profiles_read_serializes_camel_case() {
+        let read = LegacyServerProfilesRead {
+            profiles: Some(vec![json!({"id": "srv_a"})]),
+            active_user_id: Some(7),
+            owner_user_id: Some(7),
+            accounts_unknown: false,
+        };
+        let value = serde_json::to_value(&read).expect("serialize");
+        assert_eq!(value["activeUserId"], json!(7));
+        assert_eq!(value["ownerUserId"], json!(7));
+        assert_eq!(value["accountsUnknown"], json!(false));
+        assert!(value.get("active_user_id").is_none());
+        assert!(value.get("owner_user_id").is_none());
+        assert!(value.get("accounts_unknown").is_none());
+    }
 
     /// A running deletion is settled as completed once it can never end
     /// (its process gone, its pid another process's, its lease run out on a

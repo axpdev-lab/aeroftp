@@ -1007,7 +1007,24 @@ fn export_keystore_with_store(
 
     // #736: the vault's profile list must be the one My Servers shows before
     // it is written into the backup, in both modes (a VaultOnly export is how
-    // saved servers move to another machine).
+    // saved servers move to another machine). The mirror writes the blob and
+    // its owner as two vault entries, so the refresh and the vault reads
+    // below run under the ProfileListLock a profile write takes: another
+    // mirror cannot slip its pair in between. The guard lives until this
+    // function returns.
+    let list_lock = config_dir
+        .map(|cfg| {
+            crate::user_partitions::ProfileListLock::acquire_for_path(
+                &cfg.join("user_partitions.db"),
+            )
+        })
+        .transpose()
+        .map_err(KeystoreExportError::ProfileListBusy)?;
+    if list_lock.as_ref().is_some_and(|lock| !lock.is_exclusive()) {
+        return Err(KeystoreExportError::ProfileListBusy(
+            crate::user_partitions::NO_FILE_LOCKS.to_string(),
+        ));
+    }
     if let Some(cfg) = config_dir {
         refresh_legacy_profiles_blob(store, cfg, "export");
     }

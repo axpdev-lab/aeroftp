@@ -395,6 +395,7 @@ describe('a list read from the legacy store', () => {
         const read = await readSavedServerProfilesForWrite();
         expect(read.profiles).toEqual(legacy);
         expect(read.userId).toBeUndefined();
+        expect(read.ownerUnknown).toBe(false);
 
         const edited = [sampleProfile({ name: 'edited' })];
         mockInvoke.mockReset();
@@ -451,6 +452,22 @@ describe('a list read from the legacy store', () => {
             return undefined;
         });
         await expect(readSavedServerProfilesForWrite()).rejects.toThrow('ACCOUNT_CHANGED');
+        mockInvoke.mockReset();
+    });
+
+    it('refuses a null locked list instead of re-reading the blob outside the lock', async () => {
+        // profiles null is the locked read's answer "no list": the blob is
+        // not read again unlocked, so nothing binds account 7.
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'user_partitions_read_legacy_server_profiles') {
+                return { profiles: null, activeUserId: 7, ownerUserId: 7, accountsUnknown: false };
+            }
+            if (command === 'get_credential') return JSON.stringify([sampleProfile()]);
+            return undefined;
+        });
+        await expect(readSavedServerProfilesForWrite()).rejects.toThrow();
+        expect(mockInvoke.mock.calls.some(call => call[0] === 'get_credential')).toBe(false);
         mockInvoke.mockReset();
     });
 
