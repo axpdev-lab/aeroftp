@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Özdeş olmayan",
             "groupsCount": "{count} grup",
             "duplicateFilesCount": "{count} yinelenen dosya",
-            "copiesCount": "{count} kopya"
+            "copiesCount": "{count} kopya",
+            "refreshTooltip": "Tespit edilen yinelenen dosyaların hâlâ var olup olmadığını kontrol edin ve yeniden taramadan eksik dosyaları kaldırın",
+            "refreshRemoved": "{count} eksik dosya listeden çıkarıldı",
+            "refreshUpToDate": "Tüm dosyalar hâlâ mevcut",
+            "refreshChanged": "Değişen {count} dosya listeden çıkarıldı",
+            "refreshUnverified": "{count} tanesi denetlenemedi",
+            "refreshFailed": "Yenileme başarısız: {error}"
         },
         "diskUsage": {
             "title": "Disk Kullanımı",

@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Niet identiek",
             "groupsCount": "Groepen: {count}",
             "duplicateFilesCount": "Dubbele bestanden: {count}",
-            "copiesCount": "{count} kopieën"
+            "copiesCount": "{count} kopieën",
+            "refreshTooltip": "Controleer of gedetecteerde duplicaten nog bestaan en verwijder ontbrekende bestanden zonder opnieuw te scannen",
+            "refreshRemoved": "{count} ontbrekende bestanden uit de lijst gehaald",
+            "refreshUpToDate": "Alle bestanden bestaan nog",
+            "refreshChanged": "{count} gewijzigde bestanden uit de lijst verwijderd",
+            "refreshUnverified": "{count} konden niet worden gecontroleerd",
+            "refreshFailed": "Vernieuwen mislukt: {error}"
         },
         "diskUsage": {
             "title": "Schijfgebruik",

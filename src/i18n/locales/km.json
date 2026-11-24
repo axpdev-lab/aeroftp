@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "មិនដូចគ្នាបេះបិទ",
             "groupsCount": "ក្រុម {count}",
             "duplicateFilesCount": "ឯកសារស្ទួន {count}",
-            "copiesCount": "ច្បាប់ចម្លង {count}"
+            "copiesCount": "ច្បាប់ចម្លង {count}",
+            "refreshTooltip": "ពិនិត្យមើលថាតើឯកសារស្ទួនដែលបានរកឃើញនៅតែមានឬអត់ ហើយដកឯកសារដែលបាត់ចេញដោយមិនចាំបាច់ស្កេនឡើងវិញ",
+            "refreshRemoved": "បានដកឯកសារដែលបាត់ចំនួន {count} ចេញពីបញ្ជី",
+            "refreshUpToDate": "ឯកសារទាំងអស់នៅតែមាន",
+            "refreshChanged": "បានដកឯកសារដែលបានផ្លាស់ប្តូរចំនួន {count} ចេញពីបញ្ជី",
+            "refreshUnverified": "មិនអាចពិនិត្យ {count} បានទេ",
+            "refreshFailed": "ការធ្វើឱ្យស្រស់បានបរាជ័យ៖ {error}"
         },
         "diskUsage": {
             "title": "ការប្រើប្រាស់ថាស",

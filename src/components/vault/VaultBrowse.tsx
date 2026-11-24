@@ -117,6 +117,12 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
 
     return (
         <>
+            {state.loading && !state.vaultProgress && (
+                <div role="status" className="flex items-center gap-2 px-4 pt-2 text-xs text-gray-500 dark:text-gray-400">
+                    <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                    {t('common.loading')}
+                </div>
+            )}
             {state.loading && state.vaultProgress && (
                 <div className="px-4 pt-2">
                     <TransferProgressBar percentage={state.vaultProgress.percentage} size="lg" />

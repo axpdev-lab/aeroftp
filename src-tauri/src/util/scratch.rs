@@ -173,10 +173,21 @@ impl Drop for StagingLease {
     }
 }
 
+pub(crate) const REMOTE_VAULT_DIR_PREFIX: &str = "aerovault_remote_session_";
+pub(crate) const REMOTE_VAULT_DIR_RANDOM_LEN: usize = 12;
+
+pub(crate) fn is_remote_vault_dir_name(name: &str) -> bool {
+    name.strip_prefix(REMOTE_VAULT_DIR_PREFIX)
+        .is_some_and(|suffix| {
+            suffix.len() == REMOTE_VAULT_DIR_RANDOM_LEN
+                && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
+}
+
 /// True when `name` is an AeroFTP staging shape the sweep may collect:
 /// crypt-overlay ciphertext (`aeroftp_crypt_overlay_*.bin`, the upload name
 /// and the `_dl_`/`_ver_` download variants under the same prefix),
-/// remote-vault downloads (`aerovault_remote_*.aerovault`), Proton upload
+/// remote-vault staging directories and legacy flat downloads, Proton upload
 /// folders (`aeroftp_proton_up_*`) and `tempfile` leftovers (`.tmp*`) from
 /// the compress overlay, `rcat` and `hashsum`. Everything in the scratch
 /// folder is app-created, but the gate keeps the sweep from touching a file
@@ -185,6 +196,7 @@ impl Drop for StagingLease {
 pub fn is_staging_entry(name: &str) -> bool {
     let name = staging_payload_name(name);
     (name.starts_with("aeroftp_crypt_overlay_") && name.ends_with(".bin"))
+        || is_remote_vault_dir_name(name)
         || (name.starts_with("aerovault_remote_") && name.ends_with(".aerovault"))
         || name.starts_with("aeroftp_proton_up_")
         || name.starts_with(".tmp")
@@ -277,7 +289,10 @@ fn sweep_staging_entries(
                 continue;
             }
         };
-        if meta.file_type().is_symlink() || !(meta.is_file() || meta.is_dir()) {
+        if meta.file_type().is_symlink()
+            || !(meta.is_file() || meta.is_dir())
+            || (is_remote_vault_dir_name(name) && !meta.is_dir())
+        {
             continue;
         }
         let mtime = match meta.modified() {
@@ -418,6 +433,40 @@ pub fn sweep_staging_on_startup() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sweep_removes_the_remote_vault_directory_and_its_persistent_locks() {
+        use filetime::{set_file_mtime, FileTime};
+        let root = tempfile::tempdir().unwrap();
+        let stage = root.path().join("aerovault_remote_session_0123456789ab");
+        let unrelated = root.path().join("user.aerovault.aerolock");
+        std::fs::create_dir(&stage).unwrap();
+        for name in [
+            "vault.aerovault",
+            "vault.aerovault.aerolock",
+            "vault.aerovault.aerocorrect.aerolock",
+        ] {
+            std::fs::write(stage.join(name), []).unwrap();
+        }
+        std::fs::write(&unrelated, []).unwrap();
+        let old = FileTime::from_unix_time(1, 0);
+        set_file_mtime(&stage, old).unwrap();
+        set_file_mtime(&unrelated, old).unwrap();
+
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.removed, 1);
+        assert_eq!(stats.errors, 0);
+        assert!(!stage.exists());
+        assert!(unrelated.is_file());
+
+        // The session name is reserved for a directory: a regular file that
+        // carries it is not AeroFTP staging and stays.
+        std::fs::write(&stage, b"not a session").unwrap();
+        set_file_mtime(&stage, old).unwrap();
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.removed, 0);
+        assert_eq!(std::fs::read(&stage).unwrap(), b"not a session");
+    }
 
     #[test]
     fn a_folder_with_room_is_created_and_returned() {

@@ -6,12 +6,14 @@
 
 use crate::providers::HttpResultExt;
 use async_trait::async_trait;
+use base64::Engine as _;
 use secrecy::ExposeSecret;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{sleep, Duration};
 use zeroize::Zeroize;
@@ -261,6 +263,272 @@ impl MegaNode {
 
 // ─── API Client ───────────────────────────────────────────────────────────
 
+/// A challenge from MEGA's `X-Hashcash` header,
+/// `<version>:<easiness>:<timestamp>:<token>` (MEGA SDK `src/posix/net.cpp`).
+#[derive(Clone)]
+struct MegaHashcashChallenge {
+    easiness: u8,
+    token: [u8; HASHCASH_TOKEN_BYTES],
+}
+
+const HASHCASH_TOKEN_BYTES: usize = 48;
+/// The token fills 12 MiB after the 4-byte nonce (MEGA SDK `kRepeat`).
+const HASHCASH_TOKEN_REPEAT: usize = 262_144;
+/// How long MEGA keeps a challenge valid (MEGA SDK `kTtl`, "based on server's ttl").
+const HASHCASH_SERVER_TTL: Duration = Duration::from_secs(300);
+/// How long one challenge may be worked on: a third of its lifetime, as the
+/// MEGA SDK does on desktop, so the proof reaches MEGA while it is still valid.
+const HASHCASH_SOLVE_BUDGET: Duration = Duration::from_secs(HASHCASH_SERVER_TTL.as_secs() / 3);
+/// The SDK's finite extended budget after two forced solve timeouts.
+const HASHCASH_EXTENDED_BUDGET: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+/// Challenges answered for one command. Forced timeouts, not successful proofs,
+/// select `HASHCASH_EXTENDED_BUDGET` after the SDK's `kMaxRetries` count.
+const HASHCASH_MAX_CHALLENGES: usize = 3;
+/// Solver threads, the MEGA SDK's desktop cap (`MAX_WORKERS_FOR_GENCASH`).
+const HASHCASH_MAX_WORKERS: usize = 8;
+const MEGA_ERROR_BODY_LIMIT: usize = 64 * 1024;
+const MEGA_ERROR_BODY_READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn parse_hashcash_challenge(header: &str) -> Option<MegaHashcashChallenge> {
+    let mut parts = header.trim().split(':');
+    let version = parts.next()?;
+    let easiness = parts.next()?.parse::<u8>().ok()?;
+    let _timestamp = parts.next()?;
+    let token = parts.next()?;
+    if version != "1" || parts.next().is_some() {
+        return None;
+    }
+    let token = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(token)
+        .ok()?
+        .try_into()
+        .ok()?;
+    Some(MegaHashcashChallenge { easiness, token })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum HashcashOutcome {
+    /// The nonce, base64url without padding, as the `X-Hashcash` answer carries it.
+    Solved(String),
+    /// The caller dropped the solve; nobody reads this outcome.
+    Cancelled,
+    /// No nonce met the threshold within the budget.
+    OutOfBudget,
+    /// A worker could not start, so the nonce partition was incomplete.
+    WorkerStartFailed,
+}
+
+/// MEGA SDK `thresholdFromEasiness`.
+fn hashcash_threshold(easiness: u8) -> u32 {
+    ((((easiness & 63) as u32) << 1) + 1) << (((easiness >> 6) as u32) * 7 + 3)
+}
+
+/// The 12 MiB message with a zero nonce: `nonce(4) || token x 262144`.
+fn hashcash_message(token: &[u8; HASHCASH_TOKEN_BYTES]) -> Vec<u8> {
+    let mut message = Vec::with_capacity(4 + HASHCASH_TOKEN_REPEAT * HASHCASH_TOKEN_BYTES);
+    message.extend_from_slice(&[0; 4]);
+    for _ in 0..HASHCASH_TOKEN_REPEAT {
+        message.extend_from_slice(token);
+    }
+    message
+}
+
+/// Whether `nonce` answers the challenge. `message` is shared read-only by
+/// every worker; the nonce stands in for its first four bytes.
+fn hashcash_nonce_meets(message: &[u8], nonce: [u8; 4], threshold: u32) -> bool {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(nonce);
+    hasher.update(&message[4..]);
+    let digest = hasher.finalize();
+    u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) <= threshold
+}
+
+fn hashcash_workers() -> usize {
+    std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(HASHCASH_MAX_WORKERS)
+}
+
+#[cfg(test)]
+thread_local! {
+    static HASHCASH_FAIL_SPAWN: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+fn hashcash_spawn_should_fail(start: u32) -> bool {
+    HASHCASH_FAIL_SPAWN.with(|slot| slot.get() == Some(start))
+}
+
+/// Search the nonce space in big-endian order with `workers` threads, worker
+/// `w` trying `w, w + workers, ...` (the MEGA SDK `gencashWorker` stride).
+/// Worker 0 runs on the calling thread. A failed launch stops every worker and
+/// returns a distinct error instead of reporting an incomplete search as no
+/// proof. Each worker checks found, start failure, cancellation and deadline
+/// before every hash, and all started workers are joined before this returns.
+fn solve_hashcash_with(
+    challenge: &MegaHashcashChallenge,
+    cancelled: Option<&AtomicBool>,
+    budget: Duration,
+    workers: usize,
+) -> HashcashOutcome {
+    let message = hashcash_message(&challenge.token);
+    let threshold = hashcash_threshold(challenge.easiness);
+    // `None`: no deadline, for a budget no `Instant` can hold (`Duration::MAX`);
+    // `Instant + Duration::MAX` would panic.
+    let deadline = std::time::Instant::now().checked_add(budget);
+    let stride = workers.clamp(1, HASHCASH_MAX_WORKERS) as u32;
+    let found = AtomicBool::new(false);
+    let start_failed = AtomicBool::new(false);
+    let winner = std::sync::Mutex::new(None::<u32>);
+
+    let search = |start: u32| {
+        let mut nonce = start;
+        loop {
+            if found.load(Ordering::Relaxed)
+                || start_failed.load(Ordering::Relaxed)
+                || cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed))
+                || deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline)
+            {
+                return;
+            }
+            if hashcash_nonce_meets(&message, nonce.to_be_bytes(), threshold) {
+                let mut best = winner
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let previous = *best;
+                *best = Some(previous.map_or(nonce, |other| other.min(nonce)));
+                found.store(true, Ordering::Relaxed);
+                return;
+            }
+            match nonce.checked_add(stride) {
+                Some(next) => nonce = next,
+                None => return,
+            }
+        }
+    };
+
+    std::thread::scope(|scope| {
+        for start in 1..stride {
+            let search = &search;
+            #[cfg(test)]
+            if hashcash_spawn_should_fail(start) {
+                start_failed.store(true, Ordering::Relaxed);
+                break;
+            }
+            if std::thread::Builder::new()
+                .name("mega-hashcash".into())
+                .spawn_scoped(scope, move || search(start))
+                .is_err()
+            {
+                start_failed.store(true, Ordering::Relaxed);
+                break;
+            }
+        }
+        search(0);
+    });
+
+    if start_failed.load(Ordering::Relaxed) {
+        return HashcashOutcome::WorkerStartFailed;
+    }
+
+    let winner = winner
+        .into_inner()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match winner {
+        Some(nonce) => HashcashOutcome::Solved(
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(nonce.to_be_bytes()),
+        ),
+        None if cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed)) => {
+            HashcashOutcome::Cancelled
+        }
+        None => HashcashOutcome::OutOfBudget,
+    }
+}
+
+struct CancelMegaHashcashOnDrop(Arc<AtomicBool>);
+
+impl Drop for CancelMegaHashcashOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Solve on a blocking worker within `budget` (`Duration::MAX`: no deadline).
+/// `Ok(None)`: no proof within the budget.
+async fn solve_hashcash_async(
+    challenge: MegaHashcashChallenge,
+    budget: Duration,
+) -> Result<Option<String>, ProviderError> {
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let worker_cancelled = cancelled.clone();
+    let workers = hashcash_workers();
+    let mut worker = tokio::task::spawn_blocking(move || {
+        solve_hashcash_with(&challenge, Some(&worker_cancelled), budget, workers)
+    });
+    wait_for_hashcash_worker(cancelled, &mut worker).await
+}
+
+async fn wait_for_hashcash_worker(
+    cancelled: Arc<AtomicBool>,
+    worker: &mut tokio::task::JoinHandle<HashcashOutcome>,
+) -> Result<Option<String>, ProviderError> {
+    let _cancel_on_drop = CancelMegaHashcashOnDrop(cancelled);
+    match worker.await {
+        Ok(HashcashOutcome::Solved(answer)) => Ok(Some(answer)),
+        Ok(HashcashOutcome::OutOfBudget) => Ok(None),
+        Ok(HashcashOutcome::Cancelled) => Err(ProviderError::Cancelled),
+        Ok(HashcashOutcome::WorkerStartFailed) => Err(ProviderError::Other(
+            "MEGA proof-of-work solver could not start every worker".to_string(),
+        )),
+        Err(err) => Err(ProviderError::Other(format!(
+            "MEGA proof-of-work solver failed: {err}"
+        ))),
+    }
+}
+
+/// A negative MEGA error code that is the whole body, bare (`-15`) or in an
+/// array (`[-15]`).
+fn negative_mega_code(body: &str) -> Option<i64> {
+    let value: Value = serde_json::from_str(body.trim()).ok()?;
+    let code = value
+        .as_i64()
+        .or_else(|| value.as_array()?.first()?.as_i64())?;
+    (code < 0).then_some(code)
+}
+
+async fn read_mega_error_body(
+    mut response: reqwest::Response,
+    timeout: Duration,
+) -> Result<(String, bool), ProviderError> {
+    tokio::time::timeout(timeout, async move {
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(map_reqwest_error)? {
+            let remaining = MEGA_ERROR_BODY_LIMIT.saturating_sub(bytes.len());
+            if chunk.len() > remaining {
+                bytes.extend_from_slice(&chunk[..remaining]);
+                return Ok((String::from_utf8_lossy(&bytes).into_owned(), false));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok((String::from_utf8_lossy(&bytes).into_owned(), true))
+    })
+    .await
+    .map_err(|_| ProviderError::Timeout)?
+}
+
+fn mega_402_error(challenges_answered: usize) -> ProviderError {
+    ProviderError::ServerError(if challenges_answered == 0 {
+        "MEGA API returned HTTP 402 without a proof-of-work challenge AeroFTP can answer"
+            .to_string()
+    } else {
+        format!(
+            "MEGA API returned HTTP 402 after {challenges_answered} answered proof-of-work challenge(s)"
+        )
+    })
+}
+
 struct MegaApiClient {
     client: reqwest::Client,
     next_request_id: AtomicU64,
@@ -268,6 +536,11 @@ struct MegaApiClient {
     /// Points the API at a local double in tests, so no test reaches MEGA.
     #[cfg(test)]
     base_url_override: Option<String>,
+    /// Per-challenge normal budgets in tests; extended budget stays fixed.
+    #[cfg(test)]
+    hashcash_budgets: Option<Vec<Duration>>,
+    #[cfg(test)]
+    error_body_read_timeout: Option<Duration>,
 }
 
 impl MegaApiClient {
@@ -291,6 +564,10 @@ impl MegaApiClient {
             session_id,
             #[cfg(test)]
             base_url_override: None,
+            #[cfg(test)]
+            hashcash_budgets: None,
+            #[cfg(test)]
+            error_body_read_timeout: None,
         }
     }
 
@@ -300,6 +577,29 @@ impl MegaApiClient {
             return url;
         }
         MEGA_API_BASE_URL
+    }
+
+    fn error_body_read_timeout(&self) -> Duration {
+        #[cfg(test)]
+        if let Some(timeout) = self.error_body_read_timeout {
+            return timeout;
+        }
+        MEGA_ERROR_BODY_READ_TIMEOUT
+    }
+
+    /// Only two forced timeouts select the SDK's finite extended budget.
+    fn hashcash_budget(&self, _challenge_index: usize, extended: bool) -> Duration {
+        if extended {
+            return HASHCASH_EXTENDED_BUDGET;
+        }
+        #[cfg(test)]
+        if let Some(budgets) = &self.hashcash_budgets {
+            return budgets
+                .get(_challenge_index)
+                .copied()
+                .unwrap_or(HASHCASH_SOLVE_BUDGET);
+        }
+        HASHCASH_SOLVE_BUDGET
     }
 
     fn set_session_id(&mut self, session_id: Option<String>) {
@@ -338,47 +638,118 @@ impl MegaApiClient {
             self.session_id.is_some()
         );
 
-        let response = self
-            .client
-            .post(url)
-            .json(&vec![command])
-            .send()
-            .await
-            .map_err(map_reqwest_error)?;
+        let payload = vec![command];
+        let mut proof: Option<String> = None;
+        let mut challenges_answered = 0usize;
+        let mut forced_timeouts = 0usize;
+        let response = loop {
+            let mut request = self.client.post(url.clone()).json(&payload);
+            if let Some(proof) = proof.take() {
+                request = request.header("X-Hashcash", proof);
+            }
+            let response = request.send().await.map_err(map_reqwest_error)?;
+            if response.status().as_u16() != 402 {
+                break response;
+            }
+
+            let challenge = response
+                .headers()
+                .get("X-Hashcash")
+                .and_then(|value| value.to_str().ok())
+                .and_then(parse_hashcash_challenge);
+            let (body, complete) =
+                read_mega_error_body(response, self.error_body_read_timeout()).await?;
+            let mega_code = if complete {
+                negative_mega_code(&body)
+            } else {
+                None
+            };
+            tracing::warn!(
+                "[MEGA Native] non-success HTTP 402 cmd={} body_len={} complete={} mega_code={:?}",
+                cmd_name,
+                body.len(),
+                complete,
+                mega_code
+            );
+            if let Some(code) = mega_code {
+                // MEGA's -13 is EINCOMPLETE, not a session rejection. On a 402
+                // it must not clear a saved session; -15 remains ESID.
+                if code == -13 {
+                    return Err(mega_402_error(challenges_answered));
+                }
+                return Err(map_mega_error_code(code));
+            }
+            // Like the SDK, PoW is only for an empty-body challenge. A body is
+            // classified first and never triggers a proof-bearing retry.
+            if !body.is_empty() || challenges_answered == HASHCASH_MAX_CHALLENGES {
+                return Err(mega_402_error(challenges_answered));
+            }
+            let Some(challenge) = challenge else {
+                return Err(mega_402_error(challenges_answered));
+            };
+
+            challenges_answered += 1;
+            let easiness = challenge.easiness;
+            tracing::debug!(
+                "[MEGA Native] Hashcash challenge {}/{} received: easiness={}",
+                challenges_answered,
+                HASHCASH_MAX_CHALLENGES,
+                easiness
+            );
+            let started = std::time::Instant::now();
+            let budget = self.hashcash_budget(challenges_answered - 1, forced_timeouts >= 2);
+            match solve_hashcash_async(challenge.clone(), budget).await? {
+                Some(answer) => {
+                    tracing::debug!(
+                        "[MEGA Native] Hashcash challenge solved: easiness={}, elapsed_ms={}",
+                        easiness,
+                        started.elapsed().as_millis()
+                    );
+                    proof = Some(format!(
+                        "1:{}:{answer}",
+                        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(challenge.token)
+                    ));
+                }
+                None => {
+                    forced_timeouts += 1;
+                    if challenges_answered == HASHCASH_MAX_CHALLENGES {
+                        return Err(ProviderError::Timeout);
+                    }
+                    tracing::debug!(
+                        "[MEGA Native] Hashcash challenge not solved: easiness={}, elapsed_ms={}",
+                        easiness,
+                        started.elapsed().as_millis()
+                    );
+                }
+            }
+        };
 
         if !response.status().is_success() {
             let status = response.status();
-            // Read the body before classifying. MEGA sometimes encodes the
-            // real reason as a negative numeric code in the response body
-            // (-15 ESID, -13 ESESSION, -26 EMFAREQUIRED) even when the HTTP
-            // layer chooses a non-2xx status. Surfacing the body in the log
-            // (truncated, no secrets) gives users and bug reports something
-            // actionable instead of a bare "402 Payment Required".
-            let body_preview = response
-                .text()
-                .await
-                .ok()
-                .map(|t| {
-                    let trimmed = t.trim();
-                    trimmed.chars().take(200).collect::<String>()
-                })
-                .unwrap_or_default();
+            let (body, complete) =
+                read_mega_error_body(response, self.error_body_read_timeout()).await?;
+            let mega_code = if complete {
+                negative_mega_code(&body)
+            } else {
+                None
+            };
             tracing::warn!(
-                "[MEGA Native] non-success HTTP {} cmd={} body={:?}",
+                "[MEGA Native] non-success HTTP {} cmd={} body_len={} complete={} mega_code={:?}",
                 status,
                 cmd_name,
-                body_preview
+                body.len(),
+                complete,
+                mega_code
             );
-            if status.as_u16() == 402 {
-                return Err(ProviderError::AuthenticationFailed(format!(
-                    "MEGA API returned HTTP {} (session expired or invalid). \
-                     Response body preview: {body_preview:?}",
-                    status
-                )));
+            if let Some(code) = mega_code {
+                // Of the auth-mapped codes, only API_ESID (-15) is a session
+                // verdict. Other non-2xx failures keep the legacy NetworkError.
+                if !matches!(code, -13 | -14 | -22 | -26) {
+                    return Err(map_mega_error_code(code));
+                }
             }
             return Err(ProviderError::NetworkError(format!(
-                "MEGA API returned HTTP {} (body: {body_preview:?})",
-                status
+                "MEGA API returned HTTP {status}"
             )));
         }
 
@@ -471,12 +842,18 @@ fn map_reqwest_error(err: reqwest::Error) -> ProviderError {
     }
 }
 
+/// The messages `MegaNativeProvider::is_transient_error` matches, exactly: a
+/// server error that quotes a response body must not turn transient because
+/// of what the body says.
+const MEGA_EAGAIN_MESSAGE: &str = "MEGA requested a retry (EAGAIN)";
+const MEGA_RATE_LIMIT_MESSAGE: &str = "MEGA rate limit exceeded";
+
 fn map_mega_error_code(code: i64) -> ProviderError {
     match code {
         -1 => ProviderError::ServerError("MEGA internal error".to_string()),
         -2 => ProviderError::InvalidConfig("MEGA rejected the request arguments".to_string()),
-        -3 => ProviderError::ServerError("MEGA requested a retry (EAGAIN)".to_string()),
-        -4 => ProviderError::ServerError("MEGA rate limit exceeded".to_string()),
+        -3 => ProviderError::ServerError(MEGA_EAGAIN_MESSAGE.to_string()),
+        -4 => ProviderError::ServerError(MEGA_RATE_LIMIT_MESSAGE.to_string()),
         -7 | -11 => ProviderError::PermissionDenied("MEGA access denied".to_string()),
         -8 => ProviderError::AlreadyExists("MEGA resource already exists".to_string()),
         -9 => ProviderError::NotFound("MEGA resource not found".to_string()),
@@ -484,15 +861,15 @@ fn map_mega_error_code(code: i64) -> ProviderError {
         -14 => ProviderError::AuthenticationFailed("MEGA account not confirmed".to_string()),
         -15 => ProviderError::AuthenticationFailed("MEGA session ID invalid".to_string()),
         -16 => ProviderError::ServerError("MEGA over quota".to_string()),
-        // MEGA two-factor authentication error codes:
+        // MEGA authentication-related error codes:
         //   -26 EMFAREQUIRED: account has 2FA enabled and the request was
         //                       missing the `mfa` field
         //   -27 EMASTERONLY : operation needs master account access
         //   -28 EBUSINESSPASTDUE
         //   -29 EPAYWALL
-        //   -22 ENOTOKEN    : the supplied 2FA token was not accepted
-        // The user-facing message must be specific so the UI can prompt
-        // the user to enter or re-enter their TOTP.
+        //   -22 EAPPKEY     : invalid or missing application key
+        // The legacy shared mapping is unchanged here; the user-facing 2FA
+        // messages remain specific so the UI can prompt for a fresh TOTP.
         -22 => ProviderError::AuthenticationFailed(
             "Wrong or already-used 2FA code. Generate a fresh code from your authenticator app.".to_string(),
         ),
@@ -649,7 +1026,8 @@ impl MegaNativeProvider {
     }
 
     fn is_transient_error(err: &ProviderError) -> bool {
-        matches!(err, ProviderError::ServerError(msg) if msg.contains("retry (EAGAIN)") || msg.contains("rate limit"))
+        matches!(err, ProviderError::ServerError(msg)
+            if msg == MEGA_EAGAIN_MESSAGE || msg == MEGA_RATE_LIMIT_MESSAGE)
     }
 
     async fn command_with_retry<T>(&self, command: Value) -> Result<T, ProviderError>
@@ -2778,6 +3156,896 @@ mod tests {
     fn mega_error_code_mapping_keeps_auth_specific_errors() {
         let err = map_mega_error_code(-14);
         assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+    }
+
+    const SDK_TOKEN: &str = "wFqIT_wY3tYKcrm5zqwaUoWym3ZCz32cCsrJOgYBgihtpaWUhGyWJ--EY-zfwI-i";
+
+    /// The MEGA SDK `validateHashcash`, written out again so that no test
+    /// checks the solver against its own helpers.
+    fn mega_accepts(token: &[u8; 48], easiness: u8, nonce_b64: &str) -> bool {
+        use base64::Engine as _;
+        use sha2::{Digest, Sha256};
+
+        let mut message = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(nonce_b64)
+            .unwrap();
+        assert_eq!(message.len(), 4, "a nonce is four bytes: {nonce_b64}");
+        for _ in 0..262_144 {
+            message.extend_from_slice(token);
+        }
+        let digest = Sha256::digest(&message);
+        let threshold = ((((easiness & 63) as u32) << 1) + 1) << (((easiness >> 6) as u32) * 7 + 3);
+        u32::from_be_bytes(digest[..4].try_into().unwrap()) <= threshold
+    }
+
+    /// A challenge at the highest easiness (about one nonce in two
+    /// answers it), so a test that needs several proofs stays cheap.
+    fn easy_challenge(fill: u8) -> (String, [u8; 48]) {
+        use base64::Engine as _;
+        let token = [fill; 48];
+        let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(token);
+        (format!("1:255:1731410499:{encoded}"), token)
+    }
+
+    /// The nonce of an `X-Hashcash` answer, after checking that it answers `token`.
+    fn proof_nonce<'a>(proof: &'a str, token: &[u8; 48]) -> &'a str {
+        use base64::Engine as _;
+        let prefix = format!(
+            "1:{}:",
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(token)
+        );
+        proof
+            .strip_prefix(prefix.as_str())
+            .unwrap_or_else(|| panic!("{proof} does not answer the challenge's token"))
+    }
+
+    type SeenProofs = std::sync::Arc<std::sync::Mutex<Vec<Option<String>>>>;
+
+    fn capture_logs() -> (
+        tracing::subscriber::DefaultGuard,
+        std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    ) {
+        #[derive(Clone)]
+        struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Sink {
+            fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(data);
+                Ok(data.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Sink(buffer.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_writer(move || sink.clone())
+            .finish();
+        (tracing::subscriber::set_default(subscriber), buffer)
+    }
+
+    /// A MEGA API double. Request `n` gets `replies[n]`, the last reply
+    /// repeating: a status, an optional `X-Hashcash` challenge and a body. It
+    /// records the `X-Hashcash` header of every request it receives.
+    async fn hashcash_double(
+        replies: Vec<(u16, Option<String>, &'static str)>,
+    ) -> (
+        super::MegaApiClient,
+        SeenProofs,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use axum::response::IntoResponse;
+
+        let seen: SeenProofs = Default::default();
+        let recorded = seen.clone();
+        let replies = std::sync::Arc::new(replies);
+        let app = axum::Router::new().fallback(axum::routing::post(
+            move |headers: axum::http::HeaderMap| {
+                let recorded = recorded.clone();
+                let replies = replies.clone();
+                async move {
+                    let index = {
+                        let mut seen = recorded.lock().unwrap();
+                        seen.push(
+                            headers
+                                .get("x-hashcash")
+                                .and_then(|v| v.to_str().ok())
+                                .map(String::from),
+                        );
+                        seen.len() - 1
+                    };
+                    let (status, challenge, body) = &replies[index.min(replies.len() - 1)];
+                    let mut response =
+                        (axum::http::StatusCode::from_u16(*status).unwrap(), *body).into_response();
+                    if let Some(challenge) = challenge {
+                        response
+                            .headers_mut()
+                            .insert("x-hashcash", challenge.parse().unwrap());
+                    }
+                    response
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut client = super::MegaApiClient::new(None);
+        client.base_url_override = Some(format!("http://{addr}/cs"));
+        (client, seen, server)
+    }
+
+    #[test]
+    fn hashcash_threshold_follows_the_mega_sdk_formula() {
+        assert_eq!(super::hashcash_threshold(0), 8);
+        assert_eq!(super::hashcash_threshold(100), 74_752);
+        assert_eq!(super::hashcash_threshold(192), 1 << 24);
+        assert_eq!(super::hashcash_threshold(255), 0x7F00_0000);
+    }
+
+    #[test]
+    fn hashcash_single_worker_finds_the_first_big_endian_proof() {
+        let challenge =
+            super::parse_hashcash_challenge(&format!("1:192:1731410499:{SDK_TOKEN}")).unwrap();
+        assert_eq!(challenge.easiness, 192);
+        // 0x00000127 is the first big-endian nonce that answers this token
+        // (computed outside this code). The MEGA SDK test uses the same token
+        // but only validates its proof, since its workers race.
+        let outcome = super::solve_hashcash_with(&challenge, None, std::time::Duration::MAX, 1);
+        assert_eq!(outcome, super::HashcashOutcome::Solved("AAABJw".into()));
+        assert!(mega_accepts(&challenge.token, 192, "AAABJw"));
+        assert!(super::parse_hashcash_challenge("2:192:1731410499:invalid").is_none());
+    }
+
+    #[test]
+    fn hashcash_parallel_workers_return_proofs_mega_accepts() {
+        let challenge =
+            super::parse_hashcash_challenge(&format!("1:200:1731410499:{SDK_TOKEN}")).unwrap();
+        for workers in [2, 3, 8] {
+            match super::solve_hashcash_with(&challenge, None, std::time::Duration::MAX, workers) {
+                super::HashcashOutcome::Solved(nonce) => assert!(
+                    mega_accepts(&challenge.token, 200, &nonce),
+                    "{workers} workers returned {nonce}, which MEGA would refuse"
+                ),
+                other => panic!("{workers} workers: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn hashcash_worker_start_failure_is_not_reported_as_no_proof() {
+        let (header, _) = easy_challenge(0);
+        let challenge = super::parse_hashcash_challenge(&header).unwrap();
+        super::HASHCASH_FAIL_SPAWN.with(|slot| slot.set(Some(1)));
+        let outcome = super::solve_hashcash_with(&challenge, None, std::time::Duration::MAX, 2);
+        super::HASHCASH_FAIL_SPAWN.with(|slot| slot.set(None));
+        assert_eq!(outcome, super::HashcashOutcome::WorkerStartFailed);
+    }
+
+    #[test]
+    fn hashcash_solver_stops_at_its_budget_while_the_challenge_is_still_valid() {
+        use base64::Engine as _;
+
+        assert!(super::HASHCASH_SOLVE_BUDGET * 2 <= super::HASHCASH_SERVER_TTL);
+        let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 48]);
+        let challenge =
+            super::parse_hashcash_challenge(&format!("1:0:1731410499:{token}")).unwrap();
+        let started = std::time::Instant::now();
+        let outcome =
+            super::solve_hashcash_with(&challenge, None, std::time::Duration::from_millis(300), 2);
+        assert_eq!(outcome, super::HashcashOutcome::OutOfBudget);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "a 300 ms budget ran for {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn hashcash_parser_rejects_invalid_base64_and_wrong_token_lengths() {
+        use base64::Engine as _;
+
+        for token in [
+            "!".repeat(64),
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 47]),
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 49]),
+        ] {
+            assert!(
+                super::parse_hashcash_challenge(&format!("1:192:1731410499:{token}")).is_none(),
+                "accepted malformed token {token}"
+            );
+        }
+    }
+
+    #[test]
+    fn hashcash_solver_honours_cancellation_before_the_first_nonce() {
+        use std::sync::atomic::AtomicBool;
+
+        let challenge =
+            super::parse_hashcash_challenge(&format!("1:192:1731410499:{SDK_TOKEN}")).unwrap();
+        let cancelled = AtomicBool::new(true);
+        let outcome = super::solve_hashcash_with(
+            &challenge,
+            Some(&cancelled),
+            super::HASHCASH_SOLVE_BUDGET,
+            4,
+        );
+        assert_eq!(outcome, super::HashcashOutcome::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn hashcash_cancellation_and_worker_panic_have_specific_error_kinds() {
+        use std::sync::{atomic::AtomicBool, Arc};
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let mut worker = tokio::task::spawn_blocking(|| super::HashcashOutcome::Cancelled);
+        let err = super::wait_for_hashcash_worker(cancelled.clone(), &mut worker)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::Cancelled));
+
+        let mut worker = tokio::task::spawn_blocking(|| -> super::HashcashOutcome {
+            panic!("intentional Hashcash worker panic")
+        });
+        let err = super::wait_for_hashcash_worker(cancelled, &mut worker)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)), "got {err:?}");
+        assert!(!err.is_recoverable());
+    }
+
+    #[tokio::test]
+    async fn command_solves_a_mega_hashcash_challenge_and_retries_the_same_command() {
+        use axum::{
+            extract::State,
+            http::{HeaderMap, StatusCode},
+            response::IntoResponse,
+        };
+        use base64::Engine as _;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        let challenge = format!("1:192:1731410499:{SDK_TOKEN}");
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let proof_headers = Arc::new(std::sync::Mutex::new(Vec::new()));
+        type TestState = (Arc<AtomicUsize>, Arc<std::sync::Mutex<Vec<String>>>, String);
+        let app = axum::Router::new()
+            .fallback(axum::routing::post(
+                |State((attempts, proof_headers, challenge)): State<TestState>,
+                 headers: HeaderMap,
+                 axum::Json(body): axum::Json<serde_json::Value>| async move {
+                    assert_eq!(body, json!([{ "a": "us" }]));
+                    if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                        return (
+                            StatusCode::PAYMENT_REQUIRED,
+                            [("x-hashcash", challenge)],
+                            "",
+                        )
+                            .into_response();
+                    }
+                    proof_headers.lock().unwrap().push(
+                        headers
+                            .get("x-hashcash")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string(),
+                    );
+                    axum::Json(json!([{ "ok": 1 }])).into_response()
+                },
+            ))
+            .with_state((attempts.clone(), proof_headers.clone(), challenge));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+        let mut client = super::MegaApiClient::new(None);
+        client.base_url_override = Some(format!("http://{addr}/cs"));
+        client.hashcash_budgets = Some(vec![std::time::Duration::MAX]);
+        let response: SampleResponse = client.command(json!({ "a": "us" })).await.unwrap();
+        server.abort();
+
+        assert_eq!(response.ok, 1);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        let proofs = proof_headers.lock().unwrap().clone();
+        assert_eq!(proofs.len(), 1);
+        let token: [u8; 48] = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(SDK_TOKEN)
+            .unwrap()
+            .try_into()
+            .unwrap();
+        // Workers race, so any accepted nonce is right, as in the MEGA SDK test.
+        assert!(mega_accepts(&token, 192, proof_nonce(&proofs[0], &token)));
+    }
+
+    #[tokio::test]
+    async fn command_answers_each_fresh_challenge_until_mega_accepts() {
+        let (first, first_token) = easy_challenge(0);
+        let (second, second_token) = easy_challenge(1);
+        let (mut client, seen, server) = hashcash_double(vec![
+            (402, Some(first), ""),
+            (402, Some(second), ""),
+            (200, None, r#"[{"ok":1}]"#),
+        ])
+        .await;
+        client.hashcash_budgets = Some(vec![std::time::Duration::MAX]);
+
+        let response: SampleResponse = client.command(json!({ "a": "ug" })).await.unwrap();
+        server.abort();
+
+        assert_eq!(response.ok, 1);
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 3);
+        assert_eq!(seen[0], None);
+        let first_proof = seen[1].as_deref().expect("first challenge unanswered");
+        let second_proof = seen[2].as_deref().expect("second challenge unanswered");
+        assert!(mega_accepts(
+            &first_token,
+            255,
+            proof_nonce(first_proof, &first_token)
+        ));
+        assert!(mega_accepts(
+            &second_token,
+            255,
+            proof_nonce(second_proof, &second_token)
+        ));
+    }
+
+    #[tokio::test]
+    async fn two_successful_proofs_do_not_extend_the_third_challenge_budget() {
+        use base64::Engine as _;
+
+        let (first, _) = easy_challenge(0);
+        let (second, _) = easy_challenge(1);
+        let hard_token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 48]);
+        let hard = format!("1:0:1731410499:{hard_token}");
+        let (mut client, seen, server) = hashcash_double(vec![
+            (402, Some(first), ""),
+            (402, Some(second), ""),
+            (402, Some(hard), ""),
+        ])
+        .await;
+        client.hashcash_budgets = Some(vec![
+            std::time::Duration::MAX,
+            std::time::Duration::MAX,
+            std::time::Duration::ZERO,
+        ]);
+
+        let err = client
+            .command::<serde_json::Value>(json!({ "a": "ug" }))
+            .await
+            .unwrap_err();
+        server.abort();
+        assert!(matches!(err, ProviderError::Timeout), "got {err:?}");
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 3);
+        assert!(seen[0].is_none());
+        assert!(seen[1].is_some());
+        assert!(seen[2].is_some());
+    }
+
+    #[tokio::test]
+    async fn explicit_mega_error_with_a_challenge_is_classified_without_proof() {
+        let (challenge, _) = easy_challenge(0);
+        let (client, seen, server) = hashcash_double(vec![(402, Some(challenge), "-15")]).await;
+        let err = client
+            .command::<serde_json::Value>(json!({ "a": "ug" }))
+            .await
+            .unwrap_err();
+        server.abort();
+        assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+        assert_eq!(seen.lock().unwrap().as_slice(), &[None]);
+    }
+
+    #[tokio::test]
+    async fn complete_bounded_402_body_controls_mega_code_classification() {
+        let padded = Box::leak(format!("[-15{}]", " ".repeat(250)).into_boxed_str());
+        let oversized = Box::leak(
+            format!("[-15{}]", " ".repeat(super::MEGA_ERROR_BODY_LIMIT)).into_boxed_str(),
+        );
+        let oversized_valid_prefix = Box::leak(
+            format!("[-15]{}", " ".repeat(super::MEGA_ERROR_BODY_LIMIT)).into_boxed_str(),
+        );
+        for (body, authentication_failure) in [
+            (&*padded, true),
+            ("[-1", false),
+            (&*oversized, false),
+            (&*oversized_valid_prefix, false),
+        ] {
+            let (client, seen, server) = hashcash_double(vec![(402, None, body)]).await;
+            let err = client
+                .command::<serde_json::Value>(json!({ "a": "ug" }))
+                .await
+                .unwrap_err();
+            server.abort();
+            assert_eq!(
+                matches!(err, ProviderError::AuthenticationFailed(_)),
+                authentication_failure,
+                "body length {}: {err:?}",
+                body.len()
+            );
+            assert_eq!(seen.lock().unwrap().len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn returned_402_server_error_does_not_quote_the_response_body() {
+        let secret = "synthetic-402-secret-that-must-not-escape";
+        let (client, _, server) = hashcash_double(vec![(402, None, secret)]).await;
+        let err = client
+            .command::<serde_json::Value>(json!({ "a": "ug" }))
+            .await
+            .unwrap_err();
+        server.abort();
+        assert!(matches!(err, ProviderError::ServerError(_)));
+        assert!(!err.to_string().contains(secret), "returned error: {err}");
+    }
+
+    #[tokio::test]
+    async fn error_body_read_has_a_total_deadline_even_when_chunks_keep_arriving() {
+        let app = axum::Router::new().fallback(axum::routing::post(|| async {
+            let stream = futures_util::stream::unfold((), |_| async {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                Some((Ok::<&'static str, std::io::Error>("x"), ()))
+            });
+            axum::response::Response::builder()
+                .status(axum::http::StatusCode::PAYMENT_REQUIRED)
+                .body(axum::body::Body::from_stream(stream))
+                .unwrap()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+        let mut client = super::MegaApiClient::new(None);
+        client.base_url_override = Some(format!("http://{addr}/cs"));
+        client.error_body_read_timeout = Some(std::time::Duration::from_millis(30));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            client.command::<serde_json::Value>(json!({ "a": "ug" })),
+        )
+        .await;
+        server.abort();
+        let err = result
+            .expect("error body read ignored its total deadline")
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::Timeout), "got {err:?}");
+    }
+
+    #[test]
+    fn error_logs_and_returns_keep_402_and_500_body_text_secret() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::mega_native::tests::error_logs_and_returns_keep_402_and_500_body_text_secret",
+        ) {
+            return;
+        }
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let secret = "synthetic-http-body-secret-for-logs";
+                for status in [402, 500] {
+                    let (_guard, buffer) = capture_logs();
+                    let (client, _, server) = hashcash_double(vec![(status, None, secret)]).await;
+                    let err = client
+                        .command::<serde_json::Value>(json!({ "a": "ug" }))
+                        .await
+                        .unwrap_err();
+                    server.abort();
+                    let logged = String::from_utf8_lossy(&buffer.lock().unwrap()).into_owned();
+                    assert!(!logged.contains(secret), "HTTP {status} log: {logged}");
+                    assert!(
+                        !err.to_string().contains(secret),
+                        "HTTP {status} error: {err}"
+                    );
+                    assert!(logged.contains(&format!("HTTP {status}")), "{logged}");
+                    assert!(logged.contains("cmd=ug"), "{logged}");
+                    assert!(err.to_string().contains(&status.to_string()), "{err}");
+                }
+            });
+    }
+
+    #[tokio::test]
+    async fn command_stops_answering_challenges_after_the_limit() {
+        let (challenge, _) = easy_challenge(0);
+        let (mut client, seen, server) = hashcash_double(vec![(402, Some(challenge), "")]).await;
+        client.hashcash_budgets = Some(vec![std::time::Duration::MAX]);
+
+        let err = client
+            .command::<serde_json::Value>(json!({ "a": "ug" }))
+            .await
+            .unwrap_err();
+        server.abort();
+
+        assert!(matches!(err, ProviderError::ServerError(_)), "got {err:?}");
+        assert_eq!(seen.lock().unwrap().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn command_asks_again_after_two_timeouts_and_uses_the_extended_budget() {
+        let (first, _) = easy_challenge(0);
+        let (second, _) = easy_challenge(1);
+        let (last, last_token) = easy_challenge(2);
+        let (mut client, seen, server) = hashcash_double(vec![
+            (402, Some(first), ""),
+            (402, Some(second), ""),
+            (402, Some(last), ""),
+            (200, None, r#"[{"ok":1}]"#),
+        ])
+        .await;
+        // No time at all before two forced timeouts. Only the extended budget
+        // lets the third challenge solve; successful proofs never select it.
+        client.hashcash_budgets = Some(vec![
+            std::time::Duration::ZERO,
+            std::time::Duration::ZERO,
+            std::time::Duration::ZERO,
+        ]);
+        assert_eq!(
+            super::HASHCASH_EXTENDED_BUDGET,
+            std::time::Duration::from_secs(7 * 24 * 60 * 60)
+        );
+
+        let response: SampleResponse = client.command(json!({ "a": "ug" })).await.unwrap();
+        server.abort();
+
+        assert_eq!(response.ok, 1);
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 4);
+        assert_eq!(
+            &seen[..3],
+            &[None, None, None],
+            "an unsolved challenge was answered, or a stale proof was resent"
+        );
+        let proof = seen[3].as_deref().expect("last challenge unanswered");
+        assert!(mega_accepts(
+            &last_token,
+            255,
+            proof_nonce(proof, &last_token)
+        ));
+    }
+
+    #[tokio::test]
+    async fn command_402_without_a_usable_challenge_is_not_a_session_error() {
+        for challenge in [
+            None,
+            Some(format!("1:192:1731410499:{}", "!".repeat(64))),
+            Some(format!("2:192:1731410499:{SDK_TOKEN}")),
+        ] {
+            let (client, seen, server) =
+                hashcash_double(vec![(402, challenge.clone(), "payment required")]).await;
+            let err = client
+                .command::<serde_json::Value>(json!({ "a": "ug" }))
+                .await
+                .unwrap_err();
+            server.abort();
+            assert!(
+                matches!(err, ProviderError::ServerError(_)),
+                "{challenge:?}: got {err:?}"
+            );
+            assert_eq!(seen.lock().unwrap().len(), 1, "{challenge:?} was retried");
+        }
+    }
+
+    #[tokio::test]
+    async fn command_402_incomplete_request_code_is_not_a_session_verdict() {
+        let (client, seen, server) = hashcash_double(vec![(402, None, "-13")]).await;
+        let err = client
+            .command::<serde_json::Value>(json!({ "a": "ug" }))
+            .await
+            .unwrap_err();
+        server.abort();
+        assert!(matches!(err, ProviderError::ServerError(_)), "got {err:?}");
+        assert_eq!(seen.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn command_402_with_a_mega_session_code_stays_an_authentication_failure() {
+        let (client, _, server) = hashcash_double(vec![(402, None, "-15")]).await;
+        let err = client
+            .command::<serde_json::Value>(json!({ "a": "ug" }))
+            .await
+            .unwrap_err();
+        server.abort();
+        assert!(
+            matches!(err, ProviderError::AuthenticationFailed(_)),
+            "got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_402_body_does_not_decide_whether_the_command_is_retried() {
+        // (body, requests): only a MEGA rate-limit code is transient; prose
+        // that merely mentions one is not.
+        for (body, requests) in [("rate limit reached, retry (EAGAIN)", 1), ("-4", 3)] {
+            let (client, seen, server) = hashcash_double(vec![(402, None, body)]).await;
+            let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+                email: "transient@example.invalid".into(),
+                password: secrecy::SecretString::new(String::new().into()),
+                two_factor_code: None,
+                totp_secret: None,
+                save_session: false,
+                logout_on_disconnect: None,
+                connection_mode: crate::providers::types::MegaConnectionMode::Native,
+            });
+            provider.api_client = client;
+            let err = provider.get_user_info().await.unwrap_err();
+            server.abort();
+            assert!(
+                matches!(err, ProviderError::ServerError(_)),
+                "{body}: got {err:?}"
+            );
+            assert_eq!(seen.lock().unwrap().len(), requests, "{body}");
+        }
+    }
+
+    async fn assert_dropping_hashcash_future_stops_worker(worker_already_started: bool) {
+        use base64::Engine as _;
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        use std::time::Duration;
+
+        let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 48]);
+        let challenge =
+            super::parse_hashcash_challenge(&format!("1:0:1731410499:{token}")).unwrap();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let started = Arc::new(AtomicBool::new(false));
+        let mut worker = {
+            let cancelled = cancelled.clone();
+            let started = started.clone();
+            tokio::task::spawn_blocking(move || {
+                started.store(true, Ordering::Release);
+                super::solve_hashcash_with(
+                    &challenge,
+                    Some(&cancelled),
+                    super::HASHCASH_SOLVE_BUDGET,
+                    1,
+                )
+            })
+        };
+        if worker_already_started {
+            while !started.load(Ordering::Acquire) {
+                tokio::task::yield_now().await;
+            }
+        }
+        {
+            let future = super::wait_for_hashcash_worker(cancelled.clone(), &mut worker);
+            tokio::pin!(future);
+            let wait_for_start = async {
+                while !started.load(Ordering::Acquire) {
+                    tokio::task::yield_now().await;
+                }
+            };
+            // `biased` polls the future first, so its drop guard exists even
+            // when the worker had started before the first poll.
+            tokio::select! {
+                biased;
+                result = &mut future => panic!("solver finished before cancellation: {result:?}"),
+                () = wait_for_start => {}
+            }
+        }
+
+        let cancelled_on_drop = cancelled.load(Ordering::Relaxed);
+        cancelled.store(true, Ordering::Relaxed);
+        let result = tokio::time::timeout(Duration::from_secs(2), &mut worker)
+            .await
+            .expect("blocking worker did not stop after its future was dropped")
+            .expect("blocking worker panicked");
+        assert!(
+            cancelled_on_drop,
+            "dropping the future did not set the flag"
+        );
+        assert_eq!(result, super::HashcashOutcome::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn dropping_hashcash_future_stops_and_joins_the_blocking_worker() {
+        assert_dropping_hashcash_future_stops_worker(false).await;
+    }
+
+    #[tokio::test]
+    async fn dropping_hashcash_future_after_worker_already_started_always_sets_the_guard() {
+        for _ in 0..32 {
+            assert_dropping_hashcash_future_stops_worker(true).await;
+        }
+    }
+
+    #[test]
+    fn unresolved_hashcash_402_preserves_saved_session_during_resume() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::mega_native::tests::unresolved_hashcash_402_preserves_saved_session_during_resume",
+        ) {
+            return;
+        }
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary MEGA resume vault");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("mega-resume-test-pass")
+            .expect("bootstrap MEGA resume vault");
+        CredentialStore::unlock_with_master("mega-resume-test-pass", None)
+            .expect("unlock MEGA resume vault");
+        let store = CredentialStore::from_cache().expect("cached MEGA resume vault");
+        partitions::init_or_migrate_cli(&store).expect("initialize MEGA resume partitions");
+
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let app = axum::Router::new().fallback(axum::routing::post(|| async {
+                    (
+                        axum::http::StatusCode::PAYMENT_REQUIRED,
+                        "proof of work required",
+                    )
+                }));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let server = tokio::spawn(async move { axum::serve(listener, app).await });
+                let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+                    email: "resume@example.invalid".into(),
+                    password: secrecy::SecretString::new(String::new().into()),
+                    two_factor_code: None,
+                    totp_secret: None,
+                    save_session: true,
+                    logout_on_disconnect: None,
+                    connection_mode: crate::providers::types::MegaConnectionMode::Native,
+                });
+                provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+                let persisted = super::MegaPersistedSession {
+                    session_id: "saved-session".into(),
+                    master_key_b64: super::mega_base64_encode(&[7u8; 16]),
+                    account_version: 2,
+                    user_handle: Some("saved-user".into()),
+                    sequence_number: Some("saved-sequence".into()),
+                    stored_at_unix_ms: 1,
+                };
+                let serialized = serde_json::to_string(&persisted).unwrap();
+                let key = provider.session_vault_key();
+                store.store(&key, &serialized).unwrap();
+
+                let err = provider.try_resume_session().await.unwrap_err();
+                server.abort();
+                assert!(matches!(err, ProviderError::ServerError(_)), "got {err:?}");
+                assert_eq!(store.get(&key).unwrap(), serialized);
+
+                use crate::providers::StorageProvider;
+                for code in ["-13", "-14"] {
+                    let commands = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                    let received = commands.clone();
+                    let app = axum::Router::new().fallback(axum::routing::post(
+                        move |axum::Json(body): axum::Json<serde_json::Value>| {
+                            let received = received.clone();
+                            async move {
+                                let command = body[0]["a"].as_str().unwrap().to_string();
+                                received.lock().unwrap().push(command.clone());
+                                let response = if command == "ug" { code } else { "-15" };
+                                (axum::http::StatusCode::INTERNAL_SERVER_ERROR, response)
+                            }
+                        },
+                    ));
+                    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let addr = listener.local_addr().unwrap();
+                    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+                    let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+                        email: format!("non402-{code}@example.invalid"),
+                        password: secrecy::SecretString::new("synthetic-password".into()),
+                        two_factor_code: None,
+                        totp_secret: None,
+                        save_session: true,
+                        logout_on_disconnect: None,
+                        connection_mode: crate::providers::types::MegaConnectionMode::Native,
+                    });
+                    provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+                    let key = provider.session_vault_key();
+                    store.store(&key, &serialized).unwrap();
+
+                    let err = provider.connect().await.unwrap_err();
+                    server.abort();
+                    assert!(
+                        matches!(err, ProviderError::NetworkError(_)),
+                        "{code}: {err:?}"
+                    );
+                    assert_eq!(store.get(&key).unwrap(), serialized, "{code}");
+                    assert_eq!(
+                        commands.lock().unwrap().as_slice(),
+                        &["ug".to_string()],
+                        "{code}"
+                    );
+                }
+
+                use std::sync::atomic::{AtomicUsize, Ordering};
+                let requests = std::sync::Arc::new(AtomicUsize::new(0));
+                let received = requests.clone();
+                let rejected = axum::Router::new().fallback(axum::routing::post(move || {
+                    let received = received.clone();
+                    async move {
+                        received.fetch_add(1, Ordering::SeqCst);
+                        (axum::http::StatusCode::PAYMENT_REQUIRED, "-15")
+                    }
+                }));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let rejected_server =
+                    tokio::spawn(async move { axum::serve(listener, rejected).await });
+                let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+                    email: "rejected@example.invalid".into(),
+                    password: secrecy::SecretString::new(String::new().into()),
+                    two_factor_code: None,
+                    totp_secret: None,
+                    save_session: true,
+                    logout_on_disconnect: None,
+                    connection_mode: crate::providers::types::MegaConnectionMode::Native,
+                });
+                provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+                let rejected_key = provider.session_vault_key();
+                store.store(&rejected_key, &serialized).unwrap();
+                let err = provider.connect().await.unwrap_err();
+                rejected_server.abort();
+                assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+                assert!(err.to_string().contains("password is required"));
+                assert!(matches!(
+                    store.get(&rejected_key),
+                    Err(crate::credential_store::CredentialError::NotFound(_))
+                ));
+                assert_eq!(requests.load(Ordering::SeqCst), 1);
+
+                let commands = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                let received = commands.clone();
+                let fresh_login = axum::Router::new().fallback(axum::routing::post(
+                    move |axum::Json(body): axum::Json<serde_json::Value>| {
+                        let received = received.clone();
+                        async move {
+                            let command = body[0]["a"].as_str().unwrap().to_string();
+                            received.lock().unwrap().push(command.clone());
+                            if command == "ug" {
+                                (axum::http::StatusCode::PAYMENT_REQUIRED, "-15")
+                            } else {
+                                (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "-15")
+                            }
+                        }
+                    },
+                ));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let fresh_login_server =
+                    tokio::spawn(async move { axum::serve(listener, fresh_login).await });
+                let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+                    email: "fresh-login@example.invalid".into(),
+                    password: secrecy::SecretString::new("synthetic-password".into()),
+                    two_factor_code: None,
+                    totp_secret: None,
+                    save_session: true,
+                    logout_on_disconnect: None,
+                    connection_mode: crate::providers::types::MegaConnectionMode::Native,
+                });
+                provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+                let fresh_login_key = provider.session_vault_key();
+                store.store(&fresh_login_key, &serialized).unwrap();
+                let err = provider.connect().await.unwrap_err();
+                fresh_login_server.abort();
+                assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+                assert!(matches!(
+                    store.get(&fresh_login_key),
+                    Err(crate::credential_store::CredentialError::NotFound(_))
+                ));
+                assert_eq!(
+                    commands.lock().unwrap().as_slice(),
+                    &["ug".to_string(), "us0".to_string()]
+                );
+            });
+        CredentialStore::clear_cache();
     }
 
     #[tokio::test]

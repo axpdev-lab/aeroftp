@@ -32,6 +32,8 @@ At this stage of the project, the maintainers handle UI implementation and integ
 
 **Agreement on a design does not by itself invite a pull request.** Submit a UI or design pull request only if a maintainer explicitly invites you to do so in the thread. Otherwise, leave implementation with the maintainers and continue the design discussion there. UI pull requests opened without that invitation are closed with a link to the design discussion.
 
+Every interface change, proposed or invited, follows the accessibility rules in the [For Contributors](ACCESSIBILITY.md#for-contributors) section of ACCESSIBILITY.md.
+
 ### Pull Requests
 
 The steps below apply to code contributions. For UI and design proposals, follow [UI and Design Changes](#ui-and-design-changes); use these steps only if a maintainer has explicitly invited a pull request in the thread.

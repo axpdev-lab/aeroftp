@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "不完全相同",
             "groupsCount": "{count} 个组",
             "duplicateFilesCount": "{count} 个重复文件",
-            "copiesCount": "{count} 个副本"
+            "copiesCount": "{count} 个副本",
+            "refreshTooltip": "检查检测到的重复文件是否仍然存在，无需重新扫描即可移除缺失的文件",
+            "refreshRemoved": "已从列表中移除 {count} 个缺失的文件",
+            "refreshUpToDate": "所有文件仍然存在",
+            "refreshChanged": "已从列表中移除 {count} 个已更改的文件",
+            "refreshUnverified": "{count} 项无法检查",
+            "refreshFailed": "刷新失败：{error}"
         },
         "diskUsage": {
             "title": "磁盘使用情况",

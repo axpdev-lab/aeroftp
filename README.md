@@ -858,7 +858,7 @@ AeroFTP is free and open source software. If you find it useful, please consider
 
 ### Contributing
 
-Contributions are welcome. Report bugs in [Issues](https://github.com/axpdev-lab/aeroftp/issues), suggest features in [Discussions](https://github.com/axpdev-lab/aeroftp/discussions/categories/feature), and propose interface changes in [Design Threads](https://github.com/axpdev-lab/aeroftp/discussions/categories/design-threads). At this stage, maintainers handle UI implementation after the design is agreed; submit a UI pull request only when explicitly invited in the thread. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full process and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
+Contributions are welcome. Report bugs in [Issues](https://github.com/axpdev-lab/aeroftp/issues), suggest features in [Discussions](https://github.com/axpdev-lab/aeroftp/discussions/categories/feature), and propose interface changes in [Design Threads](https://github.com/axpdev-lab/aeroftp/discussions/categories/design-threads). At this stage, maintainers handle UI implementation after the design is agreed; submit a UI pull request only when explicitly invited in the thread. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full process, [SECURITY.md](SECURITY.md) for reporting vulnerabilities and [ACCESSIBILITY.md](ACCESSIBILITY.md) for accessibility support and reporting barriers.
 
 ---
 

@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Неідентичні",
             "groupsCount": "Групи: {count}",
             "duplicateFilesCount": "Дублікати файлів: {count}",
-            "copiesCount": "{count} шт."
+            "copiesCount": "{count} шт.",
+            "refreshTooltip": "Перевірити, чи досі існують знайдені дублікати, та прибрати відсутні файли без повторного сканування",
+            "refreshRemoved": "Зі списку прибрано {count} відсутніх файлів",
+            "refreshUpToDate": "Усі файли досі існують",
+            "refreshChanged": "{count} змінених файлів вилучено зі списку",
+            "refreshUnverified": "{count} не вдалося перевірити",
+            "refreshFailed": "Не вдалося оновити: {error}"
         },
         "diskUsage": {
             "title": "Використання диска",

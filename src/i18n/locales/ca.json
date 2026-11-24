@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "No idèntic",
             "groupsCount": "Grups: {count}",
             "duplicateFilesCount": "Fitxers duplicats: {count}",
-            "copiesCount": "{count} còpies"
+            "copiesCount": "{count} còpies",
+            "refreshTooltip": "Comprova si els duplicats detectats encara existeixen i elimina els fitxers que falten sense tornar a escanejar",
+            "refreshRemoved": "{count} fitxers que falten retirats de la llista",
+            "refreshUpToDate": "Tots els fitxers encara existeixen",
+            "refreshChanged": "{count} fitxers modificats descartats de la llista",
+            "refreshUnverified": "{count} no s'han pogut comprovar",
+            "refreshFailed": "Error en actualitzar: {error}"
         },
         "diskUsage": {
             "title": "Ús del disc",

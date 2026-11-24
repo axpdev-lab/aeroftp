@@ -269,7 +269,7 @@ jsonwebtoken = { version = "10.4", default-features = false, features = ["aws_lc
 # AeroVault v2 - Military-Grade Encryption (v1.8.0)
 # T7 convergence: the app consumes the crate's AEROVAULT3 core (aerovault::v3);
 # the vault_v3_* handlers are thin wrappers over it (see src/aerovault_v3.rs).
-aerovault = "0.6.8"                                                    # M7: converged AEROVAULT3 core + standalone/AeroSync EC engine (published on crates.io)
+aerovault = "0.7.0"                                                    # M7: converged AEROVAULT3 core + standalone/AeroSync EC engine (published on crates.io)
 aes-gcm-siv = "0.11"                                                   # AeroVault v3 AEAD content encryption
 chacha20poly1305 = "0.11"                                              # ChaCha20-Poly1305 (used by CryptoLab in cyber_tools)
 hkdf = "0.12"                                                          # HKDF key derivation (used by crypto.rs keystore)
@@ -293,8 +293,8 @@ indicatif = "0.18"                                                     # Progres
 rpassword = "7"                                                        # Secure password input (no echo)
 ctrlc = "3"                                                            # Graceful Ctrl+C with cleanup
 globset = "0.4"                                                        # Glob patterns for batch transfers
-tempfile = "3"                                                        # Temporary files for stdin upload/resume workflows
-libunftp = "0.24"                                                      # FTP server framework (serve ftp)
+tempfile = "3.27"                                                     # Temporary files for stdin upload/resume workflows
+libunftp = "0.25"                                                      # FTP server framework (serve ftp)
 unftp-core = "0.1"                                                     # FTP server storage/auth traits
 
 # Interactive TUI (ncdu disk explorer)

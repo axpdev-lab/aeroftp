@@ -394,6 +394,7 @@ impl Default for CompareOptions {
                 ".env".to_string(),
                 "target".to_string(),
                 "*.aerotmp".to_string(),
+                crate::sync_exclude::VAULT_LOCK_EXCLUDE_PATTERN.to_string(),
             ],
             error_correction: None,
             direction: CompareDirection::Bidirectional,
@@ -943,7 +944,7 @@ pub fn validate_relative_path(relative_path: &str) -> Result<(), String> {
 pub fn compile_excludes(
     patterns: &[String],
 ) -> Result<crate::sync_exclude::ExcludeMatcher, String> {
-    crate::sync_exclude::ExcludeMatcher::new(patterns).map_err(|e| e.to_string())
+    crate::sync_exclude::ExcludeMatcher::for_sync(patterns).map_err(|e| e.to_string())
 }
 
 /// Check if a file should be filtered out by size/age constraints.

@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Ei identtinen",
             "groupsCount": "{count} ryhmää",
             "duplicateFilesCount": "Kaksoistiedostot: {count}",
-            "copiesCount": "Kopiot: {count}"
+            "copiesCount": "Kopiot: {count}",
+            "refreshTooltip": "Tarkista, ovatko havaitut kaksoiskappaleet yhä olemassa, ja poista puuttuvat tiedostot skannaamatta uudelleen",
+            "refreshRemoved": "{count} puuttuvaa tiedostoa poistettu luettelosta",
+            "refreshUpToDate": "Kaikki tiedostot ovat yhä olemassa",
+            "refreshChanged": "{count} muuttunutta tiedostoa poistettiin luettelosta",
+            "refreshUnverified": "{count} ei voitu tarkistaa",
+            "refreshFailed": "Päivitys epäonnistui: {error}"
         },
         "diskUsage": {
             "title": "Levyn käyttö",

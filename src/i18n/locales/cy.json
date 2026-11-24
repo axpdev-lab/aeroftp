@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Ddim yn union yr un fath",
             "groupsCount": "{count} grŵp",
             "duplicateFilesCount": "{count} ffeil ddyblyg",
-            "copiesCount": "{count} copi"
+            "copiesCount": "{count} copi",
+            "refreshTooltip": "Gwirio a yw dyblygiadau a ganfuwyd yn dal i fodoli a thynnu ffeiliau coll heb ailsganio",
+            "refreshRemoved": "Tynnwyd {count} ffeil ar goll oddi ar y rhestr",
+            "refreshUpToDate": "Mae pob ffeil yn dal i fodoli",
+            "refreshChanged": "Tynnwyd {count} ffeil wedi newid o'r rhestr",
+            "refreshUnverified": "Ni ellid gwirio {count}",
+            "refreshFailed": "Methodd yr adnewyddu: {error}"
         },
         "diskUsage": {
             "title": "Defnydd Disg",

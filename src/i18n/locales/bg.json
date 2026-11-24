@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Неидентични",
             "groupsCount": "Групи: {count}",
             "duplicateFilesCount": "Дублирани файлове: {count}",
-            "copiesCount": "{count} копия"
+            "copiesCount": "{count} копия",
+            "refreshTooltip": "Проверете дали откритите дубликати все още съществуват и премахнете липсващите файлове без повторно сканиране",
+            "refreshRemoved": "{count} липсващи файла бяха премахнати от списъка",
+            "refreshUpToDate": "Всички файлове все още съществуват",
+            "refreshChanged": "{count} променени файла са премахнати от списъка",
+            "refreshUnverified": "{count} не можаха да бъдат проверени",
+            "refreshFailed": "Опресняването не успя: {error}"
         },
         "diskUsage": {
             "title": "Използване на диска",

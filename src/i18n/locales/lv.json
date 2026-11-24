@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentisks",
             "groupsCount": "Grupas: {count}",
             "duplicateFilesCount": "Dublēti faili: {count}",
-            "copiesCount": "{count} gab."
+            "copiesCount": "{count} gab.",
+            "refreshTooltip": "Pārbaudīt, vai atrastie dublikāti joprojām pastāv, un noņemt trūkstošos failus bez atkārtotas skenēšanas",
+            "refreshRemoved": "No saraksta izņemti {count} trūkstoši faili",
+            "refreshUpToDate": "Visi faili joprojām pastāv",
+            "refreshChanged": "{count} mainīti faili izņemti no saraksta",
+            "refreshUnverified": "{count} nevarēja pārbaudīt",
+            "refreshFailed": "Atsvaidzināšana neizdevās: {error}"
         },
         "diskUsage": {
             "title": "Diska izmantošana",

@@ -46,6 +46,18 @@ recognized on import from that token or from a `.object.fastlystorage.app`
 endpoint. WebDAV vendors (Nextcloud, ownCloud, and custom WebDAV for
 SharePoint / Fastmail / Koofr-dav) likewise ride WebDAV.
 
+Use **rclone 1.76.0 or newer** with exported configurations. Before that
+release, an exported OpenStack Swift remote could disclose credentials on a
+redirect ([GHSA-m97j-7x65-wh93](https://github.com/rclone/rclone/security/advisories/GHSA-m97j-7x65-wh93)).
+The same release fixes authentication bypass and missing revocation when an
+exported remote is exposed through `rclone serve ... --auth-proxy`
+([GHSA-66qv-66mg-9h74](https://github.com/rclone/rclone/security/advisories/GHSA-66qv-66mg-9h74),
+[GHSA-vmgx-g9c5-669p](https://github.com/rclone/rclone/security/advisories/GHSA-vmgx-g9c5-669p)).
+The 1.76.0 release also fixes the RC request-memory, htpasswd timing, Ulozto
+redirect and local metadata symlink advisories; those require enabling the
+corresponding rclone service, backend or local mode and are not fields written
+by this bridge.
+
 ## Native cloud providers (rclone is the only bridge)
 
 These have a dedicated AeroFTP provider and a matching rclone backend. No other

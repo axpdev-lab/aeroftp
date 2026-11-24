@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Non identique",
             "groupsCount": "Groupes : {count}",
             "duplicateFilesCount": "Fichiers en double : {count}",
-            "copiesCount": "{count} copies"
+            "copiesCount": "{count} copies",
+            "refreshTooltip": "Vérifier si les doublons détectés existent toujours et retirer les fichiers manquants sans réanalyser",
+            "refreshRemoved": "{count} fichiers manquants retirés de la liste",
+            "refreshUpToDate": "Tous les fichiers existent toujours",
+            "refreshChanged": "{count} fichiers modifiés retirés de la liste",
+            "refreshUnverified": "{count} n'ont pas pu être vérifiés",
+            "refreshFailed": "Échec de l'actualisation : {error}"
         },
         "diskUsage": {
             "title": "Utilisation du disque",

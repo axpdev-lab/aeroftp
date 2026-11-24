@@ -4448,7 +4448,13 @@
             "modeNonIdentical": "Ոչ նույնական",
             "groupsCount": "{count} խումբ",
             "duplicateFilesCount": "{count} կրկնօրինակ ֆայլ",
-            "copiesCount": "{count} պատճեն"
+            "copiesCount": "{count} պատճեն",
+            "refreshTooltip": "Ստուգել՝ արդյոք հայտնաբերված կրկնօրինակները դեռ գոյություն ունեն, և հեռացնել բացակայող ֆայլերը՝ առանց կրկին սկանավորելու",
+            "refreshRemoved": "Ցանկից հանվել է {count} բացակայող ֆայլ",
+            "refreshUpToDate": "Բոլոր ֆայլերը դեռ գոյություն ունեն",
+            "refreshChanged": "{count} փոփոխված ֆայլ հեռացվել է ցանկից",
+            "refreshUnverified": "{count} չհաջողվեց ստուգել",
+            "refreshFailed": "Թարմացումը ձախողվեց՝ {error}"
         },
         "diskUsage": {
             "title": "Սկավառակի օգտագործում",

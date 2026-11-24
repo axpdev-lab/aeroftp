@@ -18324,12 +18324,19 @@ async fn sync_ec_verify_repair_for_ipc(
         });
     };
 
-    match crate::error_correction::aerosync::verify_repair_sync_file(
-        &relative_path,
-        &expected_sha256,
-        Path::new(&local_path),
-        &sidecar_bytes,
-    ) {
+    let repair_path = local_path.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        crate::error_correction::aerosync::verify_repair_sync_file(
+            &relative_path,
+            &expected_sha256,
+            Path::new(&repair_path),
+            &sidecar_bytes,
+        )
+    })
+    .await
+    .unwrap_or_else(|error| Err(format!("Error Correction repair task failed: {error}")));
+
+    match result {
         Ok(crate::error_correction::aerosync::SyncEcRepairResult::Verified) => {
             Ok(SyncEcCommandResult {
                 status: SyncEcStatus::Verified,
@@ -29507,6 +29514,7 @@ pub fn run() {
             filesystem::restore_trash_item,
             filesystem::empty_trash,
             filesystem::find_duplicate_files,
+            filesystem::filter_existing_local_paths,
             filesystem::scan_disk_usage,
             filesystem::volumes_changed,
             // MTP portable devices (APPENDIX-MTP Phase 2; PLACES wiring in Phase 4)

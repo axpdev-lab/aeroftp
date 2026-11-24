@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Tidak serupa",
             "groupsCount": "{count} kumpulan",
             "duplicateFilesCount": "{count} fail pendua",
-            "copiesCount": "{count} salinan"
+            "copiesCount": "{count} salinan",
+            "refreshTooltip": "Semak sama ada pendua yang dikesan masih wujud dan buang fail yang hilang tanpa mengimbas semula",
+            "refreshRemoved": "{count} fail yang hilang digugurkan daripada senarai",
+            "refreshUpToDate": "Semua fail masih wujud",
+            "refreshChanged": "{count} fail yang berubah digugurkan daripada senarai",
+            "refreshUnverified": "{count} tidak dapat disemak",
+            "refreshFailed": "Muat semula gagal: {error}"
         },
         "diskUsage": {
             "title": "Penggunaan Cakera",

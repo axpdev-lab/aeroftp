@@ -574,7 +574,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 40,
     "mcp_tools_total": 78,
-    "tauri_commands": 817
+    "tauri_commands": 818
   },
   "mcp": {
     "count": 78,
@@ -1271,6 +1271,7 @@
       "get_file_properties",
       "set_local_file_attributes",
       "hidden_attribute_is_toggleable",
+      "filter_existing_local_paths",
       "volumes_changed",
       "mtp_open_device",
       "mtp_close_device",
@@ -1316,7 +1317,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 341,
+    "name_unmatched_count": 342,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -2058,6 +2059,7 @@
       "restore_trash_item",
       "empty_trash",
       "find_duplicate_files",
+      "filter_existing_local_paths",
       "scan_disk_usage",
       "volumes_changed",
       "list_mtp_devices",
@@ -2140,6 +2142,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 817
+    "count": 818
   }
 }
