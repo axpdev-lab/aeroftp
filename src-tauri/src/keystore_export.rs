@@ -1938,6 +1938,25 @@ fn profile_plan_inputs(
     // private token belongs to the same account on both sides.
     let local_legacy_owner = legacy_owner_identity(local_conn.as_ref())?;
     let receiver_legacy_owner = legacy_owner_identity(backup_conn.as_ref())?;
+    // The partition the import publishes keeps a legacy owner of its own:
+    // that account reads the vault copy of a private token with no row, so
+    // the foreign-token sweep answers to it even when the active receiver
+    // reads rows alone.
+    let published_conn = if restores_partition {
+        backup_conn.as_ref()
+    } else {
+        local_conn.as_ref()
+    };
+    let legacy_owner_reads_vault = published_conn
+        .map(|conn| {
+            crate::user_partitions::nonprofile_secret_owner_unpersisted(conn)
+                .map(|owner| owner.is_some())
+        })
+        .transpose()
+        .map_err(|e| {
+            KeystoreExportError::Encryption(format!("Read the published legacy owner: {e}"))
+        })?
+        .unwrap_or(false);
     let mut root_key = store.derive_user_partition_wrapping_key();
 
     let mut local_secrets = HashMap::new();
@@ -2100,6 +2119,7 @@ fn profile_plan_inputs(
         targets_restored_partition: restores_partition,
         local_vault,
         vault_foreign_private,
+        legacy_owner_reads_vault,
         receiver_rows,
         receiver_is_here,
         local_signed_in,
@@ -3234,14 +3254,17 @@ fn import_keystore_with_store(
 
     // A private token the vault kept under "Skip existing" can belong to an
     // account the published partition replaced: its owner has no row for it
-    // and would read that foreign value as its own. Where the receiver reads
-    // the vault for private tokens, the entry goes, but only while it still
-    // holds the value the plan read; one another writer moved stays.
+    // and would read that foreign value as its own. The legacy owner of the
+    // published partition reads the vault copy once it is active, so the
+    // sweep answers to it even when the plan's receiver reads rows alone.
+    // Where that owner reads the vault for private tokens, the entry goes,
+    // but only while it still holds the value the plan read; one another
+    // writer moved stays.
     #[cfg(test)]
     tests::run_before_foreign_token_sweep(store);
     if partition_in_restore {
         if let Some((inputs, _)) = &profile_plan {
-            if reads_vault_tokens(inputs.receiver) {
+            if inputs.legacy_owner_reads_vault {
                 for (key, expected) in &inputs.vault_foreign_private {
                     if let Err(e) = store.delete_secret_if_unchanged(key, expected) {
                         tracing::warn!(
@@ -6181,6 +6204,91 @@ mod tests {
             "local-token",
             "the same legacy owner on both sides keeps its vault token"
         );
+    }
+
+    /// "Skip existing" publishes a partition whose active account is not the
+    /// legacy owner: that owner still reads the vault copy of a private
+    /// token with no row once it becomes active, so the foreign-token sweep
+    /// answers to it even though the plan's receiver reads rows alone. The
+    /// backup's partition has the owner idle and a second account active;
+    /// this device's vault token belongs to another identity, so the owner
+    /// must not read it after the switch.
+    #[test]
+    fn a_foreign_vault_token_is_swept_for_the_restored_legacy_owner() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        // The backup's partition: the first account owns the legacy secrets
+        // and stays idle, a second one is active and reads rows alone.
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let receiver = active_receiver(&source_db).unwrap();
+        assert!(!receiver.legacy_owner, "the active account is no owner");
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert!(
+            matches!(
+                store.get(key),
+                Err(crate::credential_store::CredentialError::NotFound(_))
+            ),
+            "the foreign token must not stay readable by the restored owner"
+        );
+        // Once the legacy owner of the published partition is active, its
+        // read of a rowless private token finds nothing in the vault.
+        let db = cfg.join("user_partitions.db");
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&conn)
+            .unwrap()
+            .expect("the published partition has a legacy owner");
+        crate::user_partitions::set_active_user(&conn, owner).unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        let read = read_effective_secret(&store, Some(&conn), &root, key).unwrap();
+        assert_eq!(read, None, "the restored owner reads no foreign token");
     }
 
     /// The backup carries its own token, so the profile is changed and

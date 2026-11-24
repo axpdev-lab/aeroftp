@@ -188,6 +188,11 @@ pub struct PlanInputs {
     /// row for them and would read that foreign token as its own, so the
     /// import deletes each while it still holds the value read here.
     pub vault_foreign_private: Vec<(String, Zeroizing<String>)>,
+    /// The partition the import publishes has a legacy owner, the account
+    /// whose private tokens fall back to the vault copy: the foreign-token
+    /// sweep runs for it even when the plan's receiver, the active account,
+    /// reads rows alone.
+    pub legacy_owner_reads_vault: bool,
     /// The receiver's row of each key (the row that mirrors a vault value,
     /// or a private token's only copy), as the import leaves it, read when
     /// the plan was made: the restored partition's row when the import
@@ -783,6 +788,7 @@ mod tests {
             targets_restored_partition: false,
             local_vault: HashMap::new(),
             vault_foreign_private: Vec::new(),
+            legacy_owner_reads_vault: false,
             receiver_rows: HashMap::new(),
             receiver_is_here: false,
             local_signed_in: HashSet::new(),
