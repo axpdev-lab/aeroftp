@@ -8836,17 +8836,17 @@ const App: React.FC = () => {
     // overrideParams: used by IntroHub form tabs to pass params directly (avoids stale React state)
     let effectiveParams = overrideParams || connectionParams;
     const remoteDirInput = opts?.initialRemotePath ?? quickConnectDirs.remoteDir;
-    // The inline `host:port` shortcut belongs to the Quick Connect form.
-    // A launch URL already split its host and port into `overrideParams`.
-    // Reading the form here dropped that connection and still opened the
-    // URL's folder on the form's server.
-    if (!overrideParams && connectionParams.server && connectionParams.server.includes(':')) {
-      const lastColon = connectionParams.server.lastIndexOf(':');
-      const possiblePort = connectionParams.server.substring(lastColon + 1);
+    // The inline host:port shortcut applies to the effective server. Quick
+    // Connect and an IntroHub form tab (overrideParams such as
+    // example.com:2222) both arrive here. A launch URL already split its
+    // host and port, so its server has no colon and this branch does not run.
+    if (effectiveParams.server && effectiveParams.server.includes(':')) {
+      const lastColon = effectiveParams.server.lastIndexOf(':');
+      const possiblePort = effectiveParams.server.substring(lastColon + 1);
       const parsedPort = parseInt(possiblePort, 10);
       if (parsedPort > 0 && parsedPort <= 65535 && String(parsedPort) === possiblePort) {
-        const cleanHost = connectionParams.server.substring(0, lastColon);
-        effectiveParams = { ...connectionParams, server: cleanHost, port: parsedPort };
+        const cleanHost = effectiveParams.server.substring(0, lastColon);
+        effectiveParams = { ...effectiveParams, server: cleanHost, port: parsedPort };
         setConnectionParams(prev => ({ ...prev, server: cleanHost, port: parsedPort }));
       }
     }
@@ -8855,7 +8855,13 @@ const App: React.FC = () => {
 
     // OAuth providers don't need server/username validation - they're already connected
     const protocol = effectiveParams.protocol;
-    logger.debug('[connectToFtp] effectiveParams:', effectiveParams);
+    logger.debug('[connectToFtp] effectiveParams:', {
+      protocol: effectiveParams.protocol,
+      providerId: effectiveParams.providerId,
+      server: effectiveParams.server,
+      port: effectiveParams.port,
+      savedServerId: effectiveParams.savedServerId,
+    });
     logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
     // An OAuth connect arrives after its sign-in's swap returned: the

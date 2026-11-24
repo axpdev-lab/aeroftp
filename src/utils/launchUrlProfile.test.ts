@@ -153,8 +153,20 @@ describe('launchFolderToOpen', () => {
     expect(remote).toMatch(/if \(!await switchSession\(existingSession\.id\)\) return;\s*const folder = launchFolderToOpen\(req\.initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, targetProtocol, existingSession\.id\);/);
     expect(remote).toContain('await connectToFtp(params, { initialRemotePath: launchStartFolder(req.initialPath, matchedProfile) });');
     const connectStart = app.indexOf('const connectToFtpImpl = async');
-    const connectGate = app.slice(connectStart, app.indexOf('effectiveParams = normalizeProviderConnectionParams', connectStart));
-    expect(connectGate).toContain("if (!overrideParams && connectionParams.server && connectionParams.server.includes(':'))");
+    const normalizeAt = app.indexOf('effectiveParams = normalizeProviderConnectionParams', connectStart);
+    const connectGate = app.slice(connectStart, normalizeAt);
+    // IntroHub form tabs pass server "example.com:2222" through overrideParams.
+    // The guard reads effectiveParams, so that port is split before the
+    // host-key check. A launch URL already has a separate host and port, so
+    // its server does not enter the branch.
+    expect(connectGate).toContain("if (effectiveParams.server && effectiveParams.server.includes(':'))");
+    expect(connectGate).toContain('effectiveParams = { ...effectiveParams, server: cleanHost, port: parsedPort }');
+    expect(connectGate).not.toContain('!overrideParams');
+    const connectLog = app.slice(normalizeAt, app.indexOf("logger.debug('[connectToFtp] protocol:'", normalizeAt));
+    expect(connectLog).toContain('protocol: effectiveParams.protocol');
+    expect(connectLog).toContain('server: effectiveParams.server');
+    expect(connectLog).toContain('port: effectiveParams.port');
+    expect(connectLog).not.toContain('logger.debug(\'[connectToFtp] effectiveParams:\', effectiveParams)');
     expect(remote).toMatch(/const match = all\.find\(s => savedProfileMatchesLaunch\(s, req\)\);\s*matchedProfile = match;/);
     expect(remote).not.toMatch(/req\.initialPath \|\| '\/'/);
     expect(saved + remote).not.toMatch(/!== '\/'/);
