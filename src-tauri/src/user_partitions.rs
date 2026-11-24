@@ -5965,7 +5965,10 @@ fn sole_row_state(
                 return Ok(SoleRow::Moved);
             };
             if recorded != secret_value_digest(row.as_str()) {
-                inserted.remove(key);
+                // The conflict keeps its digest: a later pass that still
+                // finds the row away from what the alignment wrote skips
+                // again instead of falling back to the rule that would let
+                // the vault copy leave.
                 return Ok(SoleRow::Skipped);
             }
             set_user_credential_with_dek(tx, user_id, dek, key, kind, vault)?;
@@ -6345,15 +6348,19 @@ fn align_private_tokens_of(
             }
         }
         if only.is_none() {
-            let held: HashSet<&str> = sole.iter().map(String::as_str).collect();
+            let held: HashSet<&str> = sole
+                .iter()
+                .map(String::as_str)
+                .chain(skipped.iter().map(String::as_str))
+                .collect();
             inserted.retain(|key, _| held.contains(key.as_str()));
         }
         write_inserted_row_digests(&tx, uid, &inserted)?;
         tx.commit()
             .map_err(|e| format!("Commit private token alignment: {e}"))?;
-        Ok(Some((sole, waits, expected)))
+        Ok(Some((sole, waits, expected, !skipped.is_empty())))
     });
-    let (moved, waits, expected) = match outcome {
+    let (moved, waits, expected, conflicted) = match outcome {
         Ok(Some(done)) => done,
         Ok(None) => return Ok(None),
         Err(e) if e == "USER_LOCKED" => return Ok(None),
@@ -6378,7 +6385,7 @@ fn align_private_tokens_of(
     // waits for token tags: the next pass runs it. A targeted pass marks
     // nothing, so it reports itself incomplete, and its caller keeps the keys
     // for that pass ([`realign_deferred_tokens`], [`defer_realign`]).
-    let incomplete = waits || changed || (!vault_lets_go && !moved.is_empty());
+    let incomplete = waits || changed || conflicted || (!vault_lets_go && !moved.is_empty());
     if incomplete && only.is_some() {
         return Ok(None);
     }
@@ -13768,6 +13775,105 @@ mod tests {
             vault.borrow().get(&key_b).map(String::as_str),
             Some("rotated-oauth_dropbox_mine-b")
         );
+    }
+
+    /// Greptile/CodeRabbit r10: an alignment conflict must outlive the pass
+    /// that found it. With two keys, one row moved by another writer and
+    /// one vault delete failing, the next pass still sees the conflict and
+    /// keeps both the row's writer value and the vault copy; only when the
+    /// second key's delete finally lands does the pass complete.
+    #[test]
+    fn a_row_vault_conflict_keeps_its_digest_until_it_closes() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let _owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let first = create_passphrase_less_user(&mut conn, &root, "First", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            first.id,
+            &[profile("mine-a"), profile("mine-b")],
+        )
+        .unwrap();
+        let key_a = "oauth_dropbox_mine-a".to_string();
+        let key_b = "oauth_dropbox_mine-b".to_string();
+        let keys = vec![key_a.clone(), key_b.clone()];
+        let vault = RefCell::new(HashMap::from([
+            (key_a.clone(), "chain-a0".to_string()),
+            (key_b.clone(), "chain-b0".to_string()),
+        ]));
+        let read = |key: &str| -> Result<Option<Zeroizing<String>>, String> {
+            Ok(vault.borrow().get(key).map(|v| Zeroizing::new(v.clone())))
+        };
+        // The vault copies refuse to leave while `fail_delete` holds them.
+        let fail_delete = RefCell::new(HashSet::from([key_a.clone(), key_b.clone()]));
+        let delete = |key: &str, expected: Option<&str>| -> Result<bool, String> {
+            if fail_delete.borrow().contains(key) {
+                return Ok(false);
+            }
+            let mut map = vault.borrow_mut();
+            match (map.get(key), expected) {
+                (Some(current), Some(expected)) if current == expected => {
+                    map.remove(key);
+                    Ok(true)
+                }
+                _ => Ok(false),
+            }
+        };
+        let list = || Ok(keys.clone());
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, first.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        let align = || {
+            align_private_tokens_inner(&conn, &root, first.id, &keys, &list, &read, &delete)
+                .unwrap()
+        };
+
+        // First pass: both rows are inserted with the vault chains and the
+        // digests are registered; both vault deletes refuse, so the pass
+        // stays incomplete.
+        align();
+        assert_eq!(row(&key_a).as_deref(), Some("chain-a0"));
+        assert_eq!(row(&key_b).as_deref(), Some("chain-b0"));
+        assert_eq!(
+            vault.borrow().get(&key_a).map(String::as_str),
+            Some("chain-a0")
+        );
+        assert_eq!(
+            vault.borrow().get(&key_b).map(String::as_str),
+            Some("chain-b0")
+        );
+
+        // Another writer moves the first row; the second key's delete still
+        // fails, so a third pass runs.
+        set_user_credential_for(&conn, &root, first.id, &key_a, "oauth", "writer-a").unwrap();
+        align();
+        assert_eq!(row(&key_a).as_deref(), Some("writer-a"));
+        assert_eq!(
+            vault.borrow().get(&key_a).map(String::as_str),
+            Some("chain-a0")
+        );
+
+        // The conflict is still open: the pass skips the row again instead
+        // of letting the vault copy leave under the old rule, and the
+        // second key's delete finally lands.
+        fail_delete.borrow_mut().clear();
+        align();
+        assert_eq!(row(&key_a).as_deref(), Some("writer-a"));
+        assert_eq!(
+            vault.borrow().get(&key_a).map(String::as_str),
+            Some("chain-a0"),
+            "the conflicted key keeps its vault copy"
+        );
+        assert!(!vault.borrow().contains_key(&key_b));
     }
 
     /// A profile id the legacy owner and another account both hold: the vault
