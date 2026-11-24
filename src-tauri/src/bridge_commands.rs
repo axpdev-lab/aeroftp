@@ -3979,7 +3979,7 @@ mod tests {
                     false,
                     &path.to_string_lossy(),
                     None,
-                    |_| None,
+                    |_, _| None,
                 )
                 .await
                 .unwrap();
