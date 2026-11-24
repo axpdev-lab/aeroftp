@@ -429,9 +429,11 @@ fn storage_block(
             })
         }
         Some("s3") => {
-            // Kopia also accepts a URL here; keep an endpoint base path instead
-            // of reducing it to the authority. No endpoint of its own means AWS.
+            // Keep the established bare authority for a pathless endpoint. A
+            // nonempty base path needs the URL form Kopia also accepts.
+            // No endpoint of its own means AWS.
             let (endpoint, no_tls) = match endpoint {
+                Some(ep) if ep.path.is_empty() => (ep.authority(), !ep.is_tls()),
                 Some(ep) => (ep.url(), !ep.is_tls()),
                 None => ("s3.amazonaws.com".to_string(), false),
             };
@@ -518,16 +520,14 @@ pub fn export_kopia(
 
     let secret = crate::bridge_shared::export_secret(passwords, &server.id);
     let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
-    let doc = match storage_block(server, secret) {
-        Ok(doc) => doc,
-        Err(reason) => {
-            outcome.skip(&server.name, reason);
-            return Ok(outcome);
+    match storage_block(server, secret) {
+        Ok(doc) => {
+            let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
+            outcome.exported = 1;
+            crate::bridge_shared::write_export(outcome.exported, out, &body)?;
         }
-    };
-    let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
-    outcome.exported = 1;
-    crate::bridge_shared::write_export(outcome.exported, out, &body)?;
+        Err(reason) => outcome.skip(&server.name, reason),
+    }
     for extra in &servers[1..] {
         outcome.skip(
             &extra.name,
@@ -904,6 +904,38 @@ mod tests {
         let outcome = export_kopia(&[server], &HashMap::new(), &out).unwrap();
         assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
         assert!(outcome.skipped[0].reason.contains("initial path"));
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn an_early_refusal_still_reports_every_later_profile() {
+        let profile = |name: &str, initial_path: Option<&str>| -> KopiaExportServer {
+            serde_json::from_value(serde_json::json!({
+                "id": name,
+                "name": name,
+                "host": "s3.amazonaws.com",
+                "port": 443,
+                "username": "DEMOKEY",
+                "protocol": "s3",
+                "providerId": "amazon-s3",
+                "options": {"bucket": "media"},
+                "initialPath": initial_path
+            }))
+            .unwrap()
+        };
+        let servers = [
+            profile("unsupported", Some("/archive")),
+            profile("later", None),
+        ];
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("repository.config");
+
+        let outcome = export_kopia(&servers, &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 2));
+        assert_eq!(outcome.skipped[0].name, "unsupported");
+        assert!(outcome.skipped[0].reason.contains("initial path"));
+        assert_eq!(outcome.skipped[1].name, "later");
+        assert!(outcome.skipped[1].reason.contains("one repository"));
         assert!(!out.exists());
     }
 

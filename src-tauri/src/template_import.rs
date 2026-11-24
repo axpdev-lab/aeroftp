@@ -957,10 +957,14 @@ fn apply_eval_with_slots<S: SecretSlots>(
                 continue;
             }
             if let Some(ref sel) = selected_set {
-                if !sel.contains(&entry.row.selection_id)
-                    && !sel.contains(&entry.row.block_name)
-                    && !sel.contains(&trimmed_block)
-                {
+                let selected = sel.iter().any(|selected| {
+                    if selected.starts_with("source:") {
+                        selected == &entry.row.selection_id
+                    } else {
+                        selected == &entry.row.block_name || selected == &trimmed_block
+                    }
+                });
+                if !selected {
                     skipped_unselected.push(entry.row.block_name.clone());
                     continue;
                 }
@@ -3901,6 +3905,65 @@ pass = UniqueProfileSecret!
             .unwrap();
             assert_eq!(stored.as_deref().map(|s| s.as_str()), Some(secret));
         }
+    }
+
+    #[test]
+    fn source_selection_token_does_not_select_a_legacy_name_with_the_same_text() {
+        let alpha_id = source_selection_id("alpha");
+        let input = TemplateInput::Text {
+            content: format!(
+                "[alpha]\ntype = sftp\nhost = intended.example.test\nuser = alice\npass = IntendedSecret!\n\n\
+                 [{alpha_id}]\ntype = sftp\nhost = other.example.test\nuser = bob\npass = OtherSecret!\n"
+            ),
+        };
+        let env = TestVaultEnv::new();
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Duplicate,
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        assert_eq!(preview.rows[0].selection_id, alpha_id);
+        assert_eq!(preview.rows[1].block_name, alpha_id);
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Duplicate,
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                selected_blocks: Some(vec![alpha_id]),
+                expected_digest_sha256: Some(preview.digest_sha256),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.applied.len(), 1);
+        assert_eq!(applied.skipped_unselected.len(), 1);
+        let id = applied.applied[0].profile_id.clone();
+        let (profiles, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(
+            profiles[0].get("host").and_then(Value::as_str),
+            Some("intended.example.test")
+        );
+        let stored = user_partitions::resolve_credential_for_user(
+            &env.store,
+            env.user_id,
+            &format!("server_{id}"),
+        )
+        .unwrap();
+        assert_eq!(
+            stored.as_deref().map(|s| s.as_str()),
+            Some("IntendedSecret!")
+        );
     }
 
     #[test]
