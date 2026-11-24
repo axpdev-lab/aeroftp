@@ -12356,8 +12356,16 @@ pub(crate) fn adopt_legacy_blob_under_lock(
 /// active account; `Err` when it exists but cannot be read, which a caller
 /// must not mistake for "no account".
 fn active_user_id_readonly(path: &std::path::Path) -> Result<Option<i64>, String> {
-    if !path.is_file() {
-        return Ok(None);
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.is_file() => {}
+        Ok(_) => {
+            return Err(format!(
+                "User partitions DB path is not a file: {}",
+                path.display()
+            ))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("Stat user partitions DB: {e}")),
     }
     let conn = Connection::open_with_flags(
         path,
@@ -13417,6 +13425,33 @@ mod tests {
             r#"[{"id":"srv_a","name":"A"}]"#
         );
         assert_eq!(store.get(LEGACY_PROFILES_OWNER).unwrap(), "7");
+        CredentialStore::clear_cache();
+    }
+
+    /// A directory where the partitions database should be is not "no
+    /// account": the read reports `accounts_unknown` instead of answering
+    /// `active_user_id: None`, which a caller could mistake for an unbound
+    /// list.
+    #[test]
+    fn a_directory_at_the_db_path_is_not_no_account() {
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let _root = LegacyStoreDataRoot::new(dir.path());
+        let db = dir.path().join("partitions.db");
+        std::fs::create_dir(&db).unwrap();
+        assert!(active_user_id_readonly(&db).is_err());
+        let vault_path = dir.path().join("vault.db");
+        CredentialStore::write_test_vault(&vault_path, &test_root());
+        CredentialStore::cache_vault(vault_path.clone(), test_root());
+        let store = CredentialStore::from_verified_key(&vault_path, &test_root());
+        store
+            .store(LEGACY_PROFILES_BLOB, r#"[{"id":"srv_a","name":"A"}]"#)
+            .unwrap();
+
+        let read = read_legacy_server_profiles_at(&store, &db).unwrap();
+        assert!(read.accounts_unknown);
+        assert_eq!(read.active_user_id, None);
         CredentialStore::clear_cache();
     }
 
