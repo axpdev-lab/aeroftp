@@ -163,8 +163,8 @@ fn export_rclone_with_user_reads_that_accounts_token_while_another_is_active() {
     user_partitions::cli_set_active_user(&store, user_b.id).expect("activate B");
     drop(store);
     stage_portable_vault(root);
-    drop(_lock);
     drop(_env);
+    drop(_lock);
 
     let out_path = root.join("export.conf");
     let out = cli(
@@ -451,8 +451,8 @@ fn export_rclone_without_user_and_no_active_account_reads_no_vault() {
     drop(conn);
     drop(store);
     stage_portable_vault(root);
-    drop(_lock);
     drop(_env);
+    drop(_lock);
 
     let out = cli(root, &["export", "rclone", "--json"]);
     assert_ne!(
@@ -464,5 +464,70 @@ fn export_rclone_without_user_and_no_active_account_reads_no_vault() {
     assert!(
         !root.join("export.conf").exists(),
         "no export file may be written"
+    );
+}
+
+/// Environment guards whose drop is slow enough for an observer to see the
+/// process environment while `ENV_LOCK` is already free but the variables
+/// are not all restored yet: the window a fixture that dropped the lock
+/// first would open.
+struct SlowEnv(Vec<scoped_env::ScopedEnv>);
+
+impl Drop for SlowEnv {
+    fn drop(&mut self) {
+        for guard in self.0.drain(..) {
+            drop(guard);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
+}
+
+/// The fixtures hold `ENV_LOCK` while they point the process environment at
+/// their root and release it only after the `ScopedEnv` guards are dropped.
+/// A test that dropped the lock first would leave a window in which
+/// `ENV_LOCK` is free but `XDG_CONFIG_HOME` still names the fixture's root:
+/// the next test to take the lock would read an environment that is not its
+/// own. An observer thread spins on `ENV_LOCK` and reads the variable the
+/// moment the lock opens; with the guards dropped first it can only see the
+/// value the process had before.
+#[test]
+fn the_fixture_restores_its_environment_before_the_lock_opens() {
+    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let root = isolated_cli::root();
+    let before = std::env::var_os("XDG_CONFIG_HOME");
+
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<()>();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observer = {
+        let seen = seen.clone();
+        std::thread::spawn(move || {
+            ready_tx.send(()).expect("observer ready");
+            loop {
+                let guard = match ENV_LOCK.try_lock() {
+                    Ok(guard) => guard,
+                    Err(std::sync::TryLockError::WouldBlock) => {
+                        std::hint::spin_loop();
+                        continue;
+                    }
+                    Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner(),
+                };
+                *seen.lock().unwrap() = Some(std::env::var_os("XDG_CONFIG_HOME"));
+                drop(guard);
+                return;
+            }
+        })
+    };
+    ready_rx.recv().expect("observer thread started");
+
+    let env = SlowEnv(point_env_at(root.path()));
+    // The fixture order: the environment guards first, the lock second.
+    drop(env);
+    drop(_lock);
+
+    observer.join().expect("observer thread");
+    assert_eq!(
+        seen.lock().unwrap().as_ref(),
+        Some(&before),
+        "the environment must already be restored when ENV_LOCK opens"
     );
 }
