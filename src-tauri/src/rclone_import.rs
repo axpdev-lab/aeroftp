@@ -981,6 +981,93 @@ enum ImportSourceKind {
     Template,
 }
 
+const RCLONE_CONSUMED_KEYS: &[(&str, &[&str])] = &[
+    ("ftp", &["host", "pass", "port", "user"]),
+    (
+        "sftp",
+        &["host", "key_file", "key_file_pass", "pass", "port", "user"],
+    ),
+    (
+        "s3",
+        &[
+            "access_key_id",
+            "bucket",
+            "endpoint",
+            "force_path_style",
+            "provider",
+            "region",
+            "secret_access_key",
+            "use_path_style",
+        ],
+    ),
+    ("webdav", &["pass", "url", "user", "vendor"]),
+    ("drive", &["root_folder_id", "token"]),
+    ("dropbox", &["drive_type", "token"]),
+    ("onedrive", &["token"]),
+    ("mega", &["pass", "user"]),
+    ("internxt", &["email", "pass"]),
+    ("filen", &["api_key", "email", "password"]),
+    ("box", &["token"]),
+    ("pcloud", &["hostname", "token"]),
+    ("azureblob", &["account", "container", "key"]),
+    (
+        "swift",
+        &[
+            "auth",
+            "container",
+            "key",
+            "region",
+            "tenant",
+            "tenant_id",
+            "token",
+            "user",
+        ],
+    ),
+    ("zoho", &["region", "root_folder_id", "token"]),
+    ("koofr", &["endpoint", "password", "user"]),
+    ("jottacloud", &["token", "token_endpoint", "user"]),
+    ("b2", &["account", "bucket", "key"]),
+    ("opendrive", &["password", "username"]),
+    ("drime", &["access_token", "root_folder_id", "workspace_id"]),
+    (
+        "cloudinary",
+        &["api_key", "api_secret", "cloud_name", "upload_prefix"],
+    ),
+    ("imagekit", &["endpoint", "private_key", "public_key"]),
+    ("protondrive", &["username"]),
+    ("filelu", &["port"]),
+    ("alias", &["remote"]),
+    (
+        "crypt",
+        &[
+            "directory_name_encryption",
+            "filename_encryption",
+            "password",
+            "password2",
+            "remote",
+        ],
+    ),
+];
+
+fn rclone_field_is_consumed(rclone_type: &str, key: &str) -> bool {
+    if [
+        "type",
+        "host",
+        "endpoint",
+        "hostname",
+        "auth",
+        "upload_prefix",
+    ]
+    .contains(&key)
+    {
+        return true;
+    }
+    RCLONE_CONSUMED_KEYS
+        .iter()
+        .find(|(backend, _)| *backend == rclone_type)
+        .is_some_and(|(_, keys)| keys.contains(&key))
+}
+
 /// Convert a single rclone or template section to an AeroFTP profile.
 /// `aeroftp_export` is what the header says when AeroFTP's own export wrote the
 /// file ([`aeroftp_export_header`]), `None` for any other rclone.conf.
@@ -3358,10 +3445,12 @@ fn resolve_rclone_transport_cached(
     }
 }
 
+type RcloneUnresolvedFields = HashMap<String, HashSet<String>>;
+
 #[derive(Default)]
 struct RcloneResolution<'a> {
     raw_sections: Option<&'a HashMap<String, RcloneRemote>>,
-    unresolved_inherited: Option<&'a HashSet<String>>,
+    unresolved_inherited: Option<&'a RcloneUnresolvedFields>,
 }
 
 fn import_parsed_sections(
@@ -3456,16 +3545,30 @@ fn import_parsed_sections(
         if folded.contains(name.as_str()) {
             continue;
         }
-        if resolution
+        if let Some(failed) = resolution
             .unresolved_inherited
-            .is_some_and(|unresolved| unresolved.contains(name))
+            .and_then(|unresolved| unresolved.get(name))
         {
-            skipped.push(RcloneSkippedRemote {
-                name: crate::bridge_shared::sanitize_warning_name(name, "rclone remote"),
-                rclone_type: crate::bridge_shared::sanitize_warning_name(rclone_type, "unknown"),
-                reason: "rclone inherited connection fields exceeded substitution expansion limits; skipped so AeroFTP does not import a different target".to_string(),
-            });
-            continue;
+            let mut consumed: Vec<&str> = failed
+                .iter()
+                .filter(|key| rclone_field_is_consumed(rclone_type, key))
+                .map(String::as_str)
+                .collect();
+            if !consumed.is_empty() {
+                consumed.sort_unstable();
+                skipped.push(RcloneSkippedRemote {
+                    name: crate::bridge_shared::sanitize_warning_name(name, "rclone remote"),
+                    rclone_type: crate::bridge_shared::sanitize_warning_name(
+                        rclone_type,
+                        "unknown",
+                    ),
+                    reason: format!(
+                        "rclone connection field(s) {} exceeded substitution expansion limits; skipped so AeroFTP does not import a different target",
+                        consumed.join(", ")
+                    ),
+                });
+                continue;
+            }
         }
 
         // The section holding the OAuth app (`client_id`, `client_secret`):
@@ -3780,14 +3883,62 @@ fn parse_rclone_goconfig_raw_sections(content: &str) -> HashMap<String, RcloneRe
     sections
 }
 
+#[cfg(test)]
+static RCLONE_MATERIALIZE_PEAK: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 fn materialize_rclone_inherited_fields(
     sections: &HashMap<String, RcloneRemote>,
-) -> (HashMap<String, RcloneRemote>, HashSet<String>) {
+) -> Result<(HashMap<String, RcloneRemote>, RcloneUnresolvedFields), String> {
     let mut effective = sections.clone();
-    let mut unresolved = HashSet::new();
+    let mut unresolved = RcloneUnresolvedFields::new();
     let mut default_memo = GoconfigDefaultMemo::default();
+    let mut total = sections
+        .values()
+        .map(|remote| remote.iter().map(|(k, v)| k.len() + v.len()).sum::<usize>())
+        .sum::<usize>();
+    #[cfg(test)]
+    RCLONE_MATERIALIZE_PEAK.store(total, std::sync::atomic::Ordering::Relaxed);
+    let charge = |total: &mut usize, bytes: usize| -> Result<(), String> {
+        *total = total.saturating_add(bytes);
+        #[cfg(test)]
+        RCLONE_MATERIALIZE_PEAK.fetch_max(*total, std::sync::atomic::Ordering::Relaxed);
+        if *total > MAX_RCLONE_EXPANDED_BYTES {
+            let mb = MAX_RCLONE_EXPANDED_BYTES / (1024 * 1024);
+            return Err(format!(
+                "rclone.conf expands to more than {mb} MB once its aliases and crypt remotes are resolved; split the file"
+            ));
+        }
+        Ok(())
+    };
 
     for name in sections.keys() {
+        let own = &sections[name];
+        for (key, raw) in own {
+            match expand_goconfig_substitutions_cached(
+                own,
+                sections.get("DEFAULT"),
+                raw,
+                &mut default_memo,
+            ) {
+                Ok(value) => {
+                    let old_size = key.len() + raw.len();
+                    total = total.saturating_sub(old_size);
+                    charge(&mut total, key.len() + value.len())?;
+                    effective
+                        .get_mut(name)
+                        .expect("section cloned")
+                        .insert(key.clone(), value.into_owned());
+                }
+                Err(_) => {
+                    unresolved
+                        .entry(name.clone())
+                        .or_default()
+                        .insert(key.clone());
+                }
+            }
+        }
+
         let mut current = name.as_str();
         while let Some((parent, _)) = current.rsplit_once('.') {
             let parent = if parent.is_empty() { "DEFAULT" } else { parent };
@@ -3805,20 +3956,24 @@ fn materialize_rclone_inherited_fields(
                     &mut default_memo,
                 ) {
                     Ok(value) => {
+                        charge(&mut total, key.len() + value.len())?;
                         effective
                             .get_mut(name)
                             .expect("section cloned")
                             .insert(key.clone(), value.into_owned());
                     }
                     Err(_) => {
-                        unresolved.insert(name.clone());
+                        unresolved
+                            .entry(name.clone())
+                            .or_default()
+                            .insert(key.clone());
                     }
                 }
             }
             current = parent;
         }
     }
-    (effective, unresolved)
+    Ok((effective, unresolved))
 }
 
 pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
@@ -3851,7 +4006,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         .collect();
     let raw_sections = parse_rclone_goconfig_raw_sections(&content);
     let (effective_sections, unresolved_inherited) =
-        materialize_rclone_inherited_fields(&raw_sections);
+        materialize_rclone_inherited_fields(&raw_sections)?;
     for (name, data) in &mut sections {
         if let Some(raw) = effective_sections.get(name) {
             data.clone_from(raw);
@@ -8336,6 +8491,7 @@ http_proxy =
             "[parent]\ntype = sftp\nhost = parent.example.test\nuser = alice\nport = 2222\n\n\
              [parent.child]\nhost = child.example.test\n\n\
              [parent.explicit]\nhost = explicit.example.test\nuser = bob\nport = 2022\n\n\
+             [parent.substituted]\nhost = substituted.example.test\nport_override = 2023\nport = %(port_override)s\n\n\
              [parent.empty]\nhost = empty.example.test\nuser =\nport =\n",
             "effective-inherited-fields",
         );
@@ -8347,6 +8503,9 @@ http_proxy =
         let explicit = imported(&result, "parent.explicit");
         assert_eq!(explicit.username, "bob");
         assert_eq!(explicit.port, 2022);
+        let substituted = imported(&result, "parent.substituted");
+        assert_eq!(substituted.username, "alice");
+        assert_eq!(substituted.port, 2023);
         let empty = imported(&result, "parent.empty");
         assert_eq!(empty.username, "");
         assert_eq!(empty.port, 22);
@@ -8371,6 +8530,101 @@ http_proxy =
         assert!(error.contains("expands past 4096 bytes"), "{error}");
         assert!(error.contains("check its environment variables"), "{error}");
         assert!(!error.contains(secret), "{error}");
+    }
+
+    #[test]
+    fn only_failed_fields_consumed_by_the_backend_skip_the_remote() {
+        let result = import_text(
+            "[parent]\ntype = ftp\nhost = parent.example.test\nuser = alice\nport = 2121\nssh = %(ssh)s\n\n\
+             [parent.ftp]\nhost = ftp.example.test\n\n\
+             [parent.sftp]\ntype = sftp\nhost = sftp.example.test\nport = %(port)s\n",
+            "per-key-expansion-failures",
+        );
+
+        assert_eq!(imported(&result, "parent.ftp").host, "ftp.example.test");
+        let failed = result
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "parent.sftp")
+            .unwrap();
+        assert!(failed.reason.contains("port"), "{}", failed.reason);
+        assert!(
+            failed.reason.contains("expansion limits"),
+            "{}",
+            failed.reason
+        );
+    }
+
+    #[test]
+    fn inherited_materialization_stops_at_the_budget_before_unbounded_copies() {
+        let mut input = String::from("[parent]\ntype = sftp\n");
+        for index in 0..256 {
+            input.push_str(&format!(
+                "v{index} = {}\n",
+                "x".repeat(GOCONFIG_MAX_EXPANDED_BYTES)
+            ));
+        }
+        for index in 0..9000 {
+            input.push_str(&format!(
+                "[parent.c{index}]\nhost = c{index}.example.test\n"
+            ));
+        }
+        let path = tmp_write(
+            &input,
+            &format!(
+                "aeroftp-test-inheritance-budget-{}.conf",
+                std::process::id()
+            ),
+        );
+        let error = match import_rclone(&path) {
+            Ok(_) => panic!("the inherited copies must be refused"),
+            Err(error) => error,
+        };
+        std::fs::remove_file(&path).ok();
+        assert!(error.contains("expands to more than 64 MB"), "{error}");
+        let peak = RCLONE_MATERIALIZE_PEAK.load(std::sync::atomic::Ordering::Relaxed);
+        assert!(peak > MAX_RCLONE_EXPANDED_BYTES, "peak={peak}");
+        println!("inherited materialization peak bytes: {peak}");
+        assert!(
+            peak <= MAX_RCLONE_EXPANDED_BYTES + GOCONFIG_MAX_EXPANDED_BYTES + 64,
+            "peak={peak}"
+        );
+    }
+
+    #[test]
+    fn consumed_key_table_covers_every_map_remote_arm_and_detects_a_new_read() {
+        let body = source_fn_body("fn map_remote(");
+        let arms = regex::Regex::new(r#"(?m)^\s*"([^"]+)"\s*=>"#).unwrap();
+        let reads = regex::Regex::new(
+            r#"(?:get_str|get_password|get_plain_secret|get_aeroftp_plain_secret|get_port)\(\s*"([^"]+)"|remote\.get\(\s*"([^"]+)"\)"#,
+        )
+        .unwrap();
+        let missing = |body: &str| {
+            let markers: Vec<_> = arms.captures_iter(body).collect();
+            let mut missing = Vec::new();
+            for (index, marker) in markers.iter().enumerate() {
+                let backend = marker.get(1).unwrap().as_str();
+                let start = marker.get(0).unwrap().end();
+                let end = markers
+                    .get(index + 1)
+                    .map(|next| next.get(0).unwrap().start())
+                    .unwrap_or(body.len());
+                for read in reads.captures_iter(&body[start..end]) {
+                    let key = read.get(1).or_else(|| read.get(2)).unwrap().as_str();
+                    if !rclone_field_is_consumed(backend, key) {
+                        missing.push(format!("{backend}:{key}"));
+                    }
+                }
+            }
+            missing
+        };
+        assert!(missing(body).is_empty(), "{:?}", missing(body));
+        let mutated = body.replacen(
+            "\"ftp\" => {",
+            "\"ftp\" => { remote.get(\"source_scan_sentinel\"); }",
+            1,
+        );
+        assert_eq!(missing(&mutated), ["ftp:source_scan_sentinel"]);
     }
 
     #[test]
