@@ -1449,10 +1449,13 @@ fn repack_vault_blocking(
 /// Basename of a vault path, for activity logging. We never log the full path so the
 /// user's home directory is not written into the on-disk log file.
 pub(crate) fn vault_basename(path: &str) -> String {
+    if path.is_empty() {
+        return String::new();
+    }
     std::path::Path::new(path)
         .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.to_string())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "<vault>".to_string())
 }
 
 /// The text of a vault error as it may be written to the Debug log. The
@@ -2216,6 +2219,16 @@ mod tests {
         let shown = vault_error_for_log(&err, path);
         assert!(!shown.contains("/home/ada"), "{shown}");
         assert!(shown.contains(".vault.av3.lock"), "{shown}");
+    }
+
+    #[test]
+    fn a_basename_of_a_parent_step_does_not_leak_the_home() {
+        let path = "/home/ada/secrets/..";
+        assert_eq!(vault_basename(path), "<vault>");
+        let shown = vault_error_for_log(&format!("Change Mode refused: {path}"), path);
+        assert!(!shown.contains("/home/ada"), "{shown}");
+        assert!(shown.contains("<vault>"), "{shown}");
+        assert_eq!(vault_basename(""), "");
     }
 
     #[test]
