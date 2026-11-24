@@ -154,10 +154,10 @@ export interface SavedProfilesRead {
     revision?: string;
 }
 
-// What the revision of a list read from the legacy store starts with, followed by
-// that list. A write carrying it stays in that store: the backend refuses it, under
-// the list lock, if the partition can be reached by then or the store no longer
-// holds that list.
+// What the revision of a list read from the legacy store starts with: the
+// backend's opaque `legacy-store:` token, an HMAC of the raw blob bytes. A
+// write carrying it stays in that store: the backend refuses it, under the
+// list lock, if the partition can be reached by then or the blob changed.
 const LEGACY_STORE_REVISION = 'legacy-store:';
 
 /**
@@ -198,7 +198,7 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
             userId: active,
             activeUserId: active,
             ownerUnknown: locked.accountsUnknown === true,
-            revision: LEGACY_STORE_REVISION + JSON.stringify(legacy),
+            revision: locked.revision,
         };
     }
 };
@@ -251,8 +251,7 @@ export const storeSavedServerProfiles = async (
     let stored: ServerProfile[];
     try {
         if (expectedRevision?.startsWith(LEGACY_STORE_REVISION)) {
-            const expected = JSON.parse(expectedRevision.slice(LEGACY_STORE_REVISION.length)) as ServerProfile[];
-            stored = await storeLegacyServerProfiles(profiles, expected, expectedUserId);
+            stored = await storeLegacyServerProfiles(profiles, expectedRevision, expectedUserId);
         } else {
             const written = await saveActiveServerProfiles(profiles, expectedUserId, expectedRevision);
             stored = Array.isArray(written) ? written : profiles;

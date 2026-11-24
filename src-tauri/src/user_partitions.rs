@@ -40,6 +40,124 @@ const LEGACY_PROFILES_BLOB: &str = "config_server_profiles";
 /// an account only when this owner is the active one; without it nobody is
 /// bound.
 const LEGACY_PROFILES_OWNER: &str = "config_server_profiles_owner";
+/// Process-local key of the opaque revision [`legacy_store_revision`] signs
+/// the legacy blob with: random per process, never written to the vault and
+/// never sent, so the webview can prove "the blob bytes I read" without ever
+/// holding them.
+static LEGACY_STORE_HMAC_KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+
+fn legacy_store_hmac_key() -> &'static [u8; 32] {
+    LEGACY_STORE_HMAC_KEY.get_or_init(|| {
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&crate::crypto::random_bytes(32));
+        key
+    })
+}
+
+/// The revision the legacy-store read hands the webview and the bound write
+/// must return: `legacy-store:` plus the lowercase hex HMAC-SHA256 of the raw
+/// `config_server_profiles` vault bytes. An absent blob is the HMAC of the
+/// empty string. A revision in the old `legacy-store:` + JSON form matches
+/// nothing and refuses the write.
+fn legacy_store_revision(raw: Option<&str>) -> String {
+    use hmac::Mac;
+    let mut mac = hmac::Hmac::<Sha256>::new_from_slice(legacy_store_hmac_key())
+        .expect("HMAC takes any key length");
+    mac.update(raw.unwrap_or("").as_bytes());
+    format!("legacy-store:{}", hex::encode(mac.finalize().into_bytes()))
+}
+
+/// Whether a profile field carries secret material the blob keeps in the
+/// clear: the `password` field and every option key the export and import
+/// paths already treat as secret. Used both to redact the IPC answer and to
+/// keep request secrets out of the bound write.
+fn is_legacy_profile_secret_key(key: &str) -> bool {
+    key == "password"
+        || crate::profile_export::OPTIONS_SECRET_KEYS.contains(&key)
+        || crate::rclone_import::IMPORT_SECRET_OPTION_KEYS.contains(&key)
+}
+
+/// Remove the secret fields of one legacy profile in place: the secret keys
+/// at the top level and inside `options`. The vault keeps the full object;
+/// only IPC answers and request overlays are redacted.
+fn strip_legacy_profile_secrets(profile: &mut Value) {
+    let Some(map) = profile.as_object_mut() else {
+        return;
+    };
+    map.retain(|key, _| !is_legacy_profile_secret_key(key));
+    if let Some(options) = map.get_mut("options").and_then(Value::as_object_mut) {
+        options.retain(|key, _| !is_legacy_profile_secret_key(key));
+    }
+}
+
+/// The secret fields `held` carries that `merged` must take byte for byte:
+/// the bound write never takes a secret from the request, it restores the
+/// held profile's own. Call after [`strip_legacy_profile_secrets`] on the
+/// request profile.
+fn restore_held_profile_secrets(merged: &mut Value, held: &Value) {
+    let (Some(m), Some(h)) = (merged.as_object_mut(), held.as_object()) else {
+        return;
+    };
+    for key in h.keys() {
+        if is_legacy_profile_secret_key(key) {
+            m.insert(key.clone(), h[key].clone());
+        }
+    }
+    let held_options = h.get("options").and_then(Value::as_object);
+    let merged_options = m.get_mut("options").and_then(Value::as_object_mut);
+    match (held_options, merged_options) {
+        (Some(h_opts), Some(m_opts)) => {
+            for (key, value) in h_opts {
+                if is_legacy_profile_secret_key(key) {
+                    m_opts.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        (Some(h_opts), None) => {
+            let secrets: serde_json::Map<String, Value> = h_opts
+                .iter()
+                .filter(|(key, _)| is_legacy_profile_secret_key(key))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            if !secrets.is_empty() {
+                m.insert("options".to_string(), Value::Object(secrets));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Merge a revision-bound request over the held blob: a profile the request
+/// keeps (same match id, `id` then `uid` then `profileUid`) takes the
+/// request's non-secret fields and the held profile's secrets byte for byte;
+/// a profile only in the request joins with its secrets stripped; a profile
+/// only in the blob leaves the list. The result still goes through
+/// `unique_profile_names`.
+fn overlay_legacy_profiles(request: &[Value], held: &[Value]) -> Vec<Value> {
+    let mut out = Vec::with_capacity(request.len());
+    for profile in request {
+        let id = value_str(profile, &["id", "uid", "profileUid"]);
+        let held_match = id.and_then(|id| {
+            held.iter()
+                .find(|candidate| value_str(candidate, &["id", "uid", "profileUid"]) == Some(id))
+        });
+        match held_match {
+            Some(held_profile) => {
+                let mut merged = profile.clone();
+                strip_legacy_profile_secrets(&mut merged);
+                restore_held_profile_secrets(&mut merged, held_profile);
+                out.push(merged);
+            }
+            None => {
+                let mut fresh = profile.clone();
+                strip_legacy_profile_secrets(&mut fresh);
+                out.push(fresh);
+            }
+        }
+    }
+    out
+}
+
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
 const LEGACY_OWNER_KEY: &str = "legacy_credential_owner_id";
@@ -12247,12 +12365,18 @@ fn active_user_id_readonly(path: &std::path::Path) -> Result<Option<i64>, String
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LegacyServerProfilesRead {
+    /// The list with every secret field stripped: the blob keeps them, the
+    /// webview never sees them, and the bound write restores them from the
+    /// held blob rather than the request.
     pub profiles: Option<Vec<Value>>,
     pub active_user_id: Option<i64>,
     pub owner_user_id: Option<i64>,
     /// The database exists but its active account could not be read: neither
     /// "no account" nor a known one, so the caller keeps the owner unknown.
     pub accounts_unknown: bool,
+    /// The opaque revision the bound write must return: `legacy-store:` plus
+    /// the HMAC of the raw blob bytes, never the bytes themselves.
+    pub revision: String,
 }
 
 /// Read the legacy `config_server_profiles` blob together with its owner and
@@ -12267,18 +12391,33 @@ pub async fn user_partitions_read_legacy_server_profiles(
 ) -> Result<LegacyServerProfilesRead, String> {
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let path = db_path(&app)?;
-    let lock = ProfileListLock::acquire_for_path(&path)?;
+    read_legacy_server_profiles_at(&store, &path)
+}
+
+/// The body of [`user_partitions_read_legacy_server_profiles`] on an
+/// explicit database path, so tests drive the same checks the command runs.
+fn read_legacy_server_profiles_at(
+    store: &CredentialStore,
+    path: &std::path::Path,
+) -> Result<LegacyServerProfilesRead, String> {
+    let lock = ProfileListLock::acquire_for_path(path)?;
     if !lock.is_exclusive() {
         return Err(NO_FILE_LOCKS.to_string());
     }
-    let raw = get_optional_store_entry(&store, LEGACY_PROFILES_BLOB)?;
-    let profiles = raw
+    let raw = get_optional_store_entry(store, LEGACY_PROFILES_BLOB)?;
+    let revision = legacy_store_revision(raw.as_deref());
+    let mut profiles = raw
         .map(|raw| serde_json::from_str::<Vec<Value>>(&raw))
         .transpose()
         .map_err(|e| format!("Invalid saved profiles: {e}"))?;
-    let owner_raw = get_optional_store_entry(&store, LEGACY_PROFILES_OWNER)?;
+    if let Some(list) = profiles.as_mut() {
+        for profile in list.iter_mut() {
+            strip_legacy_profile_secrets(profile);
+        }
+    }
+    let owner_raw = get_optional_store_entry(store, LEGACY_PROFILES_OWNER)?;
     let owner_user_id = owner_raw.and_then(|raw| raw.trim().parse::<i64>().ok());
-    let (active_user_id, accounts_unknown) = match active_user_id_readonly(&path) {
+    let (active_user_id, accounts_unknown) = match active_user_id_readonly(path) {
         Ok(active) => (active, false),
         Err(_) => (None, true),
     };
@@ -12287,25 +12426,31 @@ pub async fn user_partitions_read_legacy_server_profiles(
         active_user_id,
         owner_user_id,
         accounts_unknown,
+        revision,
     })
 }
 
 /// Keep `profiles` in the legacy store, for a frontend whose partition could not
 /// be reached. Under [`ProfileListLock`], this refuses with [`PROFILES_CHANGED`] if
 /// the partition can be reached now, since the next load would replace the blob
-/// with the partition's list, or if the blob no longer holds `expected_list`, the
-/// list the caller read and changed. `expected_user_id` is the account the read
+/// with the partition's list. `expected_revision`, the opaque revision the
+/// locked read handed out, proves the blob bytes the caller edited: it must
+/// still match the HMAC of the current raw bytes, and then the stored list is
+/// the request overlaid on the held blob, secrets restored from it, never
+/// taken from the request. `expected_list` is the older proof and is ignored
+/// when a revision is present. `expected_user_id` is the account the read
 /// was bound to: an active account that is not it (including one that appeared
 /// after an account-free read) refuses with [`ACCOUNT_CHANGED`] before any key
 /// is touched, so an unbound list never takes an account's name. The list held
 /// decides who had a name first, as the partition's does (`util::profile_name`).
-/// Resolves to the list stored.
+/// Resolves to the list stored, secrets redacted.
 #[tauri::command]
 pub async fn user_partitions_store_legacy_server_profiles(
     app: AppHandle,
     mut profiles: Vec<Value>,
     expected_list: Option<Vec<Value>>,
     expected_user_id: Option<i64>,
+    expected_revision: Option<String>,
 ) -> Result<Vec<Value>, String> {
     crate::launch_url::launch_secret::strip_from_profiles(&mut profiles);
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
@@ -12315,6 +12460,7 @@ pub async fn user_partitions_store_legacy_server_profiles(
         profiles,
         expected_list,
         expected_user_id,
+        expected_revision,
     )
 }
 
@@ -12326,6 +12472,7 @@ fn store_legacy_server_profiles_at(
     profiles: Vec<Value>,
     expected_list: Option<Vec<Value>>,
     expected_user_id: Option<i64>,
+    expected_revision: Option<String>,
 ) -> Result<Vec<Value>, String> {
     let lock = ProfileListLock::acquire_for_path(db_path)?;
     if !lock.is_exclusive() {
@@ -12339,15 +12486,29 @@ fn store_legacy_server_profiles_at(
     {
         return Err(PROFILES_CHANGED.to_string());
     }
-    let held = get_optional_store_entry(store, LEGACY_PROFILES_BLOB)?
-        .map(|raw| serde_json::from_str::<Vec<Value>>(&raw))
+    let raw_held = get_optional_store_entry(store, LEGACY_PROFILES_BLOB)?;
+    let held = raw_held
+        .as_deref()
+        .map(serde_json::from_str::<Vec<Value>>)
         .transpose()
-        .map_err(|e| format!("Invalid saved profiles: {e}"))?;
-    let held = held.unwrap_or_default();
-    if expected_list.is_some_and(|expected| expected != held) {
+        .map_err(|e| format!("Invalid saved profiles: {e}"))?
+        .unwrap_or_default();
+    let revision_bound = expected_revision.is_some();
+    if let Some(expected) = expected_revision.as_deref() {
+        use subtle::ConstantTimeEq;
+        let current = legacy_store_revision(raw_held.as_deref());
+        if !bool::from(current.as_bytes().ct_eq(expected.as_bytes())) {
+            return Err(PROFILES_CHANGED.to_string());
+        }
+    } else if expected_list.is_some_and(|expected| expected != held) {
         return Err(PROFILES_CHANGED.to_string());
     }
-    let (stored, _) = crate::util::profile_name::unique_profile_names(&held, &profiles);
+    let to_store = if revision_bound {
+        overlay_legacy_profiles(&profiles, &held)
+    } else {
+        profiles
+    };
+    let (stored, _) = crate::util::profile_name::unique_profile_names(&held, &to_store);
     // The account the read was bound to must still be the active one: an
     // active account that is not it, including one that appeared after an
     // account-free read, refuses the write before any key is touched. The
@@ -12363,7 +12524,11 @@ fn store_legacy_server_profiles_at(
     }
     let owner = active;
     mirror_active_profiles_to_legacy_blob(store, owner, &stored)?;
-    Ok(stored)
+    let mut redacted = stored.clone();
+    for profile in redacted.iter_mut() {
+        strip_legacy_profile_secrets(profile);
+    }
+    Ok(redacted)
 }
 
 /// N4: copy or move a saved server profile from the ACTIVE (source) user into
@@ -13079,11 +13244,13 @@ mod tests {
             active_user_id: Some(7),
             owner_user_id: Some(7),
             accounts_unknown: false,
+            revision: "legacy-store:abc".to_string(),
         };
         let value = serde_json::to_value(&read).expect("serialize");
         assert_eq!(value["activeUserId"], json!(7));
         assert_eq!(value["ownerUserId"], json!(7));
         assert_eq!(value["accountsUnknown"], json!(false));
+        assert_eq!(value["revision"], json!("legacy-store:abc"));
         assert!(value.get("active_user_id").is_none());
         assert!(value.get("owner_user_id").is_none());
         assert!(value.get("accounts_unknown").is_none());
@@ -13167,12 +13334,14 @@ mod tests {
             incoming.clone(),
             Some(held.clone()),
             Some(account_a),
+            None,
         );
         let no_account = store_legacy_server_profiles_at(
             &store,
             &db,
             incoming.clone(),
             Some(held.clone()),
+            None,
             None,
         );
         let matching = store_legacy_server_profiles_at(
@@ -13181,6 +13350,7 @@ mod tests {
             incoming.clone(),
             Some(held.clone()),
             Some(account_b),
+            None,
         );
         // Windows cannot drop a read-only file: give the write bit back so
         // the tempdir removes cleanly.
@@ -13229,6 +13399,7 @@ mod tests {
             vec![json!({ "id": "srv_new", "name": "New" })],
             None,
             Some(7),
+            None,
         );
 
         assert_eq!(result.unwrap_err(), expected_err);
@@ -13238,6 +13409,141 @@ mod tests {
         );
         assert_eq!(store.get(LEGACY_PROFILES_OWNER).unwrap(), "7");
         CredentialStore::clear_cache();
+    }
+
+    /// A legacy blob whose owner is not the active account still answers the
+    /// locked read, and the answer carries no secret: the top-level password
+    /// and the secret option keys stay in the vault, never in the IPC
+    /// response, while the opaque revision proves the raw bytes.
+    #[test]
+    fn the_legacy_read_redacts_secrets_even_on_an_owner_mismatch() {
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let _root = LegacyStoreDataRoot::new(dir.path());
+        let (db, account_a, account_b) = readonly_active_account_db(&test_root());
+        let vault_path = dir.path().join("vault.db");
+        CredentialStore::write_test_vault(&vault_path, &test_root());
+        CredentialStore::cache_vault(vault_path.clone(), test_root());
+        let store = CredentialStore::from_verified_key(&vault_path, &test_root());
+        let blob = r#"[{"id":"srv","name":"old","password":"inline-secret","options":{"password":"opt-secret","color":"blue"}}]"#;
+        store.store(LEGACY_PROFILES_BLOB, blob).unwrap();
+        store
+            .store(LEGACY_PROFILES_OWNER, &account_a.to_string())
+            .unwrap();
+
+        let read = read_legacy_server_profiles_at(&store, &db).unwrap();
+        let mut permissions = std::fs::metadata(&db).unwrap().permissions();
+        permissions.set_readonly(false);
+        std::fs::set_permissions(&db, permissions).unwrap();
+        CredentialStore::clear_cache();
+
+        // Active is B, owner is A: the frontend refuses on this triple, but
+        // the response itself must already be redacted.
+        assert_eq!(read.owner_user_id, Some(account_a));
+        assert_eq!(read.active_user_id, Some(account_b));
+        let profiles = read.profiles.unwrap();
+        let rendered = serde_json::to_string(&profiles).unwrap();
+        assert!(!rendered.contains("inline-secret"), "{rendered}");
+        assert!(!rendered.contains("opt-secret"), "{rendered}");
+        assert!(rendered.contains("\"name\":\"old\""), "{rendered}");
+        // The vault still holds them byte for byte, and the revision proves
+        // those raw bytes.
+        assert_eq!(store.get(LEGACY_PROFILES_BLOB).unwrap(), blob);
+        assert!(read.revision.starts_with("legacy-store:"));
+        assert_eq!(read.revision, legacy_store_revision(Some(blob)));
+    }
+
+    /// A revision-bound write overlays the request on the held blob: the
+    /// metadata the caller edited lands, the secrets the blob holds come back
+    /// byte for byte even though the request carried none (or others), and
+    /// the response is the redacted list. Red if the request is written as
+    /// is: the password would be gone.
+    #[test]
+    fn a_revision_bound_write_restores_the_held_secrets() {
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let _root = LegacyStoreDataRoot::new(dir.path());
+        let (db, _account_a, account_b) = readonly_active_account_db(&test_root());
+        let vault_path = dir.path().join("vault.db");
+        CredentialStore::write_test_vault(&vault_path, &test_root());
+        CredentialStore::cache_vault(vault_path.clone(), test_root());
+        let store = CredentialStore::from_verified_key(&vault_path, &test_root());
+        let blob = r#"[{"id":"srv","name":"old","password":"inline-secret","options":{"password":"opt-secret","color":"blue"}}]"#;
+        store.store(LEGACY_PROFILES_BLOB, blob).unwrap();
+        store
+            .store(LEGACY_PROFILES_OWNER, &_account_a.to_string())
+            .unwrap();
+        let revision = legacy_store_revision(Some(blob));
+        let request = vec![json!({
+            "id": "srv",
+            "name": "new",
+            "host": "example.test",
+            "options": { "color": "red", "password": "request-secret" }
+        })];
+
+        let stored = store_legacy_server_profiles_at(
+            &store,
+            &db,
+            request,
+            None,
+            Some(account_b),
+            Some(revision),
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&db).unwrap().permissions();
+        permissions.set_readonly(false);
+        std::fs::set_permissions(&db, permissions).unwrap();
+        CredentialStore::clear_cache();
+
+        let written = store.get(LEGACY_PROFILES_BLOB).unwrap();
+        let held: Vec<Value> = serde_json::from_str(&written).unwrap();
+        assert_eq!(held[0]["name"], json!("new"));
+        assert_eq!(held[0]["host"], json!("example.test"));
+        assert_eq!(held[0]["password"], json!("inline-secret"));
+        assert_eq!(held[0]["options"]["password"], json!("opt-secret"));
+        assert_eq!(held[0]["options"]["color"], json!("red"));
+        let rendered = serde_json::to_string(&stored).unwrap();
+        assert!(!rendered.contains("inline-secret"), "{rendered}");
+        assert!(!rendered.contains("opt-secret"), "{rendered}");
+        assert!(!rendered.contains("request-secret"), "{rendered}");
+    }
+
+    /// A revision in the old `legacy-store:` + JSON form proves nothing about
+    /// the raw bytes: the write refuses with PROFILES_CHANGED and the blob
+    /// stays byte for byte.
+    #[test]
+    fn a_json_list_revision_does_not_write_the_legacy_blob() {
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let _root = LegacyStoreDataRoot::new(dir.path());
+        let (db, _account_a, account_b) = readonly_active_account_db(&test_root());
+        let vault_path = dir.path().join("vault.db");
+        CredentialStore::write_test_vault(&vault_path, &test_root());
+        CredentialStore::cache_vault(vault_path.clone(), test_root());
+        let store = CredentialStore::from_verified_key(&vault_path, &test_root());
+        let blob = r#"[{"id":"srv","name":"old","password":"inline-secret"}]"#;
+        store.store(LEGACY_PROFILES_BLOB, blob).unwrap();
+        let held: Vec<Value> = serde_json::from_str(blob).unwrap();
+        let stale = format!("legacy-store:{}", serde_json::to_string(&held).unwrap());
+
+        let result = store_legacy_server_profiles_at(
+            &store,
+            &db,
+            vec![json!({ "id": "srv", "name": "new" })],
+            None,
+            Some(account_b),
+            Some(stale),
+        );
+        let mut permissions = std::fs::metadata(&db).unwrap().permissions();
+        permissions.set_readonly(false);
+        std::fs::set_permissions(&db, permissions).unwrap();
+        CredentialStore::clear_cache();
+
+        assert_eq!(result.unwrap_err(), PROFILES_CHANGED);
+        assert_eq!(store.get(LEGACY_PROFILES_BLOB).unwrap(), blob);
     }
 
     /// A running deletion is settled as completed once it can never end

@@ -83,29 +83,35 @@ export const saveActiveServerProfiles = (profiles: ServerProfile[], expectedUser
 
 /**
  * Keep the list in the legacy store, for a partition that could not be reached. The
- * backend refuses with `PROFILES_CHANGED` if it can be reached now, or if the store no
- * longer holds `expectedList`, and with `ACCOUNT_CHANGED` if the account the read was
- * bound to (`expectedUserId`) is not the active one any more, including an account
- * that appeared after an account-free read. Resolves to the list stored.
+ * backend refuses with `PROFILES_CHANGED` if it can be reached now, or if the store
+ * no longer holds the blob `expectedRevision` was read from, and with
+ * `ACCOUNT_CHANGED` if the account the read was bound to (`expectedUserId`) is not
+ * the active one any more, including an account that appeared after an
+ * account-free read. With a revision the stored list is the request overlaid on
+ * the held blob, its secrets restored from it; without one the given list is
+ * written as is. Resolves to the list stored, secrets redacted.
  */
 export const storeLegacyServerProfiles = (
     profiles: ServerProfile[],
-    expectedList?: ServerProfile[],
+    expectedRevision?: string,
     expectedUserId?: number,
 ): Promise<ServerProfile[]> =>
     invoke<ServerProfile[]>('user_partitions_store_legacy_server_profiles', {
         profiles,
-        expectedList,
+        expectedRevision,
         ...(expectedUserId === undefined ? {} : { expectedUserId }),
     });
 
-/** The legacy blob, its recorded owner and the active account, read together under the list lock. */
+/** The legacy blob, its recorded owner, the active account and its opaque revision, read together under the list lock. */
 export interface LegacyServerProfilesRead {
+    /** The list with every secret field stripped: the blob keeps them. */
     profiles: ServerProfile[] | null;
     activeUserId?: number | null;
     ownerUserId?: number | null;
     /** The partitions database exists but its active account could not be read. */
     accountsUnknown?: boolean;
+    /** `legacy-store:` plus the HMAC of the raw blob bytes: proof of the bytes read, never the bytes. */
+    revision: string;
 }
 
 export const readLegacyServerProfilesBound = (): Promise<LegacyServerProfilesRead> =>

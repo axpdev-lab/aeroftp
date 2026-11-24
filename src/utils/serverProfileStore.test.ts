@@ -113,7 +113,7 @@ describe('storeSavedServerProfiles', () => {
 
         expect(stored).toEqual([held]);
         expect(mockInvoke.mock.calls[0][0]).toBe('user_partitions_save_active_server_profiles');
-        expect(mockInvoke.mock.calls[1]).toEqual(['user_partitions_store_legacy_server_profiles', { profiles: [sampleProfile()], expectedList: undefined }]);
+        expect(mockInvoke.mock.calls[1]).toEqual(['user_partitions_store_legacy_server_profiles', { profiles: [sampleProfile()], expectedRevision: undefined }]);
         expect(handler).toHaveBeenCalledTimes(1);
         expect(localStoreMap.has('aeroftp-saved-servers')).toBe(false);
     });
@@ -382,6 +382,7 @@ describe('a list read from the legacy store', () => {
         activeUserId: null,
         ownerUserId: null,
         accountsUnknown: false,
+        revision: 'legacy-store:test-revision',
         ...overrides,
     });
 
@@ -401,7 +402,7 @@ describe('a list read from the legacy store', () => {
         mockInvoke.mockReset();
         mockInvoke.mockResolvedValueOnce(edited);
         await storeSavedServerProfiles(edited, false, read.userId, read.revision);
-        expect(mockInvoke.mock.calls).toEqual([['user_partitions_store_legacy_server_profiles', { profiles: edited, expectedList: legacy }]]);
+        expect(mockInvoke.mock.calls).toEqual([['user_partitions_store_legacy_server_profiles', { profiles: edited, expectedRevision: 'legacy-store:test-revision' }]]);
 
         // The partition is reachable by now, or the store holds another list.
         mockInvoke.mockReset();
@@ -432,7 +433,7 @@ describe('a list read from the legacy store', () => {
         mockInvoke.mockResolvedValueOnce(edited);
         await storeSavedServerProfiles(edited, false, read.userId, read.revision);
         expect(mockInvoke.mock.calls).toEqual([
-            ['user_partitions_store_legacy_server_profiles', { profiles: edited, expectedList: legacy, expectedUserId: 7 }],
+            ['user_partitions_store_legacy_server_profiles', { profiles: edited, expectedRevision: 'legacy-store:test-revision', expectedUserId: 7 }],
         ]);
         mockInvoke.mockReset();
     });
