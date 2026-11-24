@@ -1996,10 +1996,13 @@ pub async fn export_bridge_config(
     let store = CredentialStore::from_cache();
     // The account the export reads for every profile, captured once: an
     // account switch while it runs cannot move a later profile's token to
-    // the account that became active.
-    let user = crate::user_partitions::active_user_for_save()
-        .ok()
-        .flatten();
+    // the account that became active. A failed lookup fails the export
+    // before any secret is read; with no account at all the export reads
+    // the legacy stores (`LEGACY_ONLY_ACCOUNT`), the only scope left.
+    let user = Some(
+        crate::user_partitions::active_user_for_save()?
+            .unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT),
+    );
     export_bridge_profiles(
         &source,
         &servers_json,
@@ -3521,6 +3524,265 @@ mod tests {
             );
             assert_eq!(vault_export_password(store, None, "sharedpw"), None);
         });
+    }
+
+    /// An export on an install with no account reads the legacy stores: the
+    /// vault's server password and the overlay secrets still reach the file.
+    /// `active_user_for_save` answering `Ok(None)` used to collapse into the
+    /// same `None` a failed lookup produced, and `None` reads no secret.
+    #[tokio::test]
+    async fn an_export_with_no_account_reads_the_legacy_stores() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::an_export_with_no_account_reads_the_legacy_stores",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let temporary = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password("export-noacct-pass")
+            .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("export-noacct-pass", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        assert_eq!(
+            crate::user_partitions::active_user_for_save(),
+            Ok(None),
+            "no account"
+        );
+        store
+            .store("server_crypt1", r#"{"password":"server-secret"}"#)
+            .unwrap();
+        store
+            .store("aerocrypt_overlay_pw_crypt1", "overlay-pw")
+            .unwrap();
+        store
+            .store("aerocrypt_overlay_salt_crypt1", "overlay-salt")
+            .unwrap();
+        store
+            .store("filen_api_key_fil1", "FILEN-KEY-LEGACY")
+            .unwrap();
+        store
+            .store("onedrive_drive_id_od1", "drive-legacy-id")
+            .unwrap();
+        store.store("onedrive_drive_type_od1", "business").unwrap();
+        store
+            .store(
+                "oauth_onedrive_od1",
+                r#"{"access_token":"od-access-legacy","refresh_token":"od-ref","token_type":"Bearer","expires_at":null}"#,
+            )
+            .unwrap();
+        store.store("oauth_onedrive_client_id", "od-cid").unwrap();
+        store
+            .store("oauth_onedrive_client_secret", "od-csec")
+            .unwrap();
+        store
+            .store(
+                "proton_native_session_pr1",
+                r#"{"uid":"puid-1","access_token":"proton-access-legacy","refresh_token":"proton-ref","key_password":"proton-kp"}"#,
+            )
+            .unwrap();
+        store
+            .store(
+                "oauth_dropbox_dbx1",
+                r#"{"access_token":"dbx-access-legacy","refresh_token":"dbx-ref","token_type":"Bearer","expires_at":null}"#,
+            )
+            .unwrap();
+        store.store("oauth_dropbox_client_id", "dbx-cid").unwrap();
+        store
+            .store("oauth_dropbox_client_secret", "dbx-csec")
+            .unwrap();
+        drop(store);
+
+        let servers = json!([
+            {
+                "id": "crypt1", "name": "Crypt", "host": "sftp.example.test", "port": 22,
+                "username": "u", "protocol": "sftp",
+                "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt",
+                    "passwordForm": "clear", "saltForm": "clear"},
+                "options": {}
+            },
+            {
+                "id": "fil1", "name": "Filen", "host": "filen.example.test", "port": 443,
+                "username": "u@example.test", "protocol": "filen", "options": {}
+            },
+            {
+                "id": "od1", "name": "OneDrive", "host": "graph.microsoft.com", "port": 443,
+                "username": "u", "protocol": "onedrive", "options": {}
+            },
+            {
+                "id": "pr1", "name": "Proton", "host": "drive.proton.me", "port": 443,
+                "username": "u", "protocol": "proton",
+                "options": {"proton_mode": "native"}
+            },
+            {
+                "id": "dbx1", "name": "Dropbox", "host": "www.dropbox.com", "port": 443,
+                "username": "u", "protocol": "dropbox", "options": {}
+            }
+        ])
+        .to_string();
+        let out_path = temporary.path().join("export.conf");
+        export_bridge_config(
+            "rclone".into(),
+            servers,
+            true,
+            out_path.to_string_lossy().into_owned(),
+        )
+        .await
+        .expect("the unscoped export succeeds");
+        let conf = std::fs::read_to_string(&out_path).unwrap();
+        assert!(conf.contains("type = crypt"), "crypt section:\n{conf}");
+        assert!(conf.contains("password = "), "overlay password:\n{conf}");
+        assert!(conf.contains("password2 = "), "overlay salt:\n{conf}");
+        assert!(
+            !conf.contains("password required but unavailable"),
+            "the overlay secrets reached the file:\n{conf}"
+        );
+        assert!(
+            conf.contains("type = filen") && conf.contains("api_key = "),
+            "the filen api key was exported:\n{conf}"
+        );
+        assert!(
+            !conf.contains("api_key required but unavailable"),
+            "the filen api key reached the file:\n{conf}"
+        );
+        assert!(
+            conf.contains("drive_id = drive-legacy-id") && conf.contains("drive_type = business"),
+            "the onedrive selectors reached the file:\n{conf}"
+        );
+        assert!(
+            conf.contains("client_access_token = proton-access-legacy"),
+            "the proton session reached the file:\n{conf}"
+        );
+        assert!(
+            conf.contains("od-access-legacy") && conf.contains("dbx-access-legacy"),
+            "the OAuth tokens reached the file:\n{conf}"
+        );
+        let read = crate::rclone_import::import_rclone(&out_path).unwrap();
+        assert!(
+            crate::bridge_shared::names_hosts_secrets(&read.servers)
+                .iter()
+                .any(|(name, host, secret)| {
+                    name == "Crypt" && host == "sftp.example.test" && secret == "server-secret"
+                }),
+            "the server password is in the file:\n{conf}"
+        );
+        assert!(
+            read.servers.iter().any(|s| {
+                s.name == "Filen"
+                    && s.options
+                        .as_ref()
+                        .and_then(|o| o.pointer("/filen_api_key"))
+                        .and_then(|v| v.as_str())
+                        == Some("FILEN-KEY-LEGACY")
+            }),
+            "the filen api key round-trips as the legacy one:\n{conf}"
+        );
+    }
+
+    /// A failed account lookup fails the export before it writes anything:
+    /// the destination keeps its bytes and no vault token reaches it. The
+    /// old `.ok().flatten()` turned the error into `None`, the same scope a
+    /// no-account export has, and the vault's OAuth token was written.
+    #[tokio::test]
+    async fn a_failed_account_lookup_fails_the_export_before_it_writes() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::a_failed_account_lookup_fails_the_export_before_it_writes",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let temporary = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password("export-lookup-pass")
+            .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("export-lookup-pass", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        store.store("oauth_dropbox_client_id", "cid").unwrap();
+        store
+            .store("oauth_dropbox_client_secret", "csecret")
+            .unwrap();
+        store
+            .store(
+                "oauth_dropbox_dbx1",
+                r#"{"access_token":"token-of-vault","refresh_token":"rv","token_type":"Bearer","expires_at":null}"#,
+            )
+            .unwrap();
+        store
+            .store("filen_api_key_fil1", "FILEN-KEY-VAULT")
+            .unwrap();
+        store
+            .store("onedrive_drive_id_od1", "drive-vault-id")
+            .unwrap();
+        store.store("onedrive_drive_type_od1", "personal").unwrap();
+        store
+            .store(
+                "oauth_onedrive_od1",
+                r#"{"access_token":"od-token-of-vault","refresh_token":"od-ref","token_type":"Bearer","expires_at":null}"#,
+            )
+            .unwrap();
+        store.store("oauth_onedrive_client_id", "od-cid").unwrap();
+        store
+            .store("oauth_onedrive_client_secret", "od-csec")
+            .unwrap();
+        store
+            .store(
+                "proton_native_session_pr1",
+                r#"{"uid":"puid-1","access_token":"proton-token-of-vault","refresh_token":"proton-ref","key_password":"proton-kp"}"#,
+            )
+            .unwrap();
+        drop(store);
+
+        let servers = json!([
+            {
+                "id": "dbx1", "name": "Dropbox", "host": "www.dropbox.com", "port": 443,
+                "username": "u", "protocol": "dropbox", "options": {}
+            },
+            {
+                "id": "fil1", "name": "Filen", "host": "filen.example.test", "port": 443,
+                "username": "u@example.test", "protocol": "filen", "options": {}
+            },
+            {
+                "id": "od1", "name": "OneDrive", "host": "graph.microsoft.com", "port": 443,
+                "username": "u", "protocol": "onedrive", "options": {}
+            },
+            {
+                "id": "pr1", "name": "Proton", "host": "drive.proton.me", "port": 443,
+                "username": "u", "protocol": "proton",
+                "options": {"proton_mode": "native"}
+            }
+        ])
+        .to_string();
+        let out_path = temporary.path().join("export.conf");
+        std::fs::write(&out_path, b"the user's own file\n").unwrap();
+        crate::user_partitions::ACCOUNT_LOOKUP_FAILS
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let refused = export_bridge_config(
+            "rclone".into(),
+            servers,
+            true,
+            out_path.to_string_lossy().into_owned(),
+        )
+        .await;
+        crate::user_partitions::ACCOUNT_LOOKUP_FAILS
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            refused.is_err(),
+            "a failed lookup fails the export: {refused:?}"
+        );
+        assert_eq!(
+            std::fs::read(&out_path).unwrap(),
+            b"the user's own file\n",
+            "nothing is written over the destination"
+        );
     }
 
     #[test]
