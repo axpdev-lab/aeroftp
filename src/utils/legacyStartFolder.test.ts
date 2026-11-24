@@ -34,6 +34,8 @@ describe('stripLegacyStartFolder', () => {
         for (const id of ['tabdigital', 'tabdigital-webdav', 'felicloud', 'felicloud-webdav', 'murena', 'nextcloud']) {
             expect(stripLegacyStartFolder('/remote.php/dav/files/alice/', id, 'alice', null), id).toBeNull();
         }
+        // An origin-only host (no path in the server URL) reads the same.
+        expect(stripLegacyStartFolder('/remote.php/dav/files/alice/', 'nextcloud', 'alice', 'https://cloud.example.test')).toBeNull();
         expect(stripLegacyStartFolder('/remote.php/dav/files/alice/Docs/', 'murena', 'alice', null))
             .toBe('/remote.php/dav/files/alice/Docs/');
         expect(stripLegacyStartFolder('/remote.php/dav/files/alice', 'webdav', 'alice', null))

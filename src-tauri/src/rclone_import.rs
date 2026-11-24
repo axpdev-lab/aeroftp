@@ -11213,6 +11213,75 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         }
     }
 
+    /// An rclone remote pointing below the account root of a hosted Nextcloud
+    /// preset keeps its subcollection: the preset's server template fills only
+    /// an empty host (`apply_webdav_profile_defaults`), and the imported path
+    /// stays in `basePath`, so the connect URL ends with the subcollection,
+    /// not the account root.
+    #[test]
+    fn an_imported_hosted_nextcloud_subcollection_keeps_its_path() {
+        let imported = map_remote(
+            "murena-team",
+            &RcloneRemote::from([
+                ("type".to_string(), "webdav".to_string()),
+                (
+                    "url".to_string(),
+                    "https://murena.io/remote.php/dav/files/alice/Team/".to_string(),
+                ),
+                ("vendor".to_string(), "nextcloud".to_string()),
+                ("user".to_string(), "alice".to_string()),
+            ]),
+            None,
+            ImportSourceKind::Template,
+        )
+        .unwrap();
+        assert_eq!(imported.provider_id.as_deref(), Some("murena"));
+        assert_eq!(imported.host, "murena.io");
+        assert_eq!(
+            imported.options.as_ref().unwrap()["basePath"],
+            "/remote.php/dav/files/alice/Team/",
+            "the subcollection stays in basePath"
+        );
+        // Run the complete imported profile through normal connection
+        // preparation: the preset's server template fills only an empty host,
+        // and the profile's own options apply after the preset defaults, so
+        // the imported collection survives to the connect URL.
+        let profile = serde_json::json!({
+            "protocol": "webdav",
+            "providerId": "murena",
+            "host": imported.host,
+            "port": imported.port,
+            "username": "alice",
+            "initialPath": imported.initial_path,
+            "options": imported.options,
+        });
+        let (extra, resolved_host) = crate::profile_loader::profile_connection_extra(
+            &profile,
+            crate::providers::ProviderType::WebDav,
+            &imported.host,
+        );
+        assert_eq!(resolved_host, "murena.io");
+        assert_eq!(
+            extra.get("base_path").map(String::as_str),
+            Some("/remote.php/dav/files/alice/Team/")
+        );
+        let config = crate::providers::ProviderConfig {
+            name: "murena-team".into(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: resolved_host,
+            port: Some(imported.port as u16),
+            username: Some("alice".to_string()),
+            password: None,
+            initial_path: None,
+            extra,
+        };
+        let connect = crate::providers::types::WebDavConfig::from_provider_config(&config).unwrap();
+        assert_eq!(
+            connect.url, "https://murena.io/remote.php/dav/files/alice/Team/",
+            "the preset server template must not replace the imported collection"
+        );
+    }
+
     #[test]
     fn test_export_rclone_webdav_owncloud_appends_dav_path() {
         let servers = vec![RcloneExportServer {

@@ -993,6 +993,17 @@ mod tests {
             strip_legacy_start_folder("/remote.php/dav/files/alice/Docs/", "murena", "alice", ""),
             "/remote.php/dav/files/alice/Docs/"
         );
+        // An origin-only host (no path in the server URL) reads the same:
+        // the root strip does not depend on the server carrying a path.
+        assert_eq!(
+            strip_legacy_start_folder(
+                "/remote.php/dav/files/alice/",
+                "nextcloud",
+                "alice",
+                "https://cloud.example.test"
+            ),
+            "/"
+        );
     }
 
     /// The GUI keeps the same table, so a profile opens the same folder in
