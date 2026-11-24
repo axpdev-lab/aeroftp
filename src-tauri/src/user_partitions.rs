@@ -11864,11 +11864,10 @@ fn empty_partition_database(conn: &Connection) -> Result<(), String> {
 /// holds now is not rebuilt ([`REBUILD_WHILE_WRITTEN`]). The file is emptied
 /// where it stands, inside that transaction: there is no removal a commit
 /// could fall into the gap of, on Windows included, where a file a
-/// connection holds open cannot be removed at all. A database whose
-/// `BEGIN IMMEDIATE` fails for a reason other than a held lock cannot be
-/// emptied in place, and removing its file would leave exactly that gap:
-/// a commit or a replacement landing between the check and the removal;
-/// so the rebuild refuses it too ([`REBUILD_WHILE_WRITTEN`]).
+/// connection holds open cannot be removed at all. A `BEGIN IMMEDIATE` that
+/// fails for any reason refuses the rebuild ([`REBUILD_WHILE_WRITTEN`])
+/// before the snapshot and before the session is dropped: the file a writer
+/// may still hold stays, and so does the unlocked session.
 fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<PathBuf>, String> {
     if !path.is_file() {
         return Ok(None);
@@ -11885,33 +11884,18 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
     let mut session = hold_session().unwrap_or(SessionHold(None));
     #[cfg(test)]
     run_dual_write_hook(&BEFORE_REBUILD_WRITE_LOCK);
-    let write_locked = match guard.execute_batch("BEGIN IMMEDIATE") {
-        Ok(()) => true,
-        Err(rusqlite::Error::SqliteFailure(e, _))
-            if matches!(
-                e.code,
-                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-            ) =>
-        {
-            return Err(REBUILD_WHILE_WRITTEN.to_string());
-        }
-        Err(_) => false,
-    };
+    if guard.execute_batch("BEGIN IMMEDIATE").is_err() {
+        // Busy, locked, or a database that cannot be emptied in place: the
+        // rebuild refuses before the snapshot, so no commit can land in a
+        // removal gap and the unlocked session is not dropped for nothing.
+        return Err(REBUILD_WHILE_WRITTEN.to_string());
+    }
     let backup = snapshot_before_rebuild(path)?;
     #[cfg(test)]
     run_dual_write_hook(&AFTER_REBUILD_SNAPSHOT);
     // Drop any unlocked session before the database is emptied or removed.
     session.clear();
-    if write_locked {
-        empty_partition_database(&guard)?;
-    } else {
-        // `BEGIN IMMEDIATE` failed for a reason other than a held lock, so
-        // the file cannot be emptied in place, and removing it would open
-        // the gap a commit or a replacement could land in, on any platform.
-        // `PRAGMA data_version` cannot close that gap: it is per connection,
-        // so two reads prove nothing about the file. Refuse the rebuild.
-        return Err(REBUILD_WHILE_WRITTEN.to_string());
-    }
+    empty_partition_database(&guard)?;
     drop(session);
     invalidate_session_consumers();
     Ok(Some(backup))
@@ -14364,7 +14348,9 @@ mod tests {
     /// not be told apart from the damaged file itself (`PRAGMA
     /// data_version` is per connection, so it proves nothing), so the
     /// rebuild refuses instead of removing: the file a writer replaced
-    /// stays, commits and all.
+    /// stays, commits and all. The refusal now comes before the snapshot,
+    /// so the writer lands while the rebuild takes its locks, on a new
+    /// name the rebuild's guard never opened.
     #[test]
     fn a_commit_in_the_damaged_removal_gap_keeps_the_file() {
         let _guard = test_lock();
@@ -14373,11 +14359,13 @@ mod tests {
         let path = dir.path().join(DB_FILENAME);
         std::fs::write(&path, b"not a sqlite database").unwrap();
         let writer_path = path.clone();
-        AFTER_REBUILD_SNAPSHOT.set(Some(Box::new(move || {
-            // A writer in the gap the removal would have opened: it
-            // replaces the damaged file with a database of its own and
-            // commits to it. The rebuild's guard still holds the file
-            // open, so the image is written over it, not renamed in.
+        BEFORE_REBUILD_WRITE_LOCK.set(Some(Box::new(move || {
+            // A writer while the rebuild holds the session and is about to
+            // take the database's write lock: it replaces the damaged file
+            // with a database of its own, under a new name, and commits to
+            // it. The rebuild's guard still holds the damaged inode open,
+            // so its `BEGIN IMMEDIATE` fails and it never touches the
+            // writer's file.
             let image = writer_path.with_extension("raced-image.db");
             let conn = Connection::open(&image).unwrap();
             conn.execute_batch(
@@ -14386,8 +14374,7 @@ mod tests {
             )
             .unwrap();
             drop(conn);
-            std::fs::copy(&image, &writer_path).unwrap();
-            let _ = std::fs::remove_file(&image);
+            std::fs::rename(&image, &writer_path).unwrap();
         })));
         let refused = remove_partitions_db_for_rebuild(&path);
         let error = refused.expect_err("a commit in the gap was not seen");
@@ -14398,6 +14385,43 @@ mod tests {
             .query_row("SELECT id FROM raced", [], |row| row.get(0))
             .unwrap();
         assert_eq!(raced, 1, "the writer's commit is still there");
+    }
+
+    /// A rebuild refused on a `BEGIN IMMEDIATE` that is not a held lock
+    /// returns before the snapshot and before `session.clear`: the file
+    /// stays and the unlocked session is not dropped for a rebuild that
+    /// never ran.
+    #[test]
+    fn a_refused_rebuild_keeps_the_unlocked_session() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(DB_FILENAME);
+        // A file that is not a database makes `BEGIN IMMEDIATE` fail with
+        // an error that is neither busy nor locked.
+        std::fs::write(&path, b"not a sqlite database").unwrap();
+        set_user_session(7, user_crypto::secret_key_from_bytes(&[7u8; 32])).unwrap();
+        assert_eq!(session_user_id(), Some(7));
+        let before = session_generation();
+        let error =
+            remove_partitions_db_for_rebuild(&path).expect_err("a damaged database was rebuilt");
+        assert!(error.contains("being written"), "{error}");
+        assert_eq!(
+            session_generation(),
+            before,
+            "the refused rebuild dropped the session"
+        );
+        assert_eq!(
+            session_user_id(),
+            Some(7),
+            "the refused rebuild dropped the session"
+        );
+        assert!(path.exists(), "the refused rebuild removed the file");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"not a sqlite database",
+            "the refused rebuild snapshotted or emptied the file"
+        );
     }
 
     /// A connection that began with no account reads the legacy blob while no
