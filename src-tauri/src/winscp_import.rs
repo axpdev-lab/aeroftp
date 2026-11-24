@@ -776,6 +776,8 @@ pub struct WinScpExportServer {
     pub username: String,
     pub protocol: Option<String>,
     pub options: Option<serde_json::Value>,
+    #[serde(default)]
+    pub provider_id: Option<String>,
     pub initial_path: Option<String>,
 }
 
@@ -875,7 +877,7 @@ pub fn export_winscp(
                 server.port,
                 &server.username,
                 server.options.as_ref(),
-                None,
+                server.provider_id.as_deref(),
             ) {
                 Ok(Some(endpoint)) if !endpoint.is_tls() => {
                     outcome.skip(
@@ -1070,6 +1072,7 @@ mod tests {
                 username: "u".to_string(),
                 protocol: Some("sftp".to_string()),
                 options: None,
+                provider_id: None,
                 initial_path: None,
             })
             .collect();
@@ -1210,6 +1213,7 @@ FSProtocol=1
             username: "root".to_string(),
             protocol: Some(protocol.to_string()),
             options,
+            provider_id: None,
             initial_path: None,
         };
         let servers = vec![
@@ -1982,6 +1986,7 @@ FSProtocol=1
             username: "DEMOKEY".into(),
             protocol: Some("s3".into()),
             options: None,
+            provider_id: None,
             initial_path: None,
         };
         let dir = tempfile::tempdir().unwrap();
@@ -1991,6 +1996,33 @@ FSProtocol=1
         assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
         let ini = std::fs::read_to_string(&out).unwrap();
         assert!(ini.contains("HostName=s3.amazonaws.com\n"), "{ini}");
+        assert!(ini.contains("PortNumber=443\n"), "{ini}");
+    }
+
+    #[test]
+    fn export_empty_host_wasabi_uses_its_regional_preset_endpoint() {
+        let server: WinScpExportServer = serde_json::from_value(serde_json::json!({
+            "id": "wasabi",
+            "name": "Wasabi",
+            "host": "",
+            "port": 443,
+            "username": "DEMOKEY",
+            "protocol": "s3",
+            "options": {"region": "eu-west-1"},
+            "providerId": "wasabi",
+            "initialPath": null
+        }))
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("WinSCP.ini");
+
+        let outcome = export_winscp(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
+        let ini = std::fs::read_to_string(&out).unwrap();
+        assert!(
+            ini.contains("HostName=s3.eu-west-1.wasabisys.com\n"),
+            "{ini}"
+        );
         assert!(ini.contains("PortNumber=443\n"), "{ini}");
     }
 
@@ -2006,6 +2038,7 @@ FSProtocol=1
             options: Some(serde_json::json!({
                 "endpoint": "https://objects.example.test:9000/gateway"
             })),
+            provider_id: None,
             initial_path: None,
         };
         let dir = tempfile::tempdir().unwrap();

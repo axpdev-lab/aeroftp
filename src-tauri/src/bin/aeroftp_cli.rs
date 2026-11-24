@@ -44157,8 +44157,8 @@ async fn cmd_export_winscp(
     };
     let selectors = parse_profile_selectors(profiles);
 
-    // WinSCP only handles FTP/FTPS/SFTP. Everything else is skipped.
-    let supported = ["ftp", "ftps", "sftp"];
+    // WinSCP handles FTP/FTPS/SFTP and S3. Everything else is skipped.
+    let supported = ["ftp", "ftps", "sftp", "s3"];
     let oauth: [&str; 0] = [];
 
     let collected = match collect_export_scaffold(
@@ -44191,6 +44191,7 @@ async fn cmd_export_winscp(
             username: p.username.clone(),
             protocol: Some(p.protocol.clone()),
             options: p.options.clone(),
+            provider_id: p.provider_id.clone(),
             initial_path: p.initial_path.clone(),
         })
         .collect();

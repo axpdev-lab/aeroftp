@@ -397,10 +397,10 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
         });
     };
 
-    const setBlockSecretForm = (blockName: string, form: CryptSecretForm) => {
+    const setBlockSecretForm = (selectionKey: string, form: CryptSecretForm) => {
         setSecretForms(prev => ({
             ...prev,
-            [blockName]: form,
+            [selectionKey]: form,
         }));
     };
 
@@ -444,8 +444,10 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                     .map(r => ({ fileIndex: sec.fileIndex, key: r.key })),
             );
             const activeSecretBlocks = new Set([
-                ...preview.secretChoiceBlocks,
-                ...preview.rows.filter(showsSecretChoice).map(r => r.blockName),
+                ...preview.secretChoiceBlocks.flatMap(name =>
+                    preview.rows.filter(r => r.blockName === name).map(blockSelectionKey),
+                ),
+                ...preview.rows.filter(showsSecretChoice).map(blockSelectionKey),
             ]);
             const activeSecretForms = Object.fromEntries(
                 Object.entries(secretForms).filter(([blockName]) =>
@@ -759,7 +761,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                                         || PROVIDER_LOGOS[row.protocol.toLowerCase()]
                                         || PROVIDER_LOGOS[row.protocol];
                                     const checked = row.action !== 'skip' && selectedBlocks.has(blockSelectionKey(row));
-                                    const chosenForm = secretForms[row.blockName] ?? row.secretForm ?? undefined;
+                                    const chosenForm = secretForms[blockSelectionKey(row)] ?? row.secretForm ?? undefined;
                                     return (
                                         <div key={`${row.blockName}-${row.fileIndex}`} className="px-3 py-2 text-xs space-y-1">
                                             <div className="flex items-center gap-2">
@@ -813,7 +815,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                                                     <CryptSecretFormChoice
                                                         legend={row.blockName}
                                                         value={chosenForm}
-                                                        onChange={(form) => setBlockSecretForm(row.blockName, form)}
+                                                        onChange={(form) => setBlockSecretForm(blockSelectionKey(row), form)}
                                                         missing={checked && row.needsSecretFormChoice}
                                                         clearLabel={t('settings.templateSecretFormClear')}
                                                         obscuredLabel={t('settings.templateSecretFormObscured')}

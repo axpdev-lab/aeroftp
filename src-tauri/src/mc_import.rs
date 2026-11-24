@@ -379,10 +379,20 @@ pub fn export_mc(
                 continue;
             }
         };
+        if endpoint
+            .as_ref()
+            .is_some_and(|endpoint| !endpoint.path.is_empty())
+        {
+            outcome.skip(
+                &server.name,
+                "mc cannot preserve an S3 endpoint base path as an alias URL",
+            );
+            continue;
+        }
         // No endpoint of its own: the profile is on AWS.
         let url = endpoint
             .as_ref()
-            .map(|ep| ep.url())
+            .map(|ep| ep.base_url())
             .unwrap_or_else(|| "https://s3.amazonaws.com".to_string());
 
         let api = server
@@ -931,7 +941,7 @@ mod tests {
     }
 
     #[test]
-    fn export_preserves_an_s3_endpoint_base_path() {
+    fn export_refuses_an_s3_endpoint_base_path() {
         let server: McExportServer = serde_json::from_value(serde_json::json!({
             "id": "path",
             "name": "path",
@@ -947,22 +957,9 @@ mod tests {
         let out = write_tmp("endpoint-path-out", "{}");
 
         let outcome = export_mc(&[server], &HashMap::new(), &out).unwrap();
-        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
-        let doc: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
-        assert_eq!(
-            doc["aliases"]["path"]["url"],
-            "https://objects.example.test:9000/team@east"
-        );
-        let back = import_mc(&out).unwrap();
-        assert_eq!(
-            back.servers[0]
-                .options
-                .as_ref()
-                .and_then(|o| o.get("endpoint"))
-                .and_then(|v| v.as_str()),
-            Some("https://objects.example.test:9000/team@east")
-        );
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("base path"));
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "{}");
     }
 
     #[test]

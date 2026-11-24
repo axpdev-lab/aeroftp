@@ -214,7 +214,14 @@ struct LoadedTemplate {
 pub fn build_secret_policy(
     default_form: Option<TemplateSecretForm>,
     per_block: &HashMap<String, TemplateSecretForm>,
+    content: &str,
 ) -> TemplateSecretPolicy {
+    let source_by_id: HashMap<String, String> =
+        crate::rclone_import::parse_ini_sections_with_spans(content)
+            .sections
+            .into_iter()
+            .map(|section| (source_selection_id(&section.name), section.name))
+            .collect();
     let cleaned = per_block
         .iter()
         .filter_map(|(k, v)| {
@@ -222,7 +229,11 @@ pub fn build_secret_policy(
             if trimmed.is_empty() {
                 None
             } else {
-                Some((trimmed.to_string(), *v))
+                let key = source_by_id
+                    .get(trimmed)
+                    .cloned()
+                    .unwrap_or_else(|| trimmed.to_string());
+                Some((key, *v))
             }
         })
         .collect();
@@ -767,7 +778,11 @@ pub fn preview_template_with_current(
     current: &[Value],
 ) -> Result<TemplatePreviewReport, String> {
     let loaded = load_template_input(input)?;
-    let secret_policy = build_secret_policy(options.default_secret_form, &options.secret_forms);
+    let secret_policy = build_secret_policy(
+        options.default_secret_form,
+        &options.secret_forms,
+        &loaded.content,
+    );
     let eval = evaluate_template_text(
         &loaded.content,
         loaded.base_dir.as_deref(),
@@ -872,7 +887,11 @@ pub(crate) fn apply_template_with_slots<S: SecretSlots>(
         }
     }
 
-    let secret_policy = build_secret_policy(options.default_secret_form, &options.secret_forms);
+    let secret_policy = build_secret_policy(
+        options.default_secret_form,
+        &options.secret_forms,
+        &loaded.content,
+    );
     let relax_policy = RelaxationPolicy::Keep(options.keep_relaxed.clone());
     let eval = evaluate_template_text(
         &loaded.content,
@@ -3964,6 +3983,84 @@ pass = UniqueProfileSecret!
             stored.as_deref().map(|s| s.as_str()),
             Some("IntendedSecret!")
         );
+    }
+
+    #[test]
+    fn secret_forms_use_selection_identity_for_colliding_display_names() {
+        let obscured = crate::rclone_import::obscure_password("SecondFormSecret!").unwrap();
+        let input = TemplateInput::Text {
+            content: format!(
+                "[https://alice:source-pass@vault.example.test]\ntype = sftp\nhost = clear.example.test\nuser = alice\npass = FirstFormSecret!\n\n\
+                 [https://bob:source-pass@vault.example.test]\ntype = sftp\nhost = obscured.example.test\nuser = bob\npass = {obscured}\n"
+            ),
+        };
+        let env = TestVaultEnv::new();
+        let initial = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Duplicate,
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        assert_eq!(initial.rows[0].block_name, initial.rows[1].block_name);
+        let forms = HashMap::from([
+            (
+                initial.rows[0].selection_id.clone(),
+                TemplateSecretForm::Clear,
+            ),
+            (
+                initial.rows[1].selection_id.clone(),
+                TemplateSecretForm::Obscured,
+            ),
+        ]);
+
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Duplicate,
+                secret_forms: forms.clone(),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        assert_eq!(preview.rows[0].secret_form, Some(TemplateSecretForm::Clear));
+        assert_eq!(
+            preview.rows[1].secret_form,
+            Some(TemplateSecretForm::Obscured)
+        );
+        assert!(!preview.rows[0].needs_secret_form_choice);
+        assert!(!preview.rows[1].needs_secret_form_choice);
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Duplicate,
+                secret_forms: forms,
+                expected_digest_sha256: Some(preview.digest_sha256),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.applied.len(), 2);
+        for (row, secret) in applied
+            .applied
+            .iter()
+            .zip(["FirstFormSecret!", "SecondFormSecret!"])
+        {
+            let stored = user_partitions::resolve_credential_for_user(
+                &env.store,
+                env.user_id,
+                &format!("server_{}", row.profile_id),
+            )
+            .unwrap();
+            assert_eq!(stored.as_deref().map(|s| s.as_str()), Some(secret));
+        }
     }
 
     #[test]

@@ -267,6 +267,11 @@ fn map_duck(xml: &str) -> DuckOutcome {
                     by_host
                 }
             };
+            let initial_path = path.as_deref().and_then(|path| {
+                let path = path.trim_start_matches('/');
+                let (_, prefix) = path.split_once('/')?;
+                (!prefix.is_empty()).then(|| format!("/{prefix}"))
+            });
             let mut options = crate::bridge_shared::json_map(&opts);
             if path_style {
                 options.insert("pathStyle".into(), serde_json::Value::Bool(true));
@@ -282,7 +287,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
                 } else {
                     Some(serde_json::Value::Object(options))
                 },
-                initial_path: path,
+                initial_path,
             })
         }
 
@@ -1178,7 +1183,7 @@ mod tests {
             opts.get("bucket").and_then(|v| v.as_str()),
             Some("my-bucket")
         );
-        assert_eq!(s.initial_path.as_deref(), Some("/my-bucket/subfolder"));
+        assert_eq!(s.initial_path.as_deref(), Some("/subfolder"));
 
         // Case-insensitive hostname matching check.
         let xml_case = S3_DUCK
@@ -1228,7 +1233,7 @@ mod tests {
         let opts = s.options.as_ref().expect("S3 options").as_object().unwrap();
         assert_eq!(opts.get("bucket").and_then(|v| v.as_str()), Some("backup"));
         assert_eq!(opts.get("pathStyle").and_then(|v| v.as_bool()), Some(true));
-        assert_eq!(s.initial_path.as_deref(), Some("/backup/files"));
+        assert_eq!(s.initial_path.as_deref(), Some("/files"));
     }
 
     #[test]
@@ -1632,10 +1637,7 @@ mod tests {
             .unwrap()
         };
         let dir = tempfile::tempdir().unwrap();
-        let servers = [
-            server("plain", "/archive"),
-            server("scoped", "/media/photos"),
-        ];
+        let servers = [server("plain", "/archive"), server("scoped", "/photos")];
 
         let outcome = export_cyberduck(&servers, &HashMap::new(), dir.path()).unwrap();
         assert_eq!((outcome.exported, outcome.skipped.len()), (2, 0));
@@ -1645,6 +1647,26 @@ mod tests {
                 duck.contains(&format!("<key>Path</key>\n\t<string>{path}</string>")),
                 "{name}:\n{duck}"
             );
+        }
+
+        let back = import_cyberduck(dir.path()).unwrap();
+        for (name, prefix) in [("plain", "/archive"), ("scoped", "/photos")] {
+            let server = back.servers.iter().find(|s| s.name == name).unwrap();
+            assert_eq!(server.initial_path.as_deref(), Some(prefix));
+            let config = crate::providers::types::S3Config::from_provider_config(
+                &crate::providers::types::ProviderConfig {
+                    name: server.name.clone(),
+                    provider_type: crate::providers::types::ProviderType::S3,
+                    host: server.host.clone(),
+                    port: Some(server.port as u16),
+                    username: Some(server.username.clone()),
+                    password: None,
+                    initial_path: server.initial_path.clone(),
+                    extra: HashMap::from([("bucket".to_string(), "media".to_string())]),
+                },
+            )
+            .unwrap();
+            assert_eq!(config.prefix.as_deref(), Some(prefix));
         }
     }
 

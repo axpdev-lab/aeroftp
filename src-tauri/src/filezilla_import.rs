@@ -1678,7 +1678,7 @@ pub fn export_filezilla(
                             } else {
                                 server.host.clone()
                             },
-                            if server.port == 0 { 443 } else { server.port },
+                            443,
                             "https",
                             String::new(),
                         ),
@@ -3805,25 +3805,45 @@ mod tests {
     fn export_root_aws_with_empty_host_writes_the_default_s3_address() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sitemanager.xml");
-        let server = FileZillaExportServer {
+        let root = FileZillaExportServer {
             id: "root-aws".into(),
             name: "RootAws".into(),
             host: String::new(),
-            port: 0,
+            port: 9443,
             username: "DEMOKEY".into(),
             protocol: Some("s3".into()),
             initial_path: None,
             options: Some(serde_json::json!({"bucket": "media"})),
         };
+        let explicit = FileZillaExportServer {
+            id: "explicit-aws".into(),
+            name: "ExplicitAws".into(),
+            host: String::new(),
+            port: 443,
+            username: "DEMOKEY2".into(),
+            protocol: Some("s3".into()),
+            initial_path: None,
+            options: Some(serde_json::json!({
+                "bucket": "media",
+                "endpoint": "https://s3.eu-west-1.amazonaws.com:9443"
+            })),
+        };
 
-        let outcome = export_filezilla(&[server], &HashMap::new(), &path).unwrap();
-        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
+        let outcome = export_filezilla(&[root, explicit], &HashMap::new(), &path).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (2, 0));
         let xml = std::fs::read_to_string(&path).unwrap();
         assert!(xml.contains("<Host>s3.amazonaws.com</Host>"), "{xml}");
-        assert!(xml.contains("<Port>443</Port>"), "{xml}");
         let back = import_filezilla(&path).unwrap();
-        assert_eq!(back.servers[0].host, "s3.amazonaws.com");
-        assert_eq!(back.servers[0].port, 443);
+        let root = back.servers.iter().find(|s| s.name == "RootAws").unwrap();
+        assert_eq!(root.host, "s3.amazonaws.com");
+        assert_eq!(root.port, 443);
+        let explicit = back
+            .servers
+            .iter()
+            .find(|s| s.name == "ExplicitAws")
+            .unwrap();
+        assert_eq!(explicit.host, "s3.eu-west-1.amazonaws.com");
+        assert_eq!(explicit.port, 9443);
     }
 
     #[test]

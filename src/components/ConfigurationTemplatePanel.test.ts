@@ -64,7 +64,7 @@ describe('ConfigurationTemplatePanel', () => {
         vi.mocked(invoke).mockImplementation(async (cmd, args) => {
             if (cmd === 'preview_configuration_template') {
                 const payload = args as { options: { secretForms?: Record<string, string>; existing: string } };
-                const chosenForm = payload.options.secretForms?.alpha ?? null;
+                const chosenForm = payload.options.secretForms?.['source-alpha'] ?? null;
                 return {
                     rows: [
                         {
@@ -204,7 +204,7 @@ describe('ConfigurationTemplatePanel', () => {
         expect(vi.mocked(invoke)).toHaveBeenLastCalledWith(
             'preview_configuration_template',
             expect.objectContaining({
-                options: expect.objectContaining({ secretForms: { alpha: 'clear' } }),
+                options: expect.objectContaining({ secretForms: { 'source-alpha': 'clear' } }),
             }),
         );
         expect(submitBtn.disabled).toBe(false);
@@ -219,7 +219,7 @@ describe('ConfigurationTemplatePanel', () => {
             'import_configuration_template',
             expect.objectContaining({
                 options: expect.objectContaining({
-                    secretForms: { alpha: 'clear' },
+                    secretForms: { 'source-alpha': 'clear' },
                     selectedBlocks: ['source-alpha'],
                     expectedDigestSha256: 'abc123',
                     expectedPlanDigestSha256: 'plan-sha-1',
@@ -752,15 +752,16 @@ describe('ConfigurationTemplatePanel', () => {
 });
 
 describe('ConfigurationTemplatePanel review state across previews', () => {
-    type Block = { name: string; relaxed?: boolean; secret?: boolean };
+    type Block = { name: string; selectionId?: string; relaxed?: boolean; secret?: boolean };
     /** A preview report of `blocks`, in that order; `forms` are the chosen
      *  secret forms. */
     const report = (blocks: Block[], forms: Record<string, string> = {}) => ({
         rows: blocks.map((block, fileIndex) => ({
-            fileIndex, blockName: block.name, targetName: block.name, startLine: 1 + fileIndex * 4,
+            fileIndex, blockName: block.name, selectionId: block.selectionId, targetName: block.name, startLine: 1 + fileIndex * 4,
             protocol: 'webdav', providerId: null, host: `${block.name}.example.com`, port: 443, username: 'u',
             hasCredential: false, hasSecretInput: !!block.secret, looksObscured: false,
-            secretForm: forms[block.name] ?? null, needsSecretFormChoice: !!block.secret && !forms[block.name],
+            secretForm: forms[block.selectionId ?? block.name] ?? null,
+            needsSecretFormChoice: !!block.secret && !forms[block.selectionId ?? block.name],
             existingMatchId: null, existingMatchName: null, action: 'add', duplicateInTemplate: false,
             secretDisposition: 'none', secretNote: '',
         })),
@@ -817,6 +818,36 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
             options: expect.objectContaining({ secretForms: { alpha: 'clear' } }),
         }));
         expect(host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!.disabled).toBe(true);
+    });
+
+    it('keeps different secret forms on rows with the same display name', async () => {
+        vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+            if (cmd === 'preview_configuration_template') {
+                const forms = (args as { options: { secretForms?: Record<string, string> } }).options.secretForms ?? {};
+                return report([
+                    { name: 'vault', selectionId: 'source-a', secret: true },
+                    { name: 'vault', selectionId: 'source-b', secret: true },
+                ], forms);
+            }
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        await renderPanel();
+        await type('[a]\n[b]\n');
+
+        const choices = host.querySelectorAll<HTMLElement>('[data-testid="template-secret-choice-vault"]');
+        expect(choices).toHaveLength(2);
+        const first = choices[0].querySelectorAll<HTMLInputElement>('input[type="radio"]');
+        const second = choices[1].querySelectorAll<HTMLInputElement>('input[type="radio"]');
+        await act(async () => { first[0].click(); });
+        await flush();
+        await act(async () => { second[1].click(); });
+        await flush();
+
+        expect(vi.mocked(invoke)).toHaveBeenLastCalledWith('preview_configuration_template', expect.objectContaining({
+            options: expect.objectContaining({
+                secretForms: { 'source-a': 'clear', 'source-b': 'obscured' },
+            }),
+        }));
     });
 
     it("keeps a consent on alpha's option when the blocks are reordered, and never moves it to beta", async () => {

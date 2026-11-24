@@ -962,7 +962,8 @@ fn expand_rclone_key_files(
                     format!(
                         "the key_file of '{}' expands past {} bytes, which names no file; \
                          check its environment variables",
-                        name.replace(['\n', '\r'], " "),
+                        crate::bridge_shared::sanitize_warning_name(name, "rclone remote")
+                            .replace(['\n', '\r'], " "),
                         MAX_RCLONE_KEY_PATH_BYTES
                     )
                 })?;
@@ -3357,9 +3358,15 @@ fn resolve_rclone_transport_cached(
     }
 }
 
+#[derive(Default)]
+struct RcloneResolution<'a> {
+    raw_sections: Option<&'a HashMap<String, RcloneRemote>>,
+    unresolved_inherited: Option<&'a HashSet<String>>,
+}
+
 fn import_parsed_sections(
     mut sections: HashMap<String, RcloneRemote>,
-    raw_sections: Option<&HashMap<String, RcloneRemote>>,
+    resolution: RcloneResolution<'_>,
     ordered_names: Option<&[String]>,
     aeroftp_export: Option<AeroftpExport>,
     config_dir: Option<&Path>,
@@ -3449,6 +3456,17 @@ fn import_parsed_sections(
         if folded.contains(name.as_str()) {
             continue;
         }
+        if resolution
+            .unresolved_inherited
+            .is_some_and(|unresolved| unresolved.contains(name))
+        {
+            skipped.push(RcloneSkippedRemote {
+                name: crate::bridge_shared::sanitize_warning_name(name, "rclone remote"),
+                rclone_type: crate::bridge_shared::sanitize_warning_name(rclone_type, "unknown"),
+                reason: "rclone inherited connection fields exceeded substitution expansion limits; skipped so AeroFTP does not import a different target".to_string(),
+            });
+            continue;
+        }
 
         // The section holding the OAuth app (`client_id`, `client_secret`):
         // for an alias or a crypt, the remote it opens, whose token was mapped.
@@ -3486,7 +3504,7 @@ fn import_parsed_sections(
                     let include_ssh = mapped.protocol == "sftp";
                     let transport = resolve_rclone_transport_cached(
                         &mut transport_cache,
-                        raw_sections.unwrap_or(&sections),
+                        resolution.raw_sections.unwrap_or(&sections),
                         app_section,
                         &base_name,
                         source,
@@ -3762,6 +3780,47 @@ fn parse_rclone_goconfig_raw_sections(content: &str) -> HashMap<String, RcloneRe
     sections
 }
 
+fn materialize_rclone_inherited_fields(
+    sections: &HashMap<String, RcloneRemote>,
+) -> (HashMap<String, RcloneRemote>, HashSet<String>) {
+    let mut effective = sections.clone();
+    let mut unresolved = HashSet::new();
+    let mut default_memo = GoconfigDefaultMemo::default();
+
+    for name in sections.keys() {
+        let mut current = name.as_str();
+        while let Some((parent, _)) = current.rsplit_once('.') {
+            let parent = if parent.is_empty() { "DEFAULT" } else { parent };
+            let Some(section) = sections.get(parent) else {
+                break;
+            };
+            for (key, raw) in section {
+                if effective[name].contains_key(key) {
+                    continue;
+                }
+                match expand_goconfig_substitutions_cached(
+                    section,
+                    sections.get("DEFAULT"),
+                    raw,
+                    &mut default_memo,
+                ) {
+                    Ok(value) => {
+                        effective
+                            .get_mut(name)
+                            .expect("section cloned")
+                            .insert(key.clone(), value.into_owned());
+                    }
+                    Err(_) => {
+                        unresolved.insert(name.clone());
+                    }
+                }
+            }
+            current = parent;
+        }
+    }
+    (effective, unresolved)
+}
+
 pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     // Read through the cap, not after a size check: a file that grows between
     // the caller's metadata check and this read cannot get past it.
@@ -3791,15 +3850,20 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         .map(|section| (section.name, section.data))
         .collect();
     let raw_sections = parse_rclone_goconfig_raw_sections(&content);
+    let (effective_sections, unresolved_inherited) =
+        materialize_rclone_inherited_fields(&raw_sections);
     for (name, data) in &mut sections {
-        if let Some(raw) = raw_sections.get(name) {
+        if let Some(raw) = effective_sections.get(name) {
             data.clone_from(raw);
         }
     }
     let aeroftp_export = aeroftp_export_header(&content);
     let outcome = import_parsed_sections(
         sections,
-        Some(&raw_sections),
+        RcloneResolution {
+            raw_sections: Some(&raw_sections),
+            unresolved_inherited: Some(&unresolved_inherited),
+        },
         None,
         aeroftp_export,
         rclone_config_dir(config_path).as_deref(),
@@ -4065,7 +4129,7 @@ pub(crate) fn evaluate_template_text(
     let aeroftp_export = aeroftp_export_header(trimmed_bom);
     let outcome = import_parsed_sections(
         sections,
-        None,
+        RcloneResolution::default(),
         Some(&ordered_names),
         aeroftp_export,
         base_dir,
@@ -8264,6 +8328,49 @@ http_proxy =
 
         assert_eq!(imported(&result, "site").host, "files.example.test");
         assert_eq!(imported(&result, "ordinary").host, "ordinary.example.test");
+    }
+
+    #[test]
+    fn effective_inherited_fields_include_empty_and_explicit_overrides() {
+        let result = import_text(
+            "[parent]\ntype = sftp\nhost = parent.example.test\nuser = alice\nport = 2222\n\n\
+             [parent.child]\nhost = child.example.test\n\n\
+             [parent.explicit]\nhost = explicit.example.test\nuser = bob\nport = 2022\n\n\
+             [parent.empty]\nhost = empty.example.test\nuser =\nport =\n",
+            "effective-inherited-fields",
+        );
+
+        let child = imported(&result, "parent.child");
+        assert_eq!(child.host, "child.example.test");
+        assert_eq!(child.username, "alice");
+        assert_eq!(child.port, 2222);
+        let explicit = imported(&result, "parent.explicit");
+        assert_eq!(explicit.username, "bob");
+        assert_eq!(explicit.port, 2022);
+        let empty = imported(&result, "parent.empty");
+        assert_eq!(empty.username, "");
+        assert_eq!(empty.port, 22);
+    }
+
+    #[test]
+    fn quoted_key_file_expansion_error_sanitizes_the_section_name() {
+        let secret = "RCLONE_KEY_PATH_SECRET";
+        let input = format!(
+            "[sftp://alice:{secret}@files.example.test]\ntype = sftp\nhost = files.example.test\n\"key_file\" = {}\n",
+            "${HOME}".repeat(1025)
+        );
+        let path = tmp_write(
+            &input,
+            &format!("aeroftp-test-key-path-error-{}.conf", std::process::id()),
+        );
+        let error = match import_rclone(&path) {
+            Ok(_) => panic!("oversized key_file expansion must be refused"),
+            Err(error) => error,
+        };
+        std::fs::remove_file(&path).ok();
+        assert!(error.contains("expands past 4096 bytes"), "{error}");
+        assert!(error.contains("check its environment variables"), "{error}");
+        assert!(!error.contains(secret), "{error}");
     }
 
     #[test]
