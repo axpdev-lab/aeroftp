@@ -1163,11 +1163,11 @@ pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
 ) -> Result<(), ProviderError> {
     let versions = match provider.list_versions(path).await {
         Ok(versions) => versions,
-        Err(ProviderError::PermissionDenied(_)) => {
+        Err(ProviderError::PermissionDenied(detail)) => {
             return Err(ProviderError::PermissionDenied(format!(
                 "The versions of {path} cannot be listed with these credentials, so AeroFTP \
                  cannot tell the live version and nothing was purged: purge it with a key \
-                 that may list versions"
+                 that may list versions ({detail})"
             )))
         }
         Err(e @ (ProviderError::NotFound(_) | ProviderError::NotConnected)) => return Err(e),

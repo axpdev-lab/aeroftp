@@ -94585,6 +94585,8 @@ mod tests {
         versions: bool,
         /// The credentials may not list the versions.
         deny_version_listing: bool,
+        /// Versions returned by `list_versions` when listing is allowed.
+        listed_versions: Vec<FileVersion>,
         /// Completes an upload instead of stalling.
         finish_upload: bool,
         /// The remote paths `stat`, an upload and the version calls were
@@ -94756,7 +94758,7 @@ mod tests {
             if self.deny_version_listing {
                 return Err(ProviderError::PermissionDenied("listing".to_string()));
             }
-            Ok(Vec::new())
+            Ok(self.listed_versions.clone())
         }
         async fn download_version(
             &mut self,
@@ -95224,6 +95226,74 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             [("list_versions", "/f.bin".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_purge_of_a_listed_live_version_is_refused_while_noncurrent_proceeds() {
+        let versions = vec![
+            FileVersion {
+                id: "v2".to_string(),
+                modified: None,
+                size: 10,
+                modified_by: None,
+                deleted: false,
+            },
+            FileVersion {
+                id: "v1".to_string(),
+                modified: None,
+                size: 5,
+                modified_by: None,
+                deleted: false,
+            },
+        ];
+        let live_provider = StallingProvider {
+            versions: true,
+            listed_versions: versions.clone(),
+            ..StallingProvider::default()
+        };
+        let live_calls = Arc::clone(&live_provider.version_calls);
+        let refused_code = against_stalling(live_provider, |_| async {
+            cmd_versions_purge(
+                "memory://",
+                "/f.bin",
+                "v2",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_ne!(refused_code, 0);
+        assert_eq!(
+            *live_calls.lock().unwrap(),
+            [("list_versions", "/f.bin".to_string())]
+        );
+
+        let old_provider = StallingProvider {
+            versions: true,
+            listed_versions: versions,
+            ..StallingProvider::default()
+        };
+        let old_calls = Arc::clone(&old_provider.version_calls);
+        let ok_code = against_stalling(old_provider, |_| async {
+            cmd_versions_purge(
+                "memory://",
+                "/f.bin",
+                "v1",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(ok_code, 0);
+        assert_eq!(
+            *old_calls.lock().unwrap(),
+            [
+                ("list_versions", "/f.bin".to_string()),
+                ("delete_version", "/f.bin".to_string()),
+            ]
         );
     }
 

@@ -882,4 +882,87 @@ mod tests {
         assert!(err.contains("cannot tell the live version"), "{err}");
         assert!(writes.lock().unwrap().is_empty(), "{:?}", writes.lock());
     }
+
+    #[tokio::test]
+    async fn mcp_delete_version_expired_credential_triggers_reload_credential() {
+        use crate::providers::probe_fake::ProbeFake;
+        use crate::providers::{FileVersion, ProviderError};
+        use std::sync::{Arc, Mutex};
+
+        let pool = std::sync::Arc::new(crate::mcp::pool::ConnectionPool::new(
+            4,
+            std::time::Duration::from_secs(300),
+        ));
+        let writes = Arc::new(Mutex::new(Vec::new()));
+        let mut expired = ProbeFake::new();
+        expired.shared_writes = Some(Arc::clone(&writes));
+        expired.list_versions_error = Some(|| {
+            ProviderError::PermissionDenied(
+                "ListObjectVersions failed (401 Unauthorized): expired token".into(),
+            )
+        });
+        let arc = pool
+            .insert_for_test("srv_s3", "s3", Box::new(expired))
+            .await;
+        let op = super::McpRemoteBackend::delete_version_op("/f.bin".into(), "v1".into());
+        let err = {
+            let mut guard = arc.lock().await;
+            op(&mut guard).await.unwrap_err()
+        };
+        assert!(
+            err.to_string().contains("cannot tell the live version"),
+            "{err}"
+        );
+        assert_eq!(
+            super::pooled_session_action(&err),
+            super::PooledSessionAction::ReloadCredential,
+            "expired credential on list_versions must still trigger ReloadCredential: {err}"
+        );
+        assert!(writes.lock().unwrap().is_empty(), "{:?}", writes.lock());
+
+        // Refreshed credential: live version stays refused, noncurrent version purges.
+        let mut refreshed = ProbeFake::new();
+        refreshed.shared_writes = Some(Arc::clone(&writes));
+        refreshed.versions = vec![
+            FileVersion {
+                id: "v2".into(),
+                modified: None,
+                size: 10,
+                modified_by: None,
+                deleted: false,
+            },
+            FileVersion {
+                id: "v1".into(),
+                modified: None,
+                size: 5,
+                modified_by: None,
+                deleted: false,
+            },
+        ];
+        let refreshed_arc = pool
+            .insert_for_test("srv_s3_new", "s3_new", Box::new(refreshed))
+            .await;
+        let backend =
+            super::McpRemoteBackend::new(std::sync::Arc::clone(&pool), "s3_new".to_string());
+        let live_op = super::McpRemoteBackend::delete_version_op("/f.bin".into(), "v2".into());
+        let live_res = {
+            let mut guard = refreshed_arc.lock().await;
+            live_op(&mut guard).await
+        };
+        assert!(
+            matches!(live_res, Err(ProviderError::NotSupported(_))),
+            "{live_res:?}"
+        );
+        let noncurrent_op =
+            super::McpRemoteBackend::delete_version_op("/f.bin".into(), "v1".into());
+        let noncurrent_res = {
+            let mut guard = refreshed_arc.lock().await;
+            noncurrent_op(&mut guard).await
+        };
+        backend
+            .finish_retried_call(refreshed_arc, noncurrent_res)
+            .await
+            .unwrap();
+        assert_eq!(*writes.lock().unwrap(), ["delete_version /f.bin v1"]);
+    }
 }
