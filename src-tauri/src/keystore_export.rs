@@ -2601,21 +2601,29 @@ fn apply_profile_decisions(
             // A step that never wrote the row puts nothing back into one the
             // plan holds no value for: an empty accepted set tells the write
             // to leave the row alone, where `None` would insert the baseline
-            // over an absent row.
+            // over an absent row. A step that inserted a row the plan read
+            // absent takes it back out, only while it still holds what the
+            // step wrote: the row's value is `None` and the accepted set is
+            // that written value alone, so a row another writer changed
+            // since stays. The vault still goes back to its own baseline,
+            // which the absent row's `value` would have carried away.
+            let inserted_row = written_row.contains_key(key)
+                && matches!(inputs.receiver_rows.get(key), Some(None));
             let row_landed = if !written_row.contains_key(key)
                 && !matches!(inputs.receiver_rows.get(key), Some(Some(_)))
             {
                 Some(Vec::new())
+            } else if inserted_row {
+                Some(vec![written_row.get(key).cloned().flatten()])
             } else {
                 row_accepts(key, written_row.get(key).cloned())
             };
-            Some((
-                key.clone(),
-                before_of(key),
-                vault_baseline(key),
-                landed,
-                row_landed,
-            ))
+            let (value, vault_value) = if inserted_row {
+                (None, vault_baseline(key).or_else(|| Some(before_of(key))))
+            } else {
+                (before_of(key), vault_baseline(key))
+            };
+            Some((key.clone(), value, vault_value, landed, row_landed))
         })
         .collect();
     let vault = if reads_vault_tokens(inputs.receiver) {
@@ -7721,6 +7729,81 @@ mod tests {
                 "vault_writer={vault_writer}: the vault keeps its value"
             );
         }
+    }
+
+    /// The mirror of `a_rollback_does_not_insert_a_row_the_plan_read_absent`:
+    /// the plan read the receiver's row absent and the decision's write
+    /// inserted it. When the list save then fails, the rollback takes that
+    /// row back out, only while it still holds what the step wrote, and the
+    /// vault goes back to its own baseline. Red if the rollback puts the
+    /// baseline value into the row instead of deleting it.
+    #[test]
+    fn a_rollback_removes_a_row_the_decision_inserted() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+        store.store(key, "vault-token").unwrap();
+        let db = cfg.join("user_partitions.db");
+        let owner = active_receiver(&db).unwrap();
+        assert!(owner.legacy_owner);
+        assert_eq!(
+            row_in(&store, &cfg, owner.user_id, key),
+            None,
+            "the plan reads the row absent"
+        );
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[dropbox("srv_drive", "Drive B")]).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "backup-token".to_string());
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let hook_db = db.clone();
+        before_profile_decisions(move |_| {
+            rusqlite::Connection::open(&hook_db)
+                .unwrap()
+                .execute_batch(
+                    "CREATE TRIGGER refuse_list BEFORE INSERT ON server_profiles
+                     BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+                )
+                .unwrap();
+        });
+
+        let result = import_deciding(
+            &store,
+            &cfg,
+            &backup,
+            VAULT_ONLY,
+            &[decide(
+                "srv_drive",
+                keystore_profile_plan::ProfileDecision::Accept,
+            )],
+        );
+        rusqlite::Connection::open(&db)
+            .unwrap()
+            .execute_batch("DROP TRIGGER IF EXISTS refuse_list;")
+            .unwrap();
+        let error = result
+            .profile_decisions_error
+            .expect("the profile step did not fail");
+        assert!(error.contains("disk full"), "{error}");
+        assert_eq!(
+            row_in(&store, &cfg, owner.user_id, key),
+            None,
+            "the row the decision inserted is gone again"
+        );
+        assert_eq!(
+            store.get(key).unwrap(),
+            "vault-token",
+            "the vault is at its baseline"
+        );
     }
 
     /// A decision write declined because a refresh rotated a private row of a
