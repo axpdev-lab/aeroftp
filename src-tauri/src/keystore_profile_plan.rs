@@ -1148,7 +1148,10 @@ mod tests {
                 legacy_owner: false,
                 identity: [7; 16],
             });
-            i.local_secrets = local_secrets(&[("oauth_dropbox_srv_box", "alice-token")]);
+            i.local_secrets = local_secrets(&[
+                ("oauth_dropbox_srv_box", "alice-token"),
+                ("oauth_dropbox_srv_new", "carol-token"),
+            ]);
             i.backup_secrets = secrets(&[]);
             let decisions = [
                 ProfileDecisionInput {
@@ -1163,17 +1166,42 @@ mod tests {
                 },
             ];
             let out = apply(&i, &decisions, &fp(&i), &mut || unreachable!()).unwrap();
-            op(&out.secret_ops, "oauth_dropbox_srv_box").map(|v| v.map(str::to_string))
+            (
+                op(&out.secret_ops, "oauth_dropbox_srv_box").map(|v| v.map(str::to_string)),
+                op(&out.secret_ops, "oauth_dropbox_srv_new").map(|v| v.map(str::to_string)),
+                ids(&out.profiles)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect::<Vec<_>>(),
+            )
         };
+        let (box_op, new_op, profiles) = carried(ProfileDecision::Accept, ProfileDecision::Accept);
         assert_eq!(
-            carried(ProfileDecision::Accept, ProfileDecision::Accept),
-            None,
+            box_op, None,
             "the accepted backup profile gets no local Dropbox token"
         );
         assert_eq!(
-            carried(ProfileDecision::Reject, ProfileDecision::Reject),
+            new_op, None,
+            "the accepted backup-only addition gets no local token either"
+        );
+        assert!(
+            profiles.iter().any(|id| id == "srv_new"),
+            "the accepted addition stays in the output list"
+        );
+        let (box_op, new_op, profiles) = carried(ProfileDecision::Reject, ProfileDecision::Reject);
+        assert_eq!(
+            box_op,
             Some(Some("alice-token".to_string())),
             "the kept local profile keeps its token"
+        );
+        assert_eq!(
+            new_op,
+            Some(Some("carol-token".to_string())),
+            "the rejected addition restores this device's orphaned secret"
+        );
+        assert!(
+            !profiles.iter().any(|id| id == "srv_new"),
+            "the rejected addition leaves the output list"
         );
     }
 
