@@ -733,7 +733,7 @@ mod tests {
     #[test]
     fn handle_rename_preserves_native_error_kind_and_publication_disarms_cleanup_safely() {
         let dir = scratch("rename-publish");
-        let parent = dir.as_path();
+        let parent = dir.path();
         let dest = parent.join("dest");
         std::fs::write(&dest, b"occupied").unwrap();
 
@@ -768,14 +768,15 @@ mod tests {
             b"replacement",
             "publication must not touch the old staging path"
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn scratch(tag: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("aeroftp-acl-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    /// Auto-cleaned scratch directory: `TempDir` removes the tree on drop
+    /// even when an assertion panics, unlike a manual `remove_dir_all`.
+    fn scratch(tag: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("aeroftp-acl-{tag}-"))
+            .tempdir()
+            .unwrap()
     }
 
     /// The whole point of the rewrite: after hardening, the user who owns the
@@ -784,7 +785,7 @@ mod tests {
     #[test]
     fn hardened_file_stays_deletable_by_its_owner() {
         let dir = scratch("file");
-        let file = dir.join("vault.key");
+        let file = dir.path().join("vault.key");
         std::fs::write(&file, b"AEROVKEY\x02\x02\x00\x00").unwrap();
 
         restrict_to_owner(&file);
@@ -798,7 +799,6 @@ mod tests {
             std::fs::remove_file(&file).is_ok(),
             "owner must still delete"
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Directory hardening is inheritable, so files created afterwards must
@@ -807,52 +807,52 @@ mod tests {
     fn hardened_directory_stays_removable() {
         let dir = scratch("dir");
 
-        restrict_to_owner(&dir);
+        restrict_to_owner(dir.path());
 
-        let child = dir.join("vault.db");
+        let child = dir.path().join("vault.db");
         std::fs::write(&child, b"{}").unwrap();
         assert!(std::fs::read(&child).is_ok());
         assert!(std::fs::remove_file(&child).is_ok());
-        assert!(std::fs::remove_dir_all(&dir).is_ok());
+        assert!(std::fs::remove_dir_all(dir.path()).is_ok());
     }
 
     #[test]
     fn reset_to_inherited_recovers_a_hardened_file() {
         let dir = scratch("rec");
-        let file = dir.join("vault.db");
+        let file = dir.path().join("vault.db");
         std::fs::write(&file, b"{}").unwrap();
 
         restrict_to_owner(&file);
         reset_to_inherited(&file).expect("owner keeps WRITE_DAC, so reset must succeed");
 
         assert!(std::fs::remove_file(&file).is_ok());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn repair_reports_nothing_to_do_on_a_healthy_file() {
         let dir = scratch("ok");
-        let file = dir.join("plain.txt");
+        let file = dir.path().join("plain.txt");
         std::fs::write(&file, b"x").unwrap();
 
         assert_eq!(repair_access_if_locked(&file), Ok(false));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn repair_is_a_no_op_on_a_missing_path() {
         let dir = scratch("missing");
-        assert_eq!(repair_access_if_locked(&dir.join("nope")), Ok(false));
-        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(repair_access_if_locked(&dir.path().join("nope")), Ok(false));
     }
 
     #[test]
     fn restrict_to_owner_checked_verifies_live_staging_handle_and_rejects_missing_path() {
         use std::os::windows::fs::OpenOptionsExt;
         let dir = scratch("checked");
-        let file = dir.join("staged.tmp");
+        let file = dir.path().join("staged.tmp");
         let live_handle = std::fs::OpenOptions::new()
             .create_new(true)
+            // std rejects create_new without write/append even when an
+            // explicit access_mode is set (Windows disposition check).
+            .write(true)
             .access_mode(STAGING_ACCESS)
             .share_mode(FILE_SHARE_DELETE)
             .open(&file)
@@ -861,12 +861,11 @@ mod tests {
         restrict_to_owner_checked(&live_handle, &file)
             .expect("checked owner-only ACL must verify cleanly against live staging handle");
         assert!(
-            restrict_to_owner_checked(&live_handle, &dir.join("missing.tmp")).is_err(),
+            restrict_to_owner_checked(&live_handle, &dir.path().join("missing.tmp")).is_err(),
             "checked ACL must fail closed when the path no longer refers to the open file"
         );
         drop(live_handle);
         let _ = std::fs::remove_file(&file);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Structural pin for the handle binding: after the path is renamed away
@@ -878,9 +877,12 @@ mod tests {
     fn verification_and_rollback_are_bound_to_the_staging_handle_not_the_path() {
         use std::os::windows::fs::OpenOptionsExt;
         let dir = scratch("handle-bound");
-        let file = dir.join("staged.tmp");
+        let file = dir.path().join("staged.tmp");
         let live_handle = std::fs::OpenOptions::new()
             .create_new(true)
+            // std rejects create_new without write/append even when an
+            // explicit access_mode is set (Windows disposition check).
+            .write(true)
             .access_mode(STAGING_ACCESS)
             .share_mode(FILE_SHARE_DELETE)
             .open(&file)
@@ -890,9 +892,9 @@ mod tests {
 
         // Another account renames the staged path away and plants a different
         // file at the old path.
-        let renamed = dir.join("swapped.tmp");
+        let renamed = dir.path().join("swapped.tmp");
         std::fs::rename(&file, &renamed).expect("FILE_SHARE_DELETE allows the rename");
-        let planted = dir.join("staged.tmp");
+        let planted = dir.path().join("staged.tmp");
         std::fs::write(&planted, b"attacker").unwrap();
 
         // Verify through the HANDLE: the handle's object is the hardened one,
@@ -935,16 +937,18 @@ mod tests {
         drop(live_handle);
         let _ = std::fs::remove_file(&planted);
         let _ = std::fs::remove_file(&renamed);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn restrict_to_owner_checked_fails_closed_when_the_path_was_renamed_away() {
         use std::os::windows::fs::OpenOptionsExt;
         let dir = scratch("renamed");
-        let file = dir.join("staged.tmp");
+        let file = dir.path().join("staged.tmp");
         let live_handle = std::fs::OpenOptions::new()
             .create_new(true)
+            // std rejects create_new without write/append even when an
+            // explicit access_mode is set (Windows disposition check).
+            .write(true)
             .access_mode(STAGING_ACCESS)
             .share_mode(FILE_SHARE_DELETE)
             .open(&file)
@@ -952,7 +956,7 @@ mod tests {
 
         // Another account with delete-child rights renames the staged path
         // while our handle stays open on the original file object.
-        let renamed = dir.join("swapped.tmp");
+        let renamed = dir.path().join("swapped.tmp");
         std::fs::rename(&file, &renamed).expect("FILE_SHARE_DELETE allows the rename");
         // ...and plants a different file at the original path.
         std::fs::write(&file, b"attacker").unwrap();
@@ -964,6 +968,5 @@ mod tests {
         drop(live_handle);
         let _ = std::fs::remove_file(&file);
         let _ = std::fs::remove_file(&renamed);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
