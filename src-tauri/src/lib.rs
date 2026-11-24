@@ -25226,31 +25226,22 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // leaking another user's token or mixing credentials across an account switch.
     // Fail closed if the profile is marked `hasStoredSessionToken: true` and
     // neither a vault token nor an explicit inline token is available.
-    if let Some(session_token) = profile_loader::resolve_vault_s3_session_token_owner_aware(
+    // The explicit inline token wins: connection injection uses it when
+    // present, so the export must bundle the token the connection actually
+    // uses, not a different vaulted value.
+    if let Some(token) = inline_s3_session_token(server.options.as_ref()) {
+        out.aws_session_token = Some(token);
+    } else if let Some(session_token) = profile_loader::resolve_vault_s3_session_token_owner_aware(
         store,
         user_id,
         &profile_loader::aws_session_token_vault_key(&server.id),
     )? {
         out.aws_session_token = Some(session_token);
     } else if server.has_stored_session_token == Some(true) {
-        let has_explicit = server
-            .options
-            .as_ref()
-            .and_then(|v| v.as_object())
-            .is_some_and(|opts| {
-                ["sessionToken", "session_token"].iter().any(|k| {
-                    opts.get(*k)
-                        .and_then(|v| v.as_str())
-                        .map(str::trim)
-                        .is_some_and(|s| !s.is_empty())
-                })
-            });
-        if !has_explicit {
-            return Err(format!(
-                "{}: its saved AWS session token is missing from the vault",
-                server.name
-            ));
-        }
+        return Err(format!(
+            "{}: its saved AWS session token is missing from the vault",
+            server.name
+        ));
     }
 
     // OneDrive drive id/type captured at connect (`onedrive_drive_id_<id>` /
@@ -25543,6 +25534,21 @@ fn extract_and_strip_inline_s3_session_token(
         .and_then(|v| v.as_str().map(|s| s.trim().to_string()))
         .filter(|s| !s.is_empty());
     camel.or(snake)
+}
+
+/// The inline S3 session token of `options` without stripping it, with the
+/// same precedence as [`extract_and_strip_inline_s3_session_token`]: a
+/// non-empty camelCase `sessionToken` wins, snake_case is the fallback.
+fn inline_s3_session_token(options: Option<&serde_json::Value>) -> Option<String> {
+    let opts = options.and_then(|v| v.as_object())?;
+    let pick = |key: &str| {
+        opts.get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    pick("sessionToken").or_else(|| pick("session_token"))
 }
 
 fn prepare_import(
@@ -35887,6 +35893,105 @@ mod sts_import_rollback_tests {
             Some("E2E-TOKEN-B"),
             "a credential-free overwrite must keep the owner-scoped token"
         );
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+
+    /// Export bundles the token the connection actually uses: an explicit
+    /// inline `options.sessionToken` (camelCase, or snake_case fallback) wins
+    /// over a different vaulted token; without an inline token the owner-aware
+    /// vault token is exported; a profile flagged `hasStoredSessionToken: true`
+    /// with neither available fails closed instead of exporting an empty STS
+    /// profile.
+    #[test]
+    fn export_bundles_the_session_token_the_connection_uses() {
+        if !in_isolated_child(
+            "sts_import_rollback_tests::export_bundles_the_session_token_the_connection_uses",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (_dir, store, first, _second) = two_account_vault();
+
+        let pid = "aws-sts-precedence";
+        let key = profile_loader::aws_session_token_vault_key(pid);
+        user_partitions::store_active_credential_dual(&store, &key, "VAULT-OLD").unwrap();
+        let server = |options: serde_json::Value, flag: Option<bool>| {
+            crate::profile_export::ServerProfileExport {
+                id: pid.to_string(),
+                name: "STS precedence".to_string(),
+                host: "s3.example.com".to_string(),
+                port: 443,
+                username: "AKIAPREC".to_string(),
+                protocol: Some("s3".to_string()),
+                options: Some(options),
+                has_stored_session_token: flag,
+                ..Default::default()
+            }
+        };
+
+        // camelCase inline token wins over the vault token.
+        let out = collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(first),
+            &server(
+                serde_json::json!({ "sessionToken": "INLINE-NEW" }),
+                Some(true),
+            ),
+        )
+        .unwrap();
+        assert_eq!(out.aws_session_token.as_deref(), Some("INLINE-NEW"));
+
+        // snake_case inline token is the fallback and also wins.
+        let out = collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(first),
+            &server(
+                serde_json::json!({ "session_token": "SNAKE-NEW" }),
+                Some(true),
+            ),
+        )
+        .unwrap();
+        assert_eq!(out.aws_session_token.as_deref(), Some("SNAKE-NEW"));
+
+        // No inline token: the owner-aware vault token is exported.
+        let out = collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(first),
+            &server(serde_json::json!({ "region": "eu-west-1" }), Some(true)),
+        )
+        .unwrap();
+        assert_eq!(out.aws_session_token.as_deref(), Some("VAULT-OLD"));
+
+        // Flagged true but neither inline nor vaulted token exists: fail
+        // closed instead of exporting a broken STS profile.
+        let missing = crate::profile_export::ServerProfileExport {
+            id: "aws-sts-missing".to_string(),
+            name: "STS missing".to_string(),
+            host: "s3.example.com".to_string(),
+            port: 443,
+            username: "AKIAMISS".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({})),
+            has_stored_session_token: Some(true),
+            ..Default::default()
+        };
+        let err = collect_provider_secrets_for_server_for_user(&store, Some(first), &missing)
+            .err()
+            .expect("a flagged STS profile with no token anywhere must fail closed");
+        assert!(err.contains("session token is missing"), "{err}");
+
+        // Without the flag the same profile exports fine with no token.
+        let unflagged = crate::profile_export::ServerProfileExport {
+            has_stored_session_token: None,
+            ..missing.clone()
+        };
+        let out =
+            collect_provider_secrets_for_server_for_user(&store, Some(first), &unflagged).unwrap();
+        assert_eq!(out.aws_session_token, None);
 
         restore_env(previous_xdg, previous_passphrase);
     }

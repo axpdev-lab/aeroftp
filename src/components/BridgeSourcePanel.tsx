@@ -14,7 +14,7 @@ import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources';
 import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
-import { bridgeProfileKey, commitImportedServers, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
+import { bridgeProfileKey, commitImportedServersForScan, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
 import { securityRelaxations } from '../utils/profileSecurity';
@@ -28,6 +28,8 @@ interface BridgeImportResult {
     security?: ImportedSecurity[];
     sourcePath: string | null;
     totalRemotes: number;
+    /** The account the scan wrote its secrets into (`null`: the legacy store). */
+    scanUserId?: number | null;
 }
 
 interface BridgeExportResult {
@@ -92,6 +94,8 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     // import state
     const [detectedPath, setDetectedPath] = useState<string | null>(null);
     const [result, setResult] = useState<BridgeImportResult | null>(null);
+    // The account the last scan wrote its secrets into; the commit is bound to it.
+    const [scanUserId, setScanUserId] = useState<number | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [keptRelaxed, setKeptRelaxed] = useState<Set<string>>(() => new Set());
 
@@ -210,6 +214,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 source: source.id, filePath,
             });
             setResult(r);
+            setScanUserId(r.scanUserId ?? null);
             setSelectedIds(new Set(r.servers.map(s => s.id)));
         } catch (e) {
             setError(String(e));
@@ -271,7 +276,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         committingRef.current = true;
         setLoading(true);
         try {
-            const outcome = await commitImportedServers(selected, existingServerKeys, onImport);
+            const outcome = await commitImportedServersForScan(selected, existingServerKeys, scanUserId, onImport);
             if (outcome.error) { setError(outcome.error); return; }
             const parts: string[] = [];
             if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));

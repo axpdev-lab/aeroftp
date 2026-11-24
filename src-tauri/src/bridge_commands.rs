@@ -746,6 +746,23 @@ pub(crate) fn store_bridge_import_secret_for_user(
     }
 }
 
+/// The delete mirror of [`store_bridge_import_secret_for_user`]: removes the
+/// entry from the same place(s) the write put it, so a rolled-back half of a
+/// credential pair never lingers in the vault. Per-profile STS tokens are
+/// partition-private, everything else deletes vault + partition mirror.
+pub(crate) fn delete_bridge_import_secret_for_user(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+) -> Result<(), String> {
+    match user_id {
+        Some(uid) if key.starts_with("aws_session_token_") => {
+            crate::user_partitions::delete_imported_credential_for_user(store, uid, key)
+        }
+        _ => crate::user_partitions::delete_credential_dual_as(store, user_id, key),
+    }
+}
+
 /// Import profiles from a third-party config file. Validates the path
 /// (traversal reject + canonicalize + regular-file + 10 MB cap),
 /// upgrades any recovered secret into the AES-256-GCM vault and returns
@@ -797,22 +814,50 @@ pub async fn import_bridge_config(
         let store = store.as_ref().ok_or("the credential vault is locked")?;
         store_bridge_import_secret_for_user(store, captured_user, key, secret)
     };
+    let mut delete = |key: &str| -> Result<(), String> {
+        let store = store.as_ref().ok_or("the credential vault is locked")?;
+        delete_bridge_import_secret_for_user(store, captured_user, key)
+    };
     let vault: Option<VaultWrite<'_>> = if store.is_some() {
         Some(&mut write)
     } else {
         None
     };
-    match keep_relaxed {
-        Some(keep) => {
-            let policy = crate::profile_security::RelaxationPolicy::Keep(keep);
-            finish_bridge_import_with_policy(&source, &value, secret_failures, vault, &policy)
-        }
-        None => finish_bridge_import(&source, &value, secret_failures, vault),
-    }
+    let vault_delete: Option<VaultDelete<'_>> = if store.is_some() {
+        Some(&mut delete)
+    } else {
+        None
+    };
+    let policy = match keep_relaxed {
+        Some(keep) => crate::profile_security::RelaxationPolicy::Keep(keep),
+        None => crate::profile_security::RelaxationPolicy::ResetAll,
+    };
+    let mut resp = finish_bridge_import_with_policy_and_cap(
+        &source,
+        &value,
+        secret_failures,
+        vault,
+        vault_delete,
+        &policy,
+        MAX_IMPORTED_CREDENTIALS,
+    )?;
+    // The account the scan wrote its secrets into. The commit compares it
+    // against the account active at commit time and refuses on a mismatch,
+    // so a switch between scan and commit cannot land hasStored* flags that
+    // point at another account's partition.
+    resp["scanUserId"] = match captured_user {
+        Some(uid) => Value::from(uid),
+        None => Value::Null,
+    };
+    Ok(resp)
 }
 
 /// One vault write: the entry's key and its secret.
 type VaultWrite<'a> = &'a mut dyn FnMut(&str, &str) -> Result<(), String>;
+
+/// One vault delete: the entry's key. Used to roll back the stored half of a
+/// credential pair when the other half failed.
+type VaultDelete<'a> = &'a mut dyn FnMut(&str) -> Result<(), String>;
 
 /// What an import does once the file is parsed: the rclone crypt and Filen
 /// secrets move into the vault, the recovered passwords are stored, and the
@@ -821,18 +866,21 @@ type VaultWrite<'a> = &'a mut dyn FnMut(&str, &str) -> Result<(), String>;
 /// stored named in the warnings. `vault` writes one vault entry; `None` is a
 /// locked vault. Split from [`import_bridge_config`] so a test reads the
 /// response the window commits, not only the helpers.
+#[cfg(test)]
 pub(crate) fn finish_bridge_import(
     source: &str,
     value: &Value,
     secret_failures: Vec<(String, String)>,
     vault: Option<VaultWrite<'_>>,
 ) -> Result<Value, String> {
-    finish_bridge_import_with_policy(
+    finish_bridge_import_with_policy_and_cap(
         source,
         value,
         secret_failures,
         vault,
+        None,
         &crate::profile_security::RelaxationPolicy::ResetAll,
+        MAX_IMPORTED_CREDENTIALS,
     )
 }
 
@@ -843,6 +891,7 @@ pub(crate) fn finish_bridge_import(
 /// import cannot bypass the budget.
 const MAX_IMPORTED_CREDENTIALS: usize = 10_000;
 
+#[cfg(test)]
 pub(crate) fn finish_bridge_import_with_policy(
     source: &str,
     value: &Value,
@@ -855,6 +904,7 @@ pub(crate) fn finish_bridge_import_with_policy(
         value,
         secret_failures,
         vault,
+        None,
         policy,
         MAX_IMPORTED_CREDENTIALS,
     )
@@ -865,6 +915,7 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
     value: &Value,
     mut secret_failures: Vec<(String, String)>,
     mut vault: Option<VaultWrite<'_>>,
+    mut vault_delete: Option<VaultDelete<'_>>,
     policy: &crate::profile_security::RelaxationPolicy,
     max_vault_writes: usize,
 ) -> Result<Value, String> {
@@ -978,6 +1029,10 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
     // preview crosses into the renderer.
     let mut unsaved_credentials: std::collections::HashSet<String> =
         std::collections::HashSet::new();
+    // Profiles whose credential pair (password + AWS session token) was only
+    // half stored: they are omitted from the offered `servers` and listed in
+    // `skipped`, never offered with a lying hasStored* flag.
+    let mut partial_pairs: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     match vault.as_mut() {
         Some(write) => {
@@ -1033,6 +1088,8 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
                     continue;
                 }
 
+                let mut token_stored = false;
+                let mut cred_stored = false;
                 if let Some(tok) = token {
                     if !id.is_empty() {
                         vault_write_attempts += 1;
@@ -1040,6 +1097,7 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
                         match write(&key, &tok) {
                             Ok(()) => {
                                 server["hasStoredSessionToken"] = Value::Bool(true);
+                                token_stored = true;
                             }
                             Err(e) => {
                                 secret_failures.push((
@@ -1053,11 +1111,38 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
                 if has_cred {
                     vault_write_attempts += 1;
                     // MUV-3: dual-write into vault + active user's partition.
-                    if let Err(e) = write(&format!("server_{id}"), &cred) {
-                        cred_errors.push(format!("{id}: {e}"));
-                        unsaved_credentials.insert(id.clone());
-                        secret_failures.push((id, format!("its password was not stored: {e}")));
+                    match write(&format!("server_{id}"), &cred) {
+                        Ok(()) => cred_stored = true,
+                        Err(e) => {
+                            cred_errors.push(format!("{id}: {e}"));
+                            unsaved_credentials.insert(id.clone());
+                            secret_failures
+                                .push((id.clone(), format!("its password was not stored: {e}")));
+                        }
                     }
+                }
+                // An STS pair is atomic: when exactly one side was stored, undo
+                // that write and never offer the profile as saved. The warnings
+                // stay so the operator knows to retry.
+                if has_token && has_cred && token_stored != cred_stored {
+                    if token_stored {
+                        if let Some(delete) = vault_delete.as_mut() {
+                            let _ =
+                                delete(&crate::profile_loader::aws_session_token_vault_key(&id));
+                        }
+                        server["hasStoredSessionToken"] = Value::Bool(false);
+                    }
+                    if cred_stored {
+                        if let Some(delete) = vault_delete.as_mut() {
+                            let _ = delete(&format!("server_{id}"));
+                        }
+                        unsaved_credentials.insert(id.clone());
+                    }
+                    partial_pairs.insert(id.clone());
+                    secret_failures.push((
+                        id,
+                        "its credential pair was only half stored, so the profile was not offered (unlock the vault and import again)".to_string(),
+                    ));
                 }
             }
         }
@@ -1100,6 +1185,31 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
     }
     if !cred_errors.is_empty() {
         log::warn!("{} import credential issues: {:?}", source, cred_errors);
+    }
+
+    // A profile whose STS pair was only half stored is omitted from the
+    // offered list (like a capped crypt profile) and recorded in `skipped`;
+    // the secret_failures warning above already names it.
+    if !partial_pairs.is_empty() {
+        for (_, server) in indexed_servers.iter().filter(|(_, s)| {
+            partial_pairs.contains(s.get("id").and_then(|v| v.as_str()).unwrap_or(""))
+        }) {
+            let name = server
+                .get("name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .or_else(|| server.get("id").and_then(|v| v.as_str()))
+                .unwrap_or("profile")
+                .to_string();
+            skipped_crypt.push(json!({
+                "name": name,
+                "kind": "partial-credentials",
+                "reason": "its credential pair was only half stored, so the profile was not offered",
+            }));
+        }
+        indexed_servers.retain(|(_, s)| {
+            !partial_pairs.contains(s.get("id").and_then(|v| v.as_str()).unwrap_or(""))
+        });
     }
 
     // A third-party config is untrusted input: any option that turns a
@@ -1175,15 +1285,24 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
         })
         .collect();
 
-    let names: HashMap<&str, &str> = indexed_servers
-        .iter()
-        .filter_map(|(_, s)| {
-            Some((
-                s.get("id").and_then(|v| v.as_str())?,
-                s.get("name").and_then(|v| v.as_str())?,
-            ))
+    // Names come from the parsed input, not the offered list: a profile
+    // omitted from `servers` (capped crypt, half-stored pair) must still be
+    // named in its warning.
+    let names: HashMap<&str, &str> = value
+        .get("servers")
+        .and_then(|s| s.as_array())
+        .map(|servers| {
+            servers
+                .iter()
+                .filter_map(|s| {
+                    Some((
+                        s.get("id").and_then(|v| v.as_str())?,
+                        s.get("name").and_then(|v| v.as_str())?,
+                    ))
+                })
+                .collect()
         })
-        .collect();
+        .unwrap_or_default();
     let secret_warnings: Vec<Value> = secret_failures
         .iter()
         .map(|(id, reason)| {
@@ -3847,6 +3966,7 @@ mod tests {
             &parsed,
             Vec::new(),
             Some(&mut write),
+            None,
             &crate::profile_security::RelaxationPolicy::ResetAll,
             3,
         )
@@ -3897,6 +4017,7 @@ mod tests {
             &parsed,
             Vec::new(),
             Some(&mut fail_write),
+            None,
             &crate::profile_security::RelaxationPolicy::ResetAll,
             2,
         )
@@ -3907,6 +4028,263 @@ mod tests {
         );
         assert_eq!(failed["servers"][0]["hasStoredSessionToken"], false);
         assert_eq!(failed["servers"][0]["hasStoredCredential"], false);
+    }
+
+    /// An STS profile is offered for import only when BOTH halves of its
+    /// credential pair (password + session token) were stored. If exactly one
+    /// write succeeds, the stored half is deleted again, the profile is omitted
+    /// from `servers`, listed in `skipped`, and the warning stays. Both
+    /// mixed-success orders and the successful two-write case are pinned.
+    #[test]
+    fn an_sts_profile_is_offered_only_when_both_secrets_store() {
+        let parsed = json!({
+            "servers": [
+                {
+                    "id": "sts-9",
+                    "name": "Ninth STS",
+                    "host": "",
+                    "port": 443,
+                    "username": "ASIA9",
+                    "protocol": "s3",
+                    "credential": "secret-9",
+                    "options": { "region": "us-east-1", "sessionToken": "TOK-9" }
+                }
+            ],
+            "skipped": [],
+            "warnings": [],
+            "sourcePath": "/tmp/credentials",
+            "totalRemotes": 1
+        });
+        let policy = crate::profile_security::RelaxationPolicy::ResetAll;
+        // The write and delete closures share the fake vault through a RefCell.
+        let vault = std::cell::RefCell::new(HashMap::<String, String>::new());
+        let deletes = std::cell::RefCell::new(Vec::<String>::new());
+        let write_all = |k: &str, v: &str| -> Result<(), String> {
+            vault.borrow_mut().insert(k.to_string(), v.to_string());
+            Ok(())
+        };
+        let delete_key = |k: &str| -> Result<(), String> {
+            deletes.borrow_mut().push(k.to_string());
+            vault.borrow_mut().remove(k);
+            Ok(())
+        };
+
+        // Both writes succeed: offered with both flags true, nothing skipped.
+        let out = finish_bridge_import_with_policy_and_cap(
+            "aws",
+            &parsed,
+            Vec::new(),
+            Some(&mut |k: &str, v: &str| write_all(k, v)),
+            Some(&mut |k: &str| delete_key(k)),
+            &policy,
+            MAX_IMPORTED_CREDENTIALS,
+        )
+        .unwrap();
+        assert_eq!(out["servers"].as_array().unwrap().len(), 1);
+        assert_eq!(out["servers"][0]["hasStoredSessionToken"], true);
+        assert_eq!(out["servers"][0]["hasStoredCredential"], true);
+        assert_eq!(out["skipped"].as_array().unwrap().len(), 0);
+        assert!(deletes.borrow().is_empty());
+
+        // Token write fails, password write succeeds: the password half is
+        // deleted again and the profile is NOT offered.
+        vault.borrow_mut().clear();
+        deletes.borrow_mut().clear();
+        let out = finish_bridge_import_with_policy_and_cap(
+            "aws",
+            &parsed,
+            Vec::new(),
+            Some(&mut |k: &str, v: &str| {
+                if k.starts_with("aws_session_token_") {
+                    return Err("disk full".to_string());
+                }
+                write_all(k, v)
+            }),
+            Some(&mut |k: &str| delete_key(k)),
+            &policy,
+            MAX_IMPORTED_CREDENTIALS,
+        )
+        .unwrap();
+        assert_eq!(
+            out["servers"].as_array().unwrap().len(),
+            0,
+            "a profile with only its password stored must not be offered: {out}"
+        );
+        assert_eq!(deletes.borrow().as_slice(), ["server_sts-9".to_string()]);
+        assert!(
+            vault.borrow().is_empty(),
+            "the stored half must be cleaned up, vault left: {:?}",
+            vault.borrow()
+        );
+        let skipped = out["skipped"].as_array().unwrap();
+        assert!(
+            skipped
+                .iter()
+                .any(|s| s["kind"] == "partial-credentials" && s["name"] == "Ninth STS"),
+            "the omitted profile must be listed in skipped: {skipped:?}"
+        );
+        assert!(
+            out["warnings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|w| w["name"] == "Ninth STS"
+                    && w["reason"]
+                        .as_str()
+                        .unwrap_or("")
+                        .contains("only half stored")),
+            "the warning must stay so the operator knows to retry: {out}"
+        );
+        assert!(!out.to_string().contains("TOK-9"));
+        assert!(!out.to_string().contains("secret-9"));
+
+        // Password write fails, token write succeeds: the token half is
+        // deleted again and the profile is NOT offered.
+        vault.borrow_mut().clear();
+        deletes.borrow_mut().clear();
+        let out = finish_bridge_import_with_policy_and_cap(
+            "aws",
+            &parsed,
+            Vec::new(),
+            Some(&mut |k: &str, v: &str| {
+                if k.starts_with("server_") {
+                    return Err("disk full".to_string());
+                }
+                write_all(k, v)
+            }),
+            Some(&mut |k: &str| delete_key(k)),
+            &policy,
+            MAX_IMPORTED_CREDENTIALS,
+        )
+        .unwrap();
+        assert_eq!(
+            out["servers"].as_array().unwrap().len(),
+            0,
+            "a profile with only its session token stored must not be offered: {out}"
+        );
+        assert_eq!(
+            deletes.borrow().as_slice(),
+            ["aws_session_token_sts-9".to_string()]
+        );
+        assert!(vault.borrow().is_empty());
+        assert!(
+            out["skipped"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s["kind"] == "partial-credentials"),
+            "{out}"
+        );
+    }
+
+    /// A bridge scan reports the account it wrote its secrets into
+    /// (`scanUserId`), so the commit can refuse when the active account changed
+    /// between scan and commit. The secrets themselves must land in that same
+    /// account's partition and nowhere else.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_scan_reports_and_targets_the_active_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::a_scan_reports_and_targets_the_active_account",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic scan user master").unwrap();
+        CredentialStore::unlock_with_master("synthetic scan user master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+
+        let cred_file = dir.path().join("credentials");
+        std::fs::write(
+            &cred_file,
+            "[scan-sts]\naws_access_key_id = AKIASCAN\naws_secret_access_key = scan-secret\naws_session_token = SCAN-TOKEN\n",
+        )
+        .unwrap();
+        let scan = import_bridge_config(
+            "aws".to_string(),
+            cred_file.to_string_lossy().to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            scan["scanUserId"].as_i64(),
+            Some(first),
+            "the scan must report the account it wrote into: {scan}"
+        );
+        let id = scan["servers"][0]["id"].as_str().unwrap().to_string();
+        assert_eq!(scan["servers"][0]["hasStoredSessionToken"], true);
+        let key = crate::profile_loader::aws_session_token_vault_key(&id);
+        assert_eq!(
+            crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                &store,
+                Some(first),
+                &key
+            )
+            .unwrap()
+            .as_deref(),
+            Some("SCAN-TOKEN"),
+            "the scanned token must land in the scan account's partition"
+        );
+        assert_eq!(
+            crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                &store,
+                Some(second),
+                &key
+            )
+            .unwrap(),
+            None,
+            "the other account must never see the scanned token"
+        );
+
+        // After a switch the next scan reports the new active account.
+        let conn = crate::user_partitions::open_or_init_cli().unwrap();
+        crate::user_partitions::set_active_user(&conn, second).unwrap();
+        drop(conn);
+        let cred_file2 = dir.path().join("credentials2");
+        std::fs::write(
+            &cred_file2,
+            "[scan-sts-2]\naws_access_key_id = AKIASCAN2\naws_secret_access_key = scan-secret-2\n",
+        )
+        .unwrap();
+        let scan2 = import_bridge_config(
+            "aws".to_string(),
+            cred_file2.to_string_lossy().to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(scan2["scanUserId"].as_i64(), Some(second), "{scan2}");
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
     }
 
     #[test]
@@ -3956,6 +4334,7 @@ mod tests {
             &parsed,
             Vec::new(),
             Some(&mut write),
+            None,
             &crate::profile_security::RelaxationPolicy::ResetAll,
             1,
         )
@@ -3995,6 +4374,7 @@ mod tests {
             &parsed,
             Vec::new(),
             Some(&mut write_a),
+            None,
             &crate::profile_security::RelaxationPolicy::ResetAll,
             2,
         )
@@ -4045,6 +4425,7 @@ mod tests {
             &two_filen,
             Vec::new(),
             Some(&mut write_b),
+            None,
             &crate::profile_security::RelaxationPolicy::ResetAll,
             1,
         )
@@ -4089,6 +4470,7 @@ mod tests {
             &parsed,
             Vec::new(),
             None,
+            None,
             &crate::profile_security::RelaxationPolicy::ResetAll,
             MAX_IMPORTED_CREDENTIALS,
         )
@@ -4120,6 +4502,7 @@ mod tests {
             &parsed,
             Vec::new(),
             Some(&mut write),
+            None,
             &crate::profile_security::RelaxationPolicy::ResetAll,
             MAX_IMPORTED_CREDENTIALS,
         )
@@ -4200,6 +4583,7 @@ mod tests {
             &parsed,
             Vec::new(),
             Some(&mut write),
+            None,
             &policy,
             1,
         )

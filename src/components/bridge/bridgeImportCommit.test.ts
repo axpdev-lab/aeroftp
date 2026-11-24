@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
-import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
+import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, commitImportedServersForScan, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
@@ -370,5 +370,42 @@ describe('importedServerProfile security relaxations on bridge imports', () => {
 
         const keptFromRaw = importedServerProfile(winscpWebdavRawHttp, ['webdavScheme']);
         expect(keptFromRaw.options?.webdavScheme).toBe('http');
+    });
+});
+
+describe('a scan-bound commit', () => {
+    it('binds the commit to the account the scan wrote into, not the one active at commit time', async () => {
+        // The scan ran under account 7; the vault now reads account 3.
+        vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base], userId: 3, revision: 'r1' });
+        // Compose with the real guard: onImport appends with the expected user it got.
+        let appendError: unknown;
+        const onImport = vi.fn(async (servers: ServerProfile[], expected?: number | null) => {
+            try {
+                await appendImportedProfiles(servers, expected);
+            } catch (e) {
+                appendError = e;
+                throw e;
+            }
+        });
+        const outcome = await commitImportedServersForScan([crypt], new Set([bridgeProfileKey(base)]), 7, onImport);
+        // The callback received the SCAN account (7) as its expected account...
+        expect(onImport).toHaveBeenCalledWith([crypt], 7);
+        // ...so the append refused against the commit-time account (3)...
+        expect(String(appendError)).toMatch(/active account changed/);
+        // ...the commit reports failure and nothing was written.
+        expect(outcome.error).toBeDefined();
+        expect(outcome.added).toBe(0);
+        expect(storeSavedServerProfiles).not.toHaveBeenCalled();
+    });
+
+    it('commits normally when the account did not change since the scan', async () => {
+        vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base], userId: 7, revision: 'r1' });
+        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => profiles);
+        const onImport = vi.fn(async (servers: ServerProfile[], expected?: number | null) => {
+            await appendImportedProfiles(servers, expected);
+        });
+        const outcome = await commitImportedServersForScan([crypt], new Set([bridgeProfileKey(base)]), 7, onImport);
+        expect(outcome).toEqual({ added: 1, updated: 0 });
+        expect(onImport).toHaveBeenCalledWith([crypt], 7);
     });
 });

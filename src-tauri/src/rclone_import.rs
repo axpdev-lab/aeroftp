@@ -6109,6 +6109,28 @@ pub fn export_rclone(
 mod tests {
     use super::*;
 
+    /// The canonical secret-key list covers both spellings of the inline AWS
+    /// STS token, so `options_without_secrets` strips `sessionToken` and
+    /// `session_token` alike while non-secret options (region, endpoint)
+    /// survive.
+    #[test]
+    fn options_without_secrets_strips_both_session_token_spellings() {
+        assert!(crate::profile_export::OPTIONS_SECRET_KEYS.contains(&"sessionToken"));
+        assert!(crate::profile_export::OPTIONS_SECRET_KEYS.contains(&"session_token"));
+        let options = serde_json::json!({
+            "region": "eu-west-1",
+            "endpoint": "https://s3.example.com",
+            "sessionToken": "CAMEL-SECRET",
+            "session_token": "SNAKE-SECRET",
+        });
+        let stripped = options_without_secrets(Some(&options)).unwrap();
+        assert_eq!(
+            stripped,
+            serde_json::json!({ "region": "eu-west-1", "endpoint": "https://s3.example.com" })
+        );
+        assert!(!stripped.to_string().contains("SECRET"));
+    }
+
     /// Which OAuth app stays stored does not change from run to run.
     #[test]
     fn the_secrets_follow_the_order_of_the_servers() {

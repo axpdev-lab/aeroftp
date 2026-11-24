@@ -83,30 +83,21 @@ pub fn restrict_to_owner(_path: &Path) {}
 /// verified. Used before writing secret-bearing export payloads into a temp
 /// file so an export directory with a permissive parent DACL never exposes
 /// secret bytes on disk.
+///
+/// On Windows the DACL is applied to `file`'s open handle, and `path` must
+/// still identify that same file object (volume serial + file index) before
+/// and after: while the staging handle allows `FILE_SHARE_DELETE`, another
+/// account with delete-child rights in the directory could rename the path,
+/// and a path-only check could then harden (or verify) a different file than
+/// the one the payload is written to.
 #[cfg(windows)]
-pub fn restrict_to_owner_checked(path: &Path) -> std::io::Result<()> {
-    let is_dir = path.is_dir();
-    match win::apply_owner_only_dacl(path, is_dir) {
-        Ok(()) => {
-            if win::verify_checked_access(path, is_dir) {
-                return Ok(());
-            }
-            let _ = win::set_inherited_dacl(path);
-            Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "owner-only ACL verification failed",
-            ))
-        }
-        Err(_) => Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "failed to apply owner-only ACL",
-        )),
-    }
+pub fn restrict_to_owner_checked(file: &std::fs::File, path: &Path) -> std::io::Result<()> {
+    win::restrict_owner_only_by_handle(file, path)
 }
 
 /// No-op on non-Windows platforms (Unix enforces `0600` on the open handle).
 #[cfg(not(windows))]
-pub fn restrict_to_owner_checked(_path: &Path) -> std::io::Result<()> {
+pub fn restrict_to_owner_checked(_file: &std::fs::File, _path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -167,9 +158,9 @@ mod win {
         CloseHandle, LocalFree, ERROR_ACCESS_DENIED, ERROR_SUCCESS, HANDLE, HLOCAL, WIN32_ERROR,
     };
     use windows::Win32::Security::Authorization::{
-        SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE,
-        SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_IS_WELL_KNOWN_GROUP,
-        TRUSTEE_TYPE, TRUSTEE_W,
+        SetEntriesInAclW, SetNamedSecurityInfoW, SetSecurityInfo, EXPLICIT_ACCESS_W,
+        NO_MULTIPLE_TRUSTEE, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID, TRUSTEE_IS_USER,
+        TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_TYPE, TRUSTEE_W,
     };
     use windows::Win32::Security::{
         CreateWellKnownSid, GetTokenInformation, InitializeAcl, TokenUser,
@@ -178,7 +169,9 @@ mod win {
         SECURITY_MAX_SID_SIZE, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY, TOKEN_USER,
         UNPROTECTED_DACL_SECURITY_INFORMATION, WELL_KNOWN_SID_TYPE,
     };
-    use windows::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
+    use windows::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_ALL_ACCESS,
+    };
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
     /// `windows` 0.58 does not derive `Default` on `PSID`.
@@ -357,9 +350,10 @@ mod win {
         }
     }
 
-    /// Replace the object's DACL with one that grants full control to the
-    /// current user, SYSTEM and Administrators, and nothing to anybody else.
-    pub(super) fn apply_owner_only_dacl(path: &Path, is_dir: bool) -> Result<(), String> {
+    /// A DACL granting full control to the current user, SYSTEM and
+    /// Administrators, and nothing to anybody else. A NULL result would mean
+    /// "everyone, full control", so it is refused by the caller.
+    fn owner_only_acl(is_dir: bool) -> Result<LocalAcl, String> {
         let user = TokenUserSid::query()?;
         let system = WellKnownSid::new(WinLocalSystemSid)?;
         let admins = WellKnownSid::new(WinBuiltinAdministratorsSid)?;
@@ -383,7 +377,13 @@ mod win {
             // "harden" the vault into being world-writable.
             return Err("SetEntriesInAclW returned a NULL DACL".to_string());
         }
+        Ok(acl)
+    }
 
+    /// Replace the object's DACL with one that grants full control to the
+    /// current user, SYSTEM and Administrators, and nothing to anybody else.
+    pub(super) fn apply_owner_only_dacl(path: &Path, is_dir: bool) -> Result<(), String> {
+        let acl = owner_only_acl(is_dir)?;
         let path_w = wide(path);
         unsafe {
             check(
@@ -399,6 +399,90 @@ mod win {
                 "SetNamedSecurityInfoW",
             )
         }
+    }
+
+    /// The file's identity (volume serial + file index) as seen through an
+    /// open handle.
+    fn file_identity(handle: HANDLE) -> Result<(u32, u32, u32), String> {
+        let mut info = BY_HANDLE_FILE_INFORMATION::default();
+        unsafe {
+            GetFileInformationByHandle(handle, &mut info)
+                .map_err(|e| format!("GetFileInformationByHandle failed: {e}"))?;
+        }
+        Ok((
+            info.dwVolumeSerialNumber,
+            info.nFileIndexHigh,
+            info.nFileIndexLow,
+        ))
+    }
+
+    /// Open `path` for metadata/ACL rights only, share-all: those rights do
+    /// not conflict with a live `FILE_SHARE_DELETE`-only staging handle.
+    fn open_path_metadata(path: &Path) -> std::io::Result<std::fs::File> {
+        use std::os::windows::fs::OpenOptionsExt;
+        // READ_CONTROL (0x0002_0000) | WRITE_DAC (0x0004_0000) | FILE_READ_ATTRIBUTES (0x0080)
+        const METADATA_ACL_ACCESS: u32 = 0x0006_0080;
+        const SHARE_ALL: u32 = 0x0000_0007;
+        std::fs::OpenOptions::new()
+            .access_mode(METADATA_ACL_ACCESS)
+            .share_mode(SHARE_ALL)
+            .open(path)
+    }
+
+    /// Handle-based owner-only hardening for the staged export temp file.
+    /// The DACL is set on the OPEN HANDLE's object (`SetSecurityInfo`), never
+    /// on the mutable path, and `path` must identify that same file object
+    /// (volume serial + file index) before and after the change. While the
+    /// staging handle allows `FILE_SHARE_DELETE`, another account with
+    /// delete-child rights in the export directory can rename the path; this
+    /// check fails closed instead of hardening (or verifying) a different
+    /// file than the one the payload is about to be written to.
+    pub(super) fn restrict_owner_only_by_handle(
+        file: &std::fs::File,
+        path: &Path,
+    ) -> std::io::Result<()> {
+        use std::os::windows::io::AsRawHandle;
+        let other = |e: String| std::io::Error::new(std::io::ErrorKind::Other, e);
+        let denied =
+            |msg: &str| std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg.to_string());
+        let staging_handle = HANDLE(file.as_raw_handle() as *mut core::ffi::c_void);
+        let staging = file_identity(staging_handle).map_err(other)?;
+        let path_still_staged = || -> std::io::Result<()> {
+            let path_file = open_path_metadata(path)?;
+            let via_path =
+                file_identity(HANDLE(path_file.as_raw_handle() as *mut core::ffi::c_void))
+                    .map_err(other)?;
+            if via_path != staging {
+                return Err(denied("the staged path no longer refers to the open file"));
+            }
+            Ok(())
+        };
+        // Identity first: harden only if the path is still our staged file.
+        path_still_staged()?;
+        let acl = owner_only_acl(false).map_err(other)?;
+        unsafe {
+            check(
+                SetSecurityInfo(
+                    staging_handle,
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                    NULL_SID,
+                    NULL_SID,
+                    Some(acl.0 as *const ACL),
+                    None,
+                ),
+                "SetSecurityInfo",
+            )
+            .map_err(other)?;
+        }
+        // Verify on the same object: the path must still be the staged file
+        // and remain reachable for the current user.
+        path_still_staged()?;
+        if !verify_checked_access(path, false) {
+            let _ = set_inherited_dacl(path);
+            return Err(denied("owner-only ACL verification failed"));
+        }
+        Ok(())
     }
 
     /// Remove the explicit DACL and re-enable inheritance from the parent.
@@ -594,7 +678,7 @@ mod tests {
         let dir = scratch("checked");
         let file = dir.join("staged.tmp");
         const FILE_SHARE_DELETE: u32 = 0x0000_0004;
-        let _live_handle = std::fs::OpenOptions::new()
+        let live_handle = std::fs::OpenOptions::new()
             .create_new(true)
             .read(true)
             .write(true)
@@ -602,14 +686,45 @@ mod tests {
             .open(&file)
             .expect("create staged handle with FILE_SHARE_DELETE");
 
-        restrict_to_owner_checked(&file)
+        restrict_to_owner_checked(&live_handle, &file)
             .expect("checked owner-only ACL must verify cleanly against live staging handle");
         assert!(
-            restrict_to_owner_checked(&dir.join("missing.tmp")).is_err(),
-            "checked ACL must fail closed on missing/inaccessible path"
+            restrict_to_owner_checked(&live_handle, &dir.join("missing.tmp")).is_err(),
+            "checked ACL must fail closed when the path no longer refers to the open file"
         );
-        drop(_live_handle);
+        drop(live_handle);
         let _ = std::fs::remove_file(&file);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restrict_to_owner_checked_fails_closed_when_the_path_was_renamed_away() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = scratch("renamed");
+        let file = dir.join("staged.tmp");
+        const FILE_SHARE_DELETE: u32 = 0x0000_0004;
+        let live_handle = std::fs::OpenOptions::new()
+            .create_new(true)
+            .read(true)
+            .write(true)
+            .share_mode(FILE_SHARE_DELETE)
+            .open(&file)
+            .expect("create staged handle with FILE_SHARE_DELETE");
+
+        // Another account with delete-child rights renames the staged path
+        // while our handle stays open on the original file object.
+        let renamed = dir.join("swapped.tmp");
+        std::fs::rename(&file, &renamed).expect("FILE_SHARE_DELETE allows the rename");
+        // ...and plants a different file at the original path.
+        std::fs::write(&file, b"attacker").unwrap();
+
+        assert!(
+            restrict_to_owner_checked(&live_handle, &file).is_err(),
+            "the path now identifies a different file object: the ACL check must fail closed"
+        );
+        drop(live_handle);
+        let _ = std::fs::remove_file(&file);
+        let _ = std::fs::remove_file(&renamed);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -2546,7 +2546,11 @@ impl ProviderConnectionParams {
         // vault read fails or a profile marked `hasStoredSessionToken` lacks its
         // token in the vault.
         let explicit_requires_token = self.has_stored_session_token.unwrap_or(false);
-        let fail_closed_when_locked = self.has_stored_session_token != Some(false);
+        // Fail closed on a locked vault only when the request itself declares
+        // the stored token required (`Some(true)`). A static S3 profile
+        // (profile_id + password, flag omitted or `Some(false)`) never reads
+        // the vault, so it must keep connecting while the vault is locked.
+        let fail_closed_when_locked = explicit_requires_token;
         crate::profile_loader::inject_vault_s3_session_token(
             config.provider_type,
             self.profile_id.as_deref(),
@@ -2728,6 +2732,10 @@ pub async fn provider_discover_targets(
                     .to_string(),
             ),
         };
+    // The discovery await can outlast an account switch or a vault lock: a
+    // stale reply keyed only on credentials would be presented as current.
+    // Re-validate the captured owner before the targets leave this function.
+    owner.validate()?;
     // Dedup on the identity, then present by label. `dedup_by` only removes
     // ADJACENT equals, so it has to run against the key it compares: sorting by
     // label first leaves two rows with the same value un-adjacent and both
@@ -19738,8 +19746,19 @@ mod tests {
     /// bridge that serves plain HTTP while the preset starts from HTTPS. Only
     /// a known bridge is reconciled: the fixture's free port stands for 1800.
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn a_fetch_lists_the_buckets_of_a_bridge_on_plain_http() {
+        // Isolated child: the discovery captures a GuiOwnerContext, which can
+        // prime the process-global user session; a child keeps that away from
+        // the other tests running in this process.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::a_fetch_lists_the_buckets_of_a_bridge_on_plain_http",
+        ) {
+            return;
+        }
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         crate::local_bridge::alias_test_port(port, 1800);
@@ -19793,6 +19812,130 @@ mod tests {
             targets.iter().map(|t| t.value.as_str()).collect::<Vec<_>>(),
             ["Documents"]
         );
+    }
+
+    /// A discovery reply must not outlive an account switch: the owner is
+    /// captured before the network await and re-validated after it, so a Fetch
+    /// started under one account fails closed when the active account changed
+    /// while the buckets were being listed. The fixture answers only after a
+    /// delay, and the switch lands while the reply is still in flight.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_discovery_reply_after_an_account_switch_is_rejected() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::a_discovery_reply_after_an_account_switch_is_rejected",
+        ) {
+            return;
+        }
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic discovery owner master",
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master(
+            "synthetic discovery owner master",
+            None,
+        )
+        .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        crate::local_bridge::alias_test_port(port, 1800);
+        let (requested_tx, mut requested_rx) = tokio::sync::mpsc::channel::<()>(4);
+        let server = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                let requested_tx = requested_tx.clone();
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buffer = [0u8; 4096];
+                    while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut buffer).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&buffer[..n]),
+                        }
+                    }
+                    let _ = requested_tx.send(()).await;
+                    // Hold the reply so the account switch lands while the
+                    // discovery is still awaiting it.
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    let body = "<ListAllMyBucketsResult><Buckets><Bucket><Name>Documents</Name></Bucket></Buckets></ListAllMyBucketsResult>";
+                    let reply = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+
+        let mut params = s3_params(None);
+        params.provider_id = Some("filen-desktop-s3".to_string());
+        params.server = format!("https://local.s3.filen.io:{port}");
+        params.port = Some(port);
+        params.endpoint = Some(format!("https://local.s3.filen.io:{port}"));
+        params.region = Some("filen".to_string());
+        params.username = "admin".to_string();
+        params.password = "admin".to_string();
+        params.path_style = Some(true);
+        params.verify_cert = Some(false);
+        let mut discovery = tokio::spawn(provider_discover_targets(params));
+
+        // The bucket request is on the wire; switch the active account before
+        // the delayed reply comes back. If the discovery ends first, its error
+        // is the real failure: surface it instead of hanging on the channel.
+        tokio::select! {
+            got = requested_rx.recv() => {
+                assert!(got.is_some(), "the fake bridge must receive the bucket request");
+                let conn = crate::user_partitions::open_or_init_cli().unwrap();
+                crate::user_partitions::set_active_user(&conn, second).unwrap();
+                drop(conn);
+            }
+            early = &mut discovery => {
+                panic!("discovery ended before the account switch: {:?}", early.unwrap());
+            }
+        }
+
+        let result = discovery.await.unwrap();
+        server.abort();
+        assert!(
+            matches!(&result, Err(e) if e.starts_with(crate::providers::types::TARGET_CHANGED_MARKER)),
+            "a discovery reply that outlived an account switch must be refused, got: {result:?}"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        crate::credential_store::CredentialStore::clear_cache();
     }
 
     #[test]
@@ -25445,8 +25588,10 @@ mod tests {
 
         crate::credential_store::CredentialStore::clear_cache();
 
-        // Locked vault with `has_stored_session_token: Some(true)` AND omitted (`None`)
-        // both fail closed with the same local vault error; `Some(false)` succeeds.
+        // Locked vault: `has_stored_session_token: Some(true)` fails closed with
+        // the local vault error, while an omitted flag (`None`, what a saved
+        // static S3 profile's connect sends) or `Some(false)` proceeds without
+        // a token, because that path never reads the vault.
         let mut locked_required_params = s3_params(None);
         locked_required_params.profile_id = Some("aws-sts-1".to_string());
         locked_required_params.has_stored_session_token = Some(true);
@@ -25454,7 +25599,12 @@ mod tests {
         let mut locked_omitted_params = s3_params(None);
         locked_omitted_params.profile_id = Some("aws-sts-1".to_string());
         locked_omitted_params.has_stored_session_token = None;
-        let locked_omitted_err = locked_omitted_params.to_provider_config().unwrap_err();
+        let locked_omitted_tok = locked_omitted_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
         let mut locked_non_sts_params = s3_params(None);
         locked_non_sts_params.profile_id = Some("aws-sts-1".to_string());
         locked_non_sts_params.has_stored_session_token = Some(false);
@@ -25515,8 +25665,8 @@ mod tests {
             "STS profile with locked vault must fail closed: {locked_required_err}"
         );
         assert_eq!(
-            locked_omitted_err, locked_required_err,
-            "omitted has_stored_session_token must fail closed with the same locked-vault error"
+            locked_omitted_tok, None,
+            "an omitted has_stored_session_token with a locked vault must proceed without a token, like a static S3 profile does"
         );
         assert_eq!(locked_non_sts_tok, None);
         assert_eq!(vault_after_bob_restore, "VAULT-STS-TOKEN-42");

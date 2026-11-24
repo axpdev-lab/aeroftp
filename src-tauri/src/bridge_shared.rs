@@ -281,7 +281,7 @@ pub(crate) fn stage_export_temp_600(
 fn stage_export_temp_600_with_acl(
     parent: &Path,
     bytes: &[u8],
-    restrict_acl: impl FnOnce(&Path) -> std::io::Result<()>,
+    restrict_acl: impl FnOnce(&std::fs::File, &Path) -> std::io::Result<()>,
 ) -> std::io::Result<tempfile::NamedTempFile> {
     use std::io::Write;
     #[cfg(windows)]
@@ -315,8 +315,10 @@ fn stage_export_temp_600_with_acl(
     }
     // On Windows, `tempfile` inherits the parent directory's DACL; restrict
     // access to the current user (+ SYSTEM/Administrators) BEFORE writing any
-    // secret bytes, failing closed if owner-only restriction fails.
-    restrict_acl(tmp.path())?;
+    // secret bytes, failing closed if owner-only restriction fails. The ACL
+    // call gets the open handle, so a path rename under FILE_SHARE_DELETE
+    // cannot redirect the hardening onto a different file object.
+    restrict_acl(tmp.as_file(), tmp.path())?;
     tmp.write_all(bytes)?;
     tmp.as_file().sync_all()?;
     Ok(tmp)
@@ -995,12 +997,28 @@ pub fn resolve_export_endpoint(
     options: Option<&serde_json::Value>,
     provider_id: Option<&str>,
 ) -> Result<Option<ExportEndpoint>, String> {
+    resolve_export_endpoint_with_path_style(protocol, host, port, username, options, provider_id)
+        .map(|(endpoint, _)| endpoint)
+}
+
+/// [`resolve_export_endpoint`] plus the S3 path-style flag the connection
+/// itself would use, also when the profile has no endpoint of its own (AWS
+/// itself, where `resolve_export_endpoint` returns `None` and drops the
+/// flag): an exporter must not lose an explicit path-style setting.
+pub fn resolve_export_endpoint_with_path_style(
+    protocol: &str,
+    host: &str,
+    port: u32,
+    username: &str,
+    options: Option<&serde_json::Value>,
+    provider_id: Option<&str>,
+) -> Result<(Option<ExportEndpoint>, bool), String> {
     use crate::providers::{ProviderConfig, ProviderType, WebDavConfig};
 
     let provider_type = match protocol {
         "webdav" => ProviderType::WebDav,
         "s3" => ProviderType::S3,
-        _ => return Ok(None),
+        _ => return Ok((None, false)),
     };
 
     // The same option normalisation the connect paths apply (camelCase keys,
@@ -1050,14 +1068,16 @@ pub fn resolve_export_endpoint(
                 return Err("WebDAV profile has no server URL".to_string());
             }
             let dav = WebDavConfig::from_provider_config(&config).map_err(|e| e.to_string())?;
-            split_endpoint_url(&dav.url, false).map(Some)
+            split_endpoint_url(&dav.url, false).map(|ep| (Some(ep), false))
         }
         _ => {
             let (endpoint, path_style) =
                 crate::providers::types::s3_endpoint_and_path_style(&config);
             match endpoint {
-                Some(ep) => split_endpoint_url(&ep, path_style).map(Some),
-                None => Ok(None),
+                Some(ep) => split_endpoint_url(&ep, path_style).map(|ep| (Some(ep), path_style)),
+                // No endpoint of its own (AWS itself): the path-style flag is
+                // still the one the connection uses, so return it with None.
+                None => Ok((None, path_style)),
             }
         }
     }
@@ -1520,9 +1540,10 @@ mod tests {
     fn stage_export_temp_stops_before_writing_secrets_when_acl_restriction_fails() {
         let dir = tempfile::tempdir().unwrap();
         let mut captured_path: Option<std::path::PathBuf> = None;
-        let err = stage_export_temp_600_with_acl(dir.path(), b"TOP_SECRET_PAYLOAD_99", |p| {
+        let err = stage_export_temp_600_with_acl(dir.path(), b"TOP_SECRET_PAYLOAD_99", |f, p| {
             captured_path = Some(p.to_path_buf());
             // Before returning error, file must still be 0 bytes (no secrets written).
+            assert_eq!(f.metadata().unwrap().len(), 0);
             assert_eq!(std::fs::metadata(p).unwrap().len(), 0);
             Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,

@@ -145,6 +145,22 @@ async function restoreRemovedProfiles(removed: ServerProfile[], userId: number |
 }
 
 /**
+ * `commitImportedServers` bound to the account the scan wrote into: the
+ * callback receives `scanUserId` as its expected account, so a switch between
+ * the scan and the commit refuses the write instead of landing `hasStored*`
+ * flags that point at another account's vault partition.
+ */
+export async function commitImportedServersForScan(
+    selected: ServerProfile[],
+    existingServerKeys: Set<string>,
+    scanUserId: number | null | undefined,
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>,
+): Promise<CommitOutcome> {
+    return commitImportedServers(selected, existingServerKeys, (servers) =>
+        onImport(servers, scanUserId ?? null));
+}
+
+/**
  * Merge imported profiles into the active user's vault partition with
  * the same add-vs-update split and rollback semantics used by the
  * legacy rclone/WinSCP/FileZilla confirm handlers. Single source of

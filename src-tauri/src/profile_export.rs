@@ -297,6 +297,10 @@ pub const OPTIONS_SECRET_KEYS: &[&str] = &[
     "totp_secret",
     "key_passphrase",
     "sessionToken",
+    // snake_case spelling of the same inline AWS STS token
+    // (`extract_and_strip_inline_s3_session_token` accepts both): a legacy
+    // options blob carrying `session_token` is secret too.
+    "session_token",
     "sasToken",
     "clientSecret",
     "client_secret",

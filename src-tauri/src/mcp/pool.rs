@@ -641,10 +641,14 @@ async fn create_provider_from_vault(
     create_provider_from_vault_with_reader(
         server_query,
         identity,
-        crate::user_partitions::mcp_list_active_server_profiles,
+        crate::user_partitions::mcp_list_server_profiles,
         crate::profile_security::strict_profiles_enabled(),
-        |store, key| {
-            crate::user_partitions::resolve_active_credential(store, key)
+        |store, user_id, key| {
+            let resolved = match user_id {
+                Some(uid) => crate::user_partitions::resolve_credential_for_user(store, uid, key),
+                None => crate::user_partitions::resolve_active_credential(store, key),
+            };
+            resolved
                 .ok()
                 .flatten()
                 .map(|s| s.to_string())
@@ -657,16 +661,20 @@ async fn create_provider_from_vault(
 async fn create_provider_from_vault_with_reader(
     server_query: &str,
     identity: Option<&str>,
-    read_profiles: impl FnOnce(&CredentialStore) -> Result<Vec<serde_json::Value>, String>,
+    read_profiles: impl FnOnce(&CredentialStore, Option<i64>) -> Result<Vec<serde_json::Value>, String>,
     strict: bool,
-    read_credential: impl FnOnce(&CredentialStore, &str) -> String,
+    read_credential: impl FnOnce(&CredentialStore, Option<i64>, &str) -> String,
 ) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
-    // MUV-5: active-user profiles (see resolve_profile_target). The transient
-    // env-passphrase unlock done inside also primes the session so the
-    // `resolve_active_credential` read below decrypts the per-user `server_<id>`.
-    let profiles = read_profiles(&store)?;
+    // MUV-5: capture the active user id ONCE before reading anything, so the
+    // profile list, the password and the session token all come from the same
+    // user partition even if the active account switches while this connect
+    // runs (the GUI can switch on another thread at any point). The transient
+    // env-passphrase unlock done inside `mcp_list_server_profiles` also primes
+    // the session so the per-user `server_<id>` row decrypts.
+    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+    let profiles = read_profiles(&store, user_id)?;
 
     let matched = find_unique_profile(&profiles, server_query)?;
     // The profile read again here is the one opened: it must still connect
@@ -702,14 +710,11 @@ async fn create_provider_from_vault_with_reader(
     // AEROFTP_USER_PASSPHRASE, so this resolves its own `server_<id>` row;
     // otherwise the dual-written vault copy still answers.
     // Strict mode holds here too: the read is never attempted for a relaxed
-    // saved profile when strict mode is active.
-    // Capture the active user id ONCE before reading credentials or awaiting
-    // auth providers, so password and session token always come from the same
-    // user partition (Class A: findings 13 & 14).
-    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
-
+    // saved profile when strict mode is active. The password reads through the
+    // user captured above, so it always comes from the same partition as the
+    // profile list and the session token below.
     let raw_cred = credential_after_strict_check(matched, strict, || {
-        read_credential(&store, &format!("server_{}", profile_id))
+        read_credential(&store, user_id, &format!("server_{}", profile_id))
     })?;
 
     let (mut resolved_username, mut password) = parse_server_credential(&raw_cred, username);
@@ -851,10 +856,10 @@ mod tests {
             None,
             {
                 let profile = profile.clone();
-                move |_| Ok(vec![profile])
+                move |_, _| Ok(vec![profile])
             },
             true,
-            |_, key| {
+            |_, _, key| {
                 assert_eq!(key, "server_srv_relaxed");
                 read.set(true);
                 "fixture-secret".to_string()
@@ -872,6 +877,90 @@ mod tests {
         });
         assert_eq!(allowed.unwrap(), "fixture-secret");
         assert!(read.get());
+    }
+
+    /// The profile list and the password must come from the SAME account: the
+    /// user id captured before the profile read is exactly the one the
+    /// credential read receives, so an account switch mid-connect cannot mix
+    /// one user's profile list with another user's password.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn the_vault_connect_path_reads_profiles_and_password_from_one_captured_user() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "mcp::pool::tests::the_vault_connect_path_reads_profiles_and_password_from_one_captured_user",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic pool user master").unwrap();
+        CredentialStore::unlock_with_master("synthetic pool user master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let _second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+
+        use std::cell::RefCell;
+        let seen = RefCell::new(Vec::new());
+        let profile = serde_json::json!({
+            "id": "srv_pool", "name": "lab", "host": "files.example.com",
+            "port": 22, "username": "user", "protocol": "sftp",
+        });
+        let result = create_provider_from_vault_with_reader(
+            "lab",
+            None,
+            {
+                let profile = profile.clone();
+                let seen = &seen;
+                move |_, user| {
+                    seen.borrow_mut().push(format!("profiles:{user:?}"));
+                    Ok(vec![profile])
+                }
+            },
+            false,
+            |_, user, key| {
+                seen.borrow_mut().push(format!("cred:{user:?}:{key}"));
+                "fixture-secret".to_string()
+            },
+        )
+        .await;
+        let (_provider, name, proto, _deadline) = result.expect("the pool connect must build");
+        assert_eq!(name, "lab");
+        assert_eq!(proto, "SFTP");
+        assert_eq!(
+            seen.borrow().as_slice(),
+            [
+                format!("profiles:{:?}", Some(first)),
+                format!("cred:{:?}:server_srv_pool", Some(first)),
+            ],
+            "both reads must carry the user captured before the profile read"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
     }
     use super::*;
 
