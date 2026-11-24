@@ -123,7 +123,11 @@ export const loadSavedServerProfilesBound = async (): Promise<{
     } catch (error) {
         if (!canUseLegacyProfileFallback(error)) throw error;
         const locked = await readLegacyServerProfilesBound();
-        if (accountChangeGeneration() !== accountBefore || locked.accountsUnknown === true) {
+        if (
+            accountChangeGeneration() !== accountBefore ||
+            locked.accountsUnknown === true ||
+            (locked.activeUserId != null && locked.ownerUserId !== locked.activeUserId)
+        ) {
             return null;
         }
         return { profiles: locked.profiles ?? [], accountId: locked.activeUserId ?? null };

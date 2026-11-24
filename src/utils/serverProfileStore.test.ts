@@ -676,4 +676,19 @@ describe('loadSavedServerProfilesBound', () => {
         expect(bound).toBeNull();
         mockInvoke.mockReset();
     });
+
+    it('binds nothing when the legacy blob owner is not the active account', async () => {
+        for (const ownerUserId of [null, 4]) {
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+                if (command === 'user_partitions_read_legacy_server_profiles') {
+                    return legacyRead({ activeUserId: 7, ownerUserId, accountsUnknown: false });
+                }
+                return undefined;
+            });
+            const bound = await loadSavedServerProfilesBound();
+            expect(bound).toBeNull();
+            mockInvoke.mockReset();
+        }
+    });
 });
