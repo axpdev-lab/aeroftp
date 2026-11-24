@@ -4127,6 +4127,21 @@ fn mirror_into_partition(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    #[cfg(test)]
+    if PARTITION_WRITE_REFUSED.with(std::cell::Cell::get) {
+        return Err("Write credential to partition: refused".to_string());
+    }
+    mirror_into_partition_inner(conn, store, user_id, credential_id, credential_type, secret)
+}
+
+fn mirror_into_partition_inner(
+    conn: &Connection,
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
     let refused = match set_user_credential_for(
         conn,
@@ -4797,6 +4812,9 @@ fn unmirror_deleted_credential(user_id: i64, credential_id: &str) -> Result<(), 
 thread_local! {
     /// The partition refuses the delete of a refresh chain.
     pub(crate) static PARTITION_DELETE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// The partition mirror refuses the write of a credential, simulating a
+    /// dual write that fails halfway (vault written, partition not).
+    pub(crate) static PARTITION_WRITE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// [`delete_active_credential_dual`] with the account lookup and the unmirror
