@@ -3222,7 +3222,15 @@ fn import_keystore_with_store(
                     if name.as_str() == "user_partitions.db" && target.is_file() {
                         let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
                         let backup = cfg.join(format!("{name}.pre-import-{stamp}.bak"));
-                        match std::fs::copy(&target, &backup) {
+                        #[cfg(test)]
+                        let copied = if tests::partition_snapshot_fails() {
+                            Err(std::io::Error::other("refused (test)"))
+                        } else {
+                            std::fs::copy(&target, &backup)
+                        };
+                        #[cfg(not(test))]
+                        let copied = std::fs::copy(&target, &backup);
+                        match copied {
                             Ok(_) => {
                                 user_partitions_backup_path =
                                     Some(backup.to_string_lossy().into_owned());
@@ -3231,9 +3239,17 @@ fn import_keystore_with_store(
                                     backup.display()
                                 );
                             }
-                            Err(e) => tracing::warn!(
-                                "F-012 W3: could not snapshot {name} before overwrite: {e}"
-                            ),
+                            Err(e) => {
+                                tracing::warn!(
+                                    "F-012 W3: could not snapshot {name} before overwrite: {e}"
+                                );
+                                // Without the pre-import bytes the partition
+                                // cannot be put back: never publish over it.
+                                if wanted(&name) {
+                                    sqlite_dbs_failed.push(name.clone());
+                                }
+                                continue;
+                            }
                         }
                     }
                     // AUDIT 2026-05-11 M3: use the shared
@@ -3313,6 +3329,9 @@ fn import_keystore_with_store(
     // writer moved stays.
     #[cfg(test)]
     tests::run_before_foreign_token_sweep(store);
+    // What this sweep deleted from the vault, to put back if the published
+    // partition goes back to its pre-import bytes.
+    let mut swept: Vec<(String, Zeroizing<String>)> = Vec::new();
     let mut partition_rolled_back = false;
     if partition_in_restore {
         if let Some((inputs, _)) = &profile_plan {
@@ -3329,6 +3348,9 @@ fn import_keystore_with_store(
                     };
                     #[cfg(not(test))]
                     let deleted = store.delete_secret_if_unchanged(key, expected);
+                    if let Ok(true) = deleted {
+                        swept.push((key.clone(), expected.clone()));
+                    }
                     if let Err(e) = deleted {
                         tracing::warn!(
                             "Keystore import: foreign vault token {key} not removed: {e}"
@@ -3388,7 +3410,7 @@ fn import_keystore_with_store(
                     // owner: the restore is not exposed. The pre-import
                     // partition goes back byte for byte and the import
                     // reports the database as not restored.
-                    partition_rolled_back = rollback_partition_restore(
+                    let bytes_restored = rollback_partition_restore(
                         config_dir,
                         user_partitions_backup_path.as_deref(),
                     );
@@ -3396,9 +3418,25 @@ fn import_keystore_with_store(
                         "Keystore import: a foreign vault token could be neither removed nor \
                          blocked; the restored partition was rolled back"
                     );
-                    if !sqlite_dbs_failed.iter().any(|n| n == "user_partitions.db") {
-                        sqlite_dbs_failed.push("user_partitions.db".to_string());
+                    if bytes_restored {
+                        // Only what this sweep deleted goes back, and only
+                        // into a slot no other writer filled since. When
+                        // the bytes did not go back the foreign partition
+                        // is still published, so its swept tokens stay gone.
+                        for (key, expected) in &swept {
+                            if let Err(e) = store.store_secret_if_absent(key, expected.as_str()) {
+                                tracing::warn!(
+                                    "Keystore import: swept vault token {key} not restored: {e}"
+                                );
+                            }
+                        }
+                        if !sqlite_dbs_failed.iter().any(|n| n == "user_partitions.db") {
+                            sqlite_dbs_failed.push("user_partitions.db".to_string());
+                        }
                     }
+                    // Whether the bytes went back or not, nothing below
+                    // writes into the partition this import published.
+                    partition_rolled_back = true;
                 }
             }
         }
@@ -4043,6 +4081,23 @@ mod tests {
     /// [`fail_next_foreign_token_block`].
     pub(super) fn foreign_token_block_fails() -> bool {
         FOREIGN_TOKEN_BLOCK_FAILS.with(|slot| slot.replace(false))
+    }
+
+    thread_local! {
+        static PARTITION_SNAPSHOT_FAILS: std::cell::Cell<bool> =
+            const { std::cell::Cell::new(false) };
+    }
+
+    /// Arm the next pre-import snapshot of `user_partitions.db` to fail as
+    /// a filesystem error would. Consumed once.
+    pub(super) fn fail_next_partition_snapshot() {
+        PARTITION_SNAPSHOT_FAILS.with(|slot| slot.set(true));
+    }
+
+    /// Whether the armed failure is due, consumed once armed by
+    /// [`fail_next_partition_snapshot`].
+    pub(super) fn partition_snapshot_fails() -> bool {
+        PARTITION_SNAPSHOT_FAILS.with(|slot| slot.replace(false))
     }
 
     fn before_profile_decisions(
@@ -7035,6 +7090,250 @@ mod tests {
             store.get(key).unwrap(),
             "local-token",
             "the vault keeps the value the failed delete left"
+        );
+    }
+
+    /// The rollback puts back every token the sweep deleted, not only the
+    /// one whose delete and block both failed: two foreign keys, the first
+    /// refused once, the second deleted before the partition goes back.
+    /// Both values stay in the vault and the database is byte-identical.
+    /// Red if the second key stays deleted.
+    #[test]
+    fn a_rolled_back_partition_gets_every_swept_token_back() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key_a = "oauth_dropbox_srv_a";
+        let key_b = "oauth_dropbox_srv_b";
+        let list = [dropbox("srv_a", "A"), dropbox("srv_b", "B")];
+        partition_with(&store, &cfg, &list);
+        store.store(key_a, "local-token-a").unwrap();
+        store.store(key_b, "local-token-b").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let db = cfg.join("user_partitions.db");
+        let before_bytes = std::fs::read(&db).unwrap();
+        before_foreign_token_sweep(|_| {
+            fail_next_foreign_token_delete();
+            fail_next_foreign_token_block();
+        });
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result
+                .sqlite_dbs_failed
+                .iter()
+                .any(|name| name == "user_partitions.db"),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert_eq!(
+            std::fs::read(&db).unwrap(),
+            before_bytes,
+            "the partition is byte-identical to the pre-restore state"
+        );
+        assert_eq!(
+            store.get(key_a).unwrap(),
+            "local-token-a",
+            "the key whose delete failed kept its value"
+        );
+        assert_eq!(
+            store.get(key_b).unwrap(),
+            "local-token-b",
+            "the key the sweep deleted is put back by the rollback"
+        );
+    }
+
+    /// When the pre-import snapshot is gone by the time the rollback runs,
+    /// the foreign partition stays published and nothing below writes into
+    /// it: the profile decisions report they were not applied. Red if the
+    /// failed copy still lets the decisions run.
+    #[test]
+    fn a_rollback_that_cannot_restore_the_bytes_still_blocks_the_writes() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let db = cfg.join("user_partitions.db");
+        let cfg_for_hook = cfg.clone();
+        before_foreign_token_sweep(move |_| {
+            for entry in std::fs::read_dir(&cfg_for_hook).unwrap() {
+                let path = entry.unwrap().path();
+                if path.file_name().is_some_and(|n| {
+                    n.to_string_lossy()
+                        .starts_with("user_partitions.db.pre-import-")
+                }) {
+                    std::fs::remove_file(path).unwrap();
+                }
+            }
+            fail_next_foreign_token_delete();
+            fail_next_foreign_token_block();
+        });
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.profile_decisions_error.is_some(),
+            "the foreign partition is still published: decisions not applied"
+        );
+        assert!(
+            db.is_file(),
+            "the published partition stays on disk when its bytes cannot come back"
+        );
+        assert!(
+            !result
+                .sqlite_dbs_failed
+                .iter()
+                .any(|name| name == "user_partitions.db"),
+            "the name is reported failed only when the bytes went back: {:?}",
+            result.sqlite_dbs_failed
+        );
+    }
+
+    /// A pre-import snapshot that cannot be taken stops the publish of
+    /// `user_partitions.db` instead of overwriting blind: the database
+    /// keeps its bytes and the import reports it as not restored. Red if
+    /// the overwrite proceeds without the snapshot.
+    #[test]
+    fn a_partition_whose_snapshot_fails_is_not_published() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let db = cfg.join("user_partitions.db");
+        let before_bytes = std::fs::read(&db).unwrap();
+        fail_next_partition_snapshot();
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result
+                .sqlite_dbs_failed
+                .iter()
+                .any(|name| name == "user_partitions.db"),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert_eq!(
+            std::fs::read(&db).unwrap(),
+            before_bytes,
+            "the partition is never overwritten without its snapshot"
         );
     }
 
