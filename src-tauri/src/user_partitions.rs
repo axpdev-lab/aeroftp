@@ -5943,20 +5943,28 @@ fn sole_row_state(
     let Some(vault) = vault else {
         return Ok(SoleRow::Moved);
     };
-    let digest = secret_value_digest(vault);
-    match read_credential_with_dek(tx, user_id, dek, key)? {
+    // The digest an entry keeps is of the row's ciphertext, read in the
+    // same transaction: a rewrite of the same plaintext under a new nonce
+    // is another writer's row, not the one this alignment wrote.
+    let write_row = |tx: &Connection| -> Result<String, String> {
+        set_user_credential_with_dek(tx, user_id, dek, key, kind, vault)?;
+        read_credential_and_digest_with_dek(tx, user_id, dek, key)?
+            .map(|(_, digest)| digest)
+            .ok_or_else(|| "Alignment row unreadable after write".to_string())
+    };
+    match read_credential_and_digest_with_dek(tx, user_id, dek, key)? {
         None => {
-            set_user_credential_with_dek(tx, user_id, dek, key, kind, vault)?;
+            let digest = write_row(tx)?;
             inserted.insert(key.to_string(), digest);
             Ok(SoleRow::Moved)
         }
-        Some(row) if row.as_str() == vault => {
-            if inserted.get(key) != Some(&digest) {
+        Some((row, row_digest)) if row.as_str() == vault => {
+            if inserted.get(key) != Some(&row_digest) {
                 inserted.remove(key);
             }
             Ok(SoleRow::Moved)
         }
-        Some(row) => {
+        Some((_, row_digest)) => {
             // A row the alignment never wrote keeps the old rule: it wins
             // over the vault copy, which still leaves. Only a row that moved
             // away from a value this alignment wrote is another writer's,
@@ -5964,14 +5972,14 @@ fn sole_row_state(
             let Some(recorded) = inserted.get(key).cloned() else {
                 return Ok(SoleRow::Moved);
             };
-            if recorded != secret_value_digest(row.as_str()) {
+            if recorded != row_digest {
                 // The conflict keeps its digest: a later pass that still
                 // finds the row away from what the alignment wrote skips
                 // again instead of falling back to the rule that would let
                 // the vault copy leave.
                 return Ok(SoleRow::Skipped);
             }
-            set_user_credential_with_dek(tx, user_id, dek, key, kind, vault)?;
+            let digest = write_row(tx)?;
             inserted.insert(key.to_string(), digest);
             Ok(SoleRow::Moved)
         }
@@ -13893,6 +13901,77 @@ mod tests {
             vault.borrow().get(&key_a).map(String::as_str),
             Some("chain-a0"),
             "a marked-aligned pass would have dropped the digest and let the vault leave"
+        );
+    }
+
+    /// Greptile/CodeRabbit r10: the digest an alignment entry keeps is of
+    /// the row's ciphertext, not its plaintext. A sign-in that rewrites
+    /// the same plaintext under a new nonce is another writer's row: the
+    /// next pass must leave the row, its sign-in stamp and the rotated
+    /// vault copy alone instead of replacing the row with the vault chain.
+    #[test]
+    fn a_signed_in_rewrite_of_the_same_plaintext_keeps_its_stamp_and_vault_copy() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let _owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let first = create_passphrase_less_user(&mut conn, &root, "First", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(&mut conn, &root, first.id, &[profile("mine-a")]).unwrap();
+        let key_a = "oauth_dropbox_mine-a".to_string();
+        let keys = vec![key_a.clone()];
+        let vault = RefCell::new(HashMap::from([(key_a.clone(), "chain-a0".to_string())]));
+        let read = |key: &str| -> Result<Option<Zeroizing<String>>, String> {
+            Ok(vault.borrow().get(key).map(|v| Zeroizing::new(v.clone())))
+        };
+        // Every vault delete reports the value moved: the pass stays
+        // incomplete, so the registered digest survives to the next pass.
+        let delete = |_: &str, _: Option<&str>| -> Result<bool, String> { Ok(false) };
+        let list = || Ok(keys.clone());
+        let row = || {
+            get_user_credential_for(&conn, &root, first.id, &key_a)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        let align = || {
+            align_private_tokens_inner(&conn, &root, first.id, &keys, &list, &read, &delete)
+                .unwrap()
+        };
+
+        // The first pass writes the row with the vault chain and records
+        // its ciphertext digest; the vault keeps it (delete reports the
+        // value still held).
+        align();
+        assert_eq!(row().as_deref(), Some("chain-a0"));
+
+        // The account signs in again: the same plaintext under a new nonce,
+        // stamped as the account's own sign-in.
+        set_signed_in_credential_for(&conn, &root, first.id, &key_a, "oauth", "chain-a0").unwrap();
+        // The vault chain rotated since.
+        vault
+            .borrow_mut()
+            .insert(key_a.clone(), "rot-a".to_string());
+
+        // The next pass finds the row's plaintext behind the vault's but
+        // its ciphertext is not the one the alignment wrote: conflict.
+        align();
+        assert_eq!(
+            row().as_deref(),
+            Some("chain-a0"),
+            "the signed-in rewrite is another writer's row"
+        );
+        assert_eq!(
+            vault.borrow().get(&key_a).map(String::as_str),
+            Some("rot-a"),
+            "the conflicted key keeps its rotated vault copy"
+        );
+        assert!(
+            signed_in_row(&conn, first.id, &key_a).unwrap(),
+            "the sign-in stamp still matches the row's ciphertext"
         );
     }
 
