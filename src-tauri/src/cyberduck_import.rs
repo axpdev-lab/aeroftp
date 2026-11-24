@@ -190,7 +190,12 @@ fn map_duck(xml: &str) -> DuckOutcome {
     let region = field("Region");
     let path = field("Path").filter(|s| !s.is_empty());
     let hostname_path = crate::bridge_shared::split_endpoint(&raw_hostname)
-        .map(|parts| parts.path.to_string())
+        .map(|parts| {
+            percent_encoding::percent_decode_str(parts.path)
+                .decode_utf8()
+                .map(|path| path.into_owned())
+                .unwrap_or_else(|_| parts.path.to_string())
+        })
         .filter(|path| !path.is_empty() && path != "/");
     // A separate valid Port wins; an inline port is next, then the default.
     let port_field = field("Port")
@@ -999,6 +1004,29 @@ mod tests {
             panic!("separate Path must import");
         };
         assert_eq!(mapped.initial_path.as_deref(), Some("/other"));
+    }
+
+    #[test]
+    fn webdav_hostname_url_percent_decodes_the_start_folder_once() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>davs</string><key>Hostname</key><string>https://dav.example.test/team%20docs</string></dict></plist>"#;
+        let DuckOutcome::Profile(mapped) = map_duck(xml) else {
+            panic!("percent-encoded WebDAV hostname must import");
+        };
+        assert_eq!(mapped.initial_path.as_deref(), Some("/team docs"));
+        let config = crate::providers::ProviderConfig {
+            name: "dav".to_string(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: mapped.host,
+            port: Some(mapped.port as u16),
+            username: None,
+            password: None,
+            initial_path: mapped.initial_path,
+            extra: HashMap::new(),
+        };
+        assert_eq!(
+            crate::providers::WebDavProvider::start_folder_request_url(&config),
+            "https://dav.example.test/team%20docs"
+        );
     }
 
     #[test]

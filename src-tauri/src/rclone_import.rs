@@ -1984,15 +1984,14 @@ fn map_remote(
                 .map(str::trim)
                 .filter(|k| !k.is_empty())
                 .ok_or_else(|| "cloudinary remote has no api_key".to_string())?;
-            if let Some(prefix) = get_str("upload_prefix")
+            if get_str("upload_prefix")
                 .map(|p| p.trim().trim_end_matches('/'))
-                .filter(|p| !p.is_empty() && *p != "https://api.cloudinary.com")
+                .is_some_and(|p| !p.is_empty() && p != "https://api.cloudinary.com")
             {
-                let safe_prefix = parse_webdav_url_parts(prefix).sanitized_url;
-                let safe_prefix = safe_prefix.split(['?', '#']).next().unwrap_or(&safe_prefix);
-                return Err(format!(
-                    "cloudinary remote uses the endpoint {safe_prefix}; AeroFTP calls api.cloudinary.com only"
-                ));
+                return Err(
+                    "cloudinary remote sets a custom upload_prefix; AeroFTP calls api.cloudinary.com only"
+                        .to_string(),
+                );
             }
             let api_secret = get_plain_secret("api_secret");
             if api_secret.is_none() {
@@ -8739,6 +8738,22 @@ http_proxy =
     }
 
     #[test]
+    fn expanded_cloudinary_prefix_does_not_leak_its_api_secret() {
+        let secret = "CLOUDINARY_EXPANDED_API_SECRET";
+        let result = import_text(
+            &format!(
+                "[cloudinary]\ntype = cloudinary\ncloud_name = example\napi_key = key\napi_secret = {secret}\nupload_prefix = %(api_secret)s\n"
+            ),
+            "cloudinary-expanded-secret",
+        );
+        assert!(result.servers.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert!(result.skipped[0].reason.contains("upload_prefix"));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert!(!serialized.contains(secret), "{serialized}");
+    }
+
+    #[test]
     fn quoted_values_end_at_the_last_delimiter_before_a_suffix() {
         let result = import_text(
             "[empty]\ntype = sftp\nhost = direct.example.test\nuser = alice\nssh = `` # direct\n\n\
@@ -11582,7 +11597,7 @@ private_key = k
             ("dr-ws", "workspace_id"),
             ("dr-root", "root_folder_id"),
             ("dr-empty", "no access_token"),
-            ("cl-eu", "api-eu.cloudinary.com"),
+            ("cl-eu", "upload_prefix"),
             ("cl-nameless", "no cloud_name"),
             ("ik-no-endpoint", "no endpoint"),
         ] {
