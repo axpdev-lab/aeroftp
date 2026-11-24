@@ -982,7 +982,10 @@ enum ImportSourceKind {
 }
 
 const RCLONE_CONSUMED_KEYS: &[(&str, &[&str])] = &[
-    ("ftp", &["host", "pass", "port", "user"]),
+    (
+        "ftp",
+        &["host", "pass", "port", "user", "tls", "explicit_tls"],
+    ),
     (
         "sftp",
         &["host", "key_file", "key_file_pass", "pass", "port", "user"],
@@ -1066,6 +1069,22 @@ fn rclone_field_is_consumed(rclone_type: &str, key: &str) -> bool {
         .iter()
         .find(|(backend, _)| *backend == rclone_type)
         .is_some_and(|(_, keys)| keys.contains(&key))
+}
+
+fn failed_consumed_fields<'a>(
+    unresolved: &'a RcloneUnresolvedFields,
+    name: &str,
+    rclone_type: &str,
+) -> Vec<&'a str> {
+    let mut fields: Vec<&str> = unresolved
+        .get(name)
+        .into_iter()
+        .flatten()
+        .filter(|key| rclone_field_is_consumed(rclone_type, key))
+        .map(String::as_str)
+        .collect();
+    fields.sort_unstable();
+    fields
 }
 
 /// Convert a single rclone or template section to an AeroFTP profile.
@@ -1640,7 +1659,9 @@ fn map_remote(
         // profile dials the right API instead of silently defaulting to US.
         "pcloud" => {
             let hostname = get_str("hostname").unwrap_or("api.pcloud.com");
-            let region = if hostname.to_ascii_lowercase().contains("eapi") {
+            let hostname = crate::bridge_shared::try_endpoint_host(hostname)
+                .unwrap_or_else(|| hostname.to_string());
+            let region = if hostname.eq_ignore_ascii_case("eapi.pcloud.com") {
                 "eu"
             } else {
                 "us"
@@ -1914,21 +1935,25 @@ fn map_remote(
         "drime" => {
             let token = get_plain_secret("access_token")
                 .ok_or_else(|| "drime remote has no access_token".to_string())?;
-            if let Some(ws) = get_str("workspace_id")
+            if get_str("workspace_id")
                 .map(str::trim)
                 .filter(|w| !w.is_empty() && *w != "0")
+                .is_some()
             {
-                return Err(format!(
-                    "drime remote is pinned to workspace {ws}; AeroFTP opens the default workspace only"
-                ));
+                return Err(
+                    "drime remote sets workspace_id; AeroFTP opens the default workspace only"
+                        .to_string(),
+                );
             }
-            if let Some(folder) = get_str("root_folder_id")
+            if get_str("root_folder_id")
                 .map(str::trim)
                 .filter(|f| !f.is_empty())
+                .is_some()
             {
-                return Err(format!(
-                    "drime remote is rooted at folder id {folder}, which AeroFTP cannot open as a start folder"
-                ));
+                return Err(
+                    "drime remote sets root_folder_id, which AeroFTP cannot open as a start folder"
+                        .to_string(),
+                );
             }
             Ok(MappedProfile {
                 protocol: "drime".to_string(),
@@ -3257,15 +3282,7 @@ fn expand_goconfig_value<'a>(
     if recursion > GOCONFIG_MAX_DEFAULT_RECURSION {
         return Err(GoconfigExpansionError::Budget);
     }
-    if raw.len() > GOCONFIG_MAX_EXPANDED_BYTES {
-        return Err(GoconfigExpansionError::Intrinsic);
-    }
-    // Enforce `GOCONFIG_MAX_EXPANDED_BYTES` on borrowed literals before
-    // cloning anything when no `%(name)s` reference is present.
     if goconfig_first_reference(raw).is_none() {
-        if raw.len() > GOCONFIG_MAX_EXPANDED_BYTES {
-            return Err(GoconfigExpansionError::Intrinsic);
-        }
         return Ok(Cow::Borrowed(raw));
     }
     let mut value: Cow<'a, str> = Cow::Borrowed(raw);
@@ -3308,11 +3325,6 @@ fn expand_goconfig_value<'a>(
                 }
                 None if !owning_is_default => {
                     let borrowed = owning_section.get(name).map(String::as_str).unwrap_or("");
-                    if borrowed.len() > GOCONFIG_MAX_EXPANDED_BYTES
-                        && goconfig_first_reference(borrowed).is_none()
-                    {
-                        return Err(GoconfigExpansionError::Intrinsic);
-                    }
                     Cow::Borrowed(borrowed)
                 }
                 None => Cow::Borrowed(""),
@@ -3545,30 +3557,20 @@ fn import_parsed_sections(
         if folded.contains(name.as_str()) {
             continue;
         }
-        if let Some(failed) = resolution
+        let consumed = resolution
             .unresolved_inherited
-            .and_then(|unresolved| unresolved.get(name))
-        {
-            let mut consumed: Vec<&str> = failed
-                .iter()
-                .filter(|key| rclone_field_is_consumed(rclone_type, key))
-                .map(String::as_str)
-                .collect();
-            if !consumed.is_empty() {
-                consumed.sort_unstable();
-                skipped.push(RcloneSkippedRemote {
-                    name: crate::bridge_shared::sanitize_warning_name(name, "rclone remote"),
-                    rclone_type: crate::bridge_shared::sanitize_warning_name(
-                        rclone_type,
-                        "unknown",
-                    ),
-                    reason: format!(
-                        "rclone connection field(s) {} exceeded substitution expansion limits; skipped so AeroFTP does not import a different target",
-                        consumed.join(", ")
-                    ),
-                });
-                continue;
-            }
+            .map(|unresolved| failed_consumed_fields(unresolved, name, rclone_type))
+            .unwrap_or_default();
+        if !consumed.is_empty() {
+            skipped.push(RcloneSkippedRemote {
+                name: crate::bridge_shared::sanitize_warning_name(name, "rclone remote"),
+                rclone_type: crate::bridge_shared::sanitize_warning_name(rclone_type, "unknown"),
+                reason: format!(
+                    "rclone connection field(s) {} exceeded substitution expansion limits; skipped so AeroFTP does not import a different target",
+                    consumed.join(", ")
+                ),
+            });
+            continue;
         }
 
         // The section holding the OAuth app (`client_id`, `client_secret`):
@@ -3603,6 +3605,52 @@ fn import_parsed_sections(
 
         match mapped {
             Ok((mapped, base_name)) => {
+                let mut dependency_failure = None;
+                if matches!(rclone_type, "alias" | "crypt") {
+                    let mut current = name.to_string();
+                    for _ in 0..=8 {
+                        let Some(dependency) = sections.get(&current) else {
+                            break;
+                        };
+                        let dependency_type = dependency
+                            .get("type")
+                            .map(String::as_str)
+                            .unwrap_or("unknown");
+                        if let Some(unresolved) = resolution.unresolved_inherited {
+                            let fields =
+                                failed_consumed_fields(unresolved, &current, dependency_type);
+                            if !fields.is_empty() {
+                                dependency_failure = Some(fields);
+                                break;
+                            }
+                        }
+                        if !matches!(dependency_type, "alias" | "crypt") {
+                            break;
+                        }
+                        let Some(target) = dependency.get("remote") else {
+                            break;
+                        };
+                        let (base, _) = parse_crypt_remote_target(target);
+                        if base.is_empty() || !sections.contains_key(&base) {
+                            break;
+                        }
+                        current = base;
+                    }
+                }
+                if let Some(fields) = dependency_failure {
+                    skipped.push(RcloneSkippedRemote {
+                        name: crate::bridge_shared::sanitize_warning_name(name, "rclone remote"),
+                        rclone_type: crate::bridge_shared::sanitize_warning_name(
+                            rclone_type,
+                            "unknown",
+                        ),
+                        reason: format!(
+                            "rclone dependency field(s) {} exceeded substitution expansion limits; skipped so AeroFTP does not import a different target",
+                            fields.join(", ")
+                        ),
+                    });
+                    continue;
+                }
                 if matches!(mapped.protocol.as_str(), "ftp" | "ftps" | "sftp") {
                     let include_ssh = mapped.protocol == "sftp";
                     let transport = resolve_rclone_transport_cached(
@@ -3817,8 +3865,8 @@ fn split_goconfig_assignment(line: &str) -> Option<(String, String)> {
     let value =
         if raw_val.len() >= 6 && raw_val.starts_with("\"\"\"") && raw_val.ends_with("\"\"\"") {
             &raw_val[3..raw_val.len() - 3]
-        } else if raw_val.len() >= 2 && raw_val.starts_with('`') && raw_val.ends_with('`') {
-            &raw_val[1..raw_val.len() - 1]
+        } else if let Some(quoted) = raw_val.strip_prefix('`') {
+            quoted.rfind('`').map_or(raw_val, |close| &quoted[..close])
         } else {
             raw_val
         };
@@ -3883,12 +3931,9 @@ fn parse_rclone_goconfig_raw_sections(content: &str) -> HashMap<String, RcloneRe
     sections
 }
 
-#[cfg(test)]
-static RCLONE_MATERIALIZE_PEAK: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-
 fn materialize_rclone_inherited_fields(
     sections: &HashMap<String, RcloneRemote>,
+    measured_peak: &mut usize,
 ) -> Result<(HashMap<String, RcloneRemote>, RcloneUnresolvedFields), String> {
     let mut effective = sections.clone();
     let mut unresolved = RcloneUnresolvedFields::new();
@@ -3897,12 +3942,10 @@ fn materialize_rclone_inherited_fields(
         .values()
         .map(|remote| remote.iter().map(|(k, v)| k.len() + v.len()).sum::<usize>())
         .sum::<usize>();
-    #[cfg(test)]
-    RCLONE_MATERIALIZE_PEAK.store(total, std::sync::atomic::Ordering::Relaxed);
-    let charge = |total: &mut usize, bytes: usize| -> Result<(), String> {
+    *measured_peak = total;
+    let mut charge = |total: &mut usize, bytes: usize| -> Result<(), String> {
         *total = total.saturating_add(bytes);
-        #[cfg(test)]
-        RCLONE_MATERIALIZE_PEAK.fetch_max(*total, std::sync::atomic::Ordering::Relaxed);
+        *measured_peak = (*measured_peak).max(*total);
         if *total > MAX_RCLONE_EXPANDED_BYTES {
             let mb = MAX_RCLONE_EXPANDED_BYTES / (1024 * 1024);
             return Err(format!(
@@ -3940,12 +3983,20 @@ fn materialize_rclone_inherited_fields(
         }
 
         let mut current = name.as_str();
+        let mut ancestor_work = 0usize;
         while let Some((parent, _)) = current.rsplit_once('.') {
             let parent = if parent.is_empty() { "DEFAULT" } else { parent };
             let Some(section) = sections.get(parent) else {
                 break;
             };
             for (key, raw) in section {
+                ancestor_work += 1;
+                if ancestor_work > GOCONFIG_MAX_LOOKUPS {
+                    return Err(
+                        "rclone.conf exceeds the ancestor-resolution work limit; split the dotted section chain"
+                            .to_string(),
+                    );
+                }
                 if effective[name].contains_key(key) {
                     continue;
                 }
@@ -4005,8 +4056,9 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         .map(|section| (section.name, section.data))
         .collect();
     let raw_sections = parse_rclone_goconfig_raw_sections(&content);
+    let mut measured_peak = 0;
     let (effective_sections, unresolved_inherited) =
-        materialize_rclone_inherited_fields(&raw_sections)?;
+        materialize_rclone_inherited_fields(&raw_sections, &mut measured_peak)?;
     for (name, data) in &mut sections {
         if let Some(raw) = effective_sections.get(name) {
             data.clone_from(raw);
@@ -7523,17 +7575,20 @@ mod tests {
         for i in 0..(MAX_REMOTES + 500) {
             conf.push_str(&format!("[r{i}]\ntype = ftp\nhost = h\n"));
         }
-        let sections = parse_rclone_conf(&conf);
-        assert_eq!(sections.len(), MAX_REMOTES);
+        let result = import_text(&conf, "remote-cap-production");
+        assert_eq!(result.total_remotes, MAX_REMOTES);
+        assert_eq!(result.servers.len(), MAX_REMOTES);
+        assert_eq!(result.servers[0].host, "h");
     }
 
     /// The cap must not disturb an ordinary config.
     #[test]
     fn parse_rclone_conf_keeps_every_remote_below_the_cap() {
         let conf = "[a]\ntype = ftp\nhost = h1\n\n[b]\ntype = sftp\nhost = h2\n";
-        let sections = parse_rclone_conf(conf);
-        assert_eq!(sections.len(), 2);
-        assert_eq!(sections["b"]["host"], "h2");
+        let result = import_text(conf, "below-cap-production");
+        assert_eq!(result.total_remotes, 2);
+        assert_eq!(result.servers.len(), 2);
+        assert_eq!(imported(&result, "b").host, "h2");
     }
 
     #[test]
@@ -8345,14 +8400,26 @@ http_proxy =
             expand_goconfig_substitutions(&owning, None, "%(local_huge)s"),
             Err(SubstitutionOverflow)
         );
-        assert_eq!(
-            expand_goconfig_substitutions(&owning, None, &huge),
-            Err(SubstitutionOverflow)
-        );
+        assert!(expand_goconfig_substitutions(&owning, None, &huge).is_ok());
     }
 
     #[test]
-    fn shared_oversized_default_value_is_expanded_once_across_many_remotes() {
+    fn unchanged_literal_oauth_token_is_not_a_substitution_overflow() {
+        let token = "x".repeat(GOCONFIG_MAX_EXPANDED_BYTES + 1);
+        let blob = serde_json::json!({"access_token": token}).to_string();
+        let result = import_text(
+            &format!("[drive]\ntype = drive\ntoken = {blob}\n"),
+            "literal-oauth-token",
+        );
+        let server = imported(&result, "drive");
+        let secrets = result.provider_secrets.get(&server.id).unwrap();
+        let oauth = secrets.oauth.as_deref().unwrap();
+        let oauth: serde_json::Value = serde_json::from_str(oauth).unwrap();
+        assert_eq!(oauth["access_token"], token);
+    }
+
+    #[test]
+    fn shared_literal_default_is_reused_without_large_copies() {
         let mut sections = HashMap::new();
         sections.insert(
             "DEFAULT".to_string(),
@@ -8388,12 +8455,12 @@ http_proxy =
             assert!(transport.substitution_overflow, "{name}");
         }
 
-        assert_eq!(memo.defaults.values_expanded, 1);
+        assert_eq!(memo.defaults.values_expanded, names.len());
         assert_eq!(hops, names.len() * 3);
     }
 
     #[test]
-    fn shrinking_default_reference_is_rejected_before_repeated_large_copies() {
+    fn shrinking_default_reference_does_not_force_large_copies() {
         let long_reference = format!("%({})s", "x".repeat(GOCONFIG_MAX_EXPANDED_BYTES + 100));
         let mut sections = HashMap::new();
         sections.insert(
@@ -8424,9 +8491,9 @@ http_proxy =
                 true,
                 &mut hops,
             );
-            assert!(transport.substitution_overflow, "{name}");
+            assert!(!transport.substitution_overflow, "{name}");
         }
-        assert_eq!(memo.defaults.values_expanded, 1);
+        assert_eq!(memo.defaults.values_expanded, names.len());
         assert_eq!(hops, names.len() * 3);
     }
 
@@ -8566,6 +8633,132 @@ http_proxy =
     }
 
     #[test]
+    fn wrappers_check_unresolved_fields_on_every_dependency() {
+        let result = import_text(
+            "[base]\ntype = sftp\nhost = base.example.test\nuser = alice\nport = 2222\n\n\
+             [mid]\ntype = alias\nremote = base:docs\n\n\
+             [outer]\ntype = alias\nremote = mid:outer\n\n\
+             [broken]\ntype = sftp\nhost = broken.example.test\nuser = bob\nport = %(port)s\n\n\
+             [broken-mid]\ntype = alias\nremote = broken:docs\n\n\
+             [broken-outer]\ntype = alias\nremote = broken-mid:outer\n",
+            "wrapper-dependency-failures",
+        );
+        let outer = imported(&result, "outer");
+        assert_eq!(outer.host, "base.example.test");
+        assert_eq!(outer.port, 2222);
+        let refused = result
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "broken-outer")
+            .unwrap();
+        assert!(refused.reason.contains("dependency"), "{}", refused.reason);
+        assert!(refused.reason.contains("port"), "{}", refused.reason);
+    }
+
+    #[test]
+    fn pcloud_region_follows_the_normalized_hostname() {
+        let result = import_text(
+            "[us]\ntype = pcloud\nhostname = https://api.pcloud.com?tenant=eapi\n\n\
+             [eu]\ntype = pcloud\nhostname = eapi.pcloud.com\n",
+            "pcloud-normalized-region",
+        );
+        for (name, host, region) in [
+            ("us", "api.pcloud.com", "us"),
+            ("eu", "eapi.pcloud.com", "eu"),
+        ] {
+            let server = imported(&result, name);
+            assert_eq!(server.host, host);
+            assert_eq!(
+                server
+                    .options
+                    .as_ref()
+                    .and_then(|options| options.get("region"))
+                    .and_then(|value| value.as_str()),
+                Some(region)
+            );
+        }
+    }
+
+    #[test]
+    fn ftp_tls_modes_are_consumed_and_failed_modes_never_select_cleartext() {
+        let config = "[parent]\ntype = ftp\nhost = parent.example.test\nuser = alice\nexplicit_tls = true\n\n\
+             [parent.good]\nhost = good.example.test\n\n\
+             [parent.bad]\nhost = bad.example.test\ncycle = %(cycle)s\nexplicit_tls = %(cycle)s\n";
+        let raw = parse_rclone_goconfig_raw_sections(config);
+        let mut peak = 0;
+        let (_, unresolved) = materialize_rclone_inherited_fields(&raw, &mut peak).unwrap();
+        assert!(
+            unresolved
+                .get("parent.bad")
+                .is_some_and(|keys| keys.contains("explicit_tls")),
+            "{unresolved:?}"
+        );
+        let result = import_text(config, "ftp-consumed-tls");
+        let good = imported(&result, "parent.good");
+        assert_eq!(
+            good.options
+                .as_ref()
+                .and_then(|options| options.get("tlsMode"))
+                .and_then(|value| value.as_str()),
+            Some("explicit")
+        );
+        let bad = result
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "parent.bad")
+            .unwrap_or_else(|| {
+                let skips: Vec<(&str, &str)> = result
+                    .skipped
+                    .iter()
+                    .map(|skip| (skip.name.as_str(), skip.reason.as_str()))
+                    .collect();
+                let servers: Vec<&str> = result
+                    .servers
+                    .iter()
+                    .map(|server| server.name.as_str())
+                    .collect();
+                panic!("missing parent.bad: skips={skips:?}, servers={servers:?}")
+            });
+        assert!(bad.reason.contains("explicit_tls"), "{}", bad.reason);
+    }
+
+    #[test]
+    fn expanded_drime_selector_does_not_leak_its_access_token() {
+        let token = "DRIME_EXPANDED_TOKEN_SECRET";
+        let result = import_text(
+            &format!(
+                "[drime]\ntype = drime\naccess_token = {token}\nworkspace_id = %(access_token)s\n"
+            ),
+            "drime-expanded-secret",
+        );
+        assert!(result.servers.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert!(result.skipped[0].reason.contains("workspace_id"));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert!(!serialized.contains(token), "{serialized}");
+    }
+
+    #[test]
+    fn quoted_values_end_at_the_last_delimiter_before_a_suffix() {
+        let result = import_text(
+            "[empty]\ntype = sftp\nhost = direct.example.test\nuser = alice\nssh = `` # direct\n\n\
+             [nonempty]\ntype = sftp\nhost = wrapped.example.test\nuser = alice\nssh = `ssh files.example.test` # suffix\n",
+            "quoted-value-last-delimiter",
+        );
+        assert!(result.servers.iter().any(|server| server.name == "empty"));
+        let wrapped = result
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "nonempty")
+            .unwrap();
+        assert!(
+            wrapped.reason.contains("external ssh"),
+            "{}",
+            wrapped.reason
+        );
+    }
+
+    #[test]
     fn inherited_materialization_stops_at_the_budget_before_unbounded_copies() {
         let mut input = String::from("[parent]\ntype = sftp\n");
         for index in 0..256 {
@@ -8592,13 +8785,35 @@ http_proxy =
         };
         std::fs::remove_file(&path).ok();
         assert!(error.contains("expands to more than 64 MB"), "{error}");
-        let peak = RCLONE_MATERIALIZE_PEAK.load(std::sync::atomic::Ordering::Relaxed);
+        let raw = parse_rclone_goconfig_raw_sections(&input);
+        let mut peak = 0;
+        assert!(materialize_rclone_inherited_fields(&raw, &mut peak).is_err());
         assert!(peak > MAX_RCLONE_EXPANDED_BYTES, "peak={peak}");
         println!("inherited materialization peak bytes: {peak}");
         assert!(
             peak <= MAX_RCLONE_EXPANDED_BYTES + GOCONFIG_MAX_EXPANDED_BYTES + 64,
             "peak={peak}"
         );
+    }
+
+    #[test]
+    fn overridden_fields_cannot_cause_unbounded_ancestor_work() {
+        let mut input = String::new();
+        let mut section = "root".to_string();
+        for depth in 0..1500 {
+            input.push_str(&format!("[{section}]\ntype = sftp\n"));
+            for field in 0..200 {
+                input.push_str(&format!("v{field} = {depth}\n"));
+            }
+            section.push_str(&format!(".d{depth}"));
+        }
+        let raw = parse_rclone_goconfig_raw_sections(&input);
+        let mut peak = 0;
+        let error = match materialize_rclone_inherited_fields(&raw, &mut peak) {
+            Ok(_) => panic!("deep overridden ancestor work must be refused"),
+            Err(error) => error,
+        };
+        assert!(error.contains("ancestor-resolution work limit"), "{error}");
     }
 
     #[test]
@@ -11364,8 +11579,8 @@ private_key = k
         std::fs::remove_file(&path).ok();
         assert!(result.servers.is_empty(), "{:?}", result.servers.len());
         for (name, needle) in [
-            ("dr-ws", "workspace 42"),
-            ("dr-root", "folder id 1234"),
+            ("dr-ws", "workspace_id"),
+            ("dr-root", "root_folder_id"),
             ("dr-empty", "no access_token"),
             ("cl-eu", "api-eu.cloudinary.com"),
             ("cl-nameless", "no cloud_name"),
