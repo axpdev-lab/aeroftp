@@ -2552,17 +2552,27 @@ impl S3Provider {
     /// named: the ETag goes as `If-Match` (S3 conditional delete), so a
     /// write that landed on the key after the validation is answered 412
     /// and the object is preserved with an incomplete-rename error instead
-    /// of being deleted uncopied.
+    /// of being deleted uncopied. Only the 412 confirms preservation: an
+    /// unanswered DELETE may still have deleted server-side, so a transport
+    /// failure is reported as unconfirmed, never as "kept".
     async fn delete_if_match(&mut self, key: &str, etag: &str) -> Result<(), ProviderError> {
         let response = self
             .s3_request_ext(Method::DELETE, key, None, None, &[("if-match", etag)])
-            .await?;
+            .await
+            .map_err(|e| {
+                ProviderError::Other(format!(
+                    "deleting {key} is unconfirmed: the request failed before an answer \
+                     arrived ({e}); the server may already have deleted it, so inspect \
+                     both folders before retrying"
+                ))
+            })?;
 
         match response.status() {
             StatusCode::OK | StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
             StatusCode::PRECONDITION_FAILED => Err(ProviderError::Other(format!(
                 "rename source {key} changed after it was validated as an empty marker; \
-                 it was not deleted and the destination holds only the marker copy"
+                 the conditional delete was refused (412), so it was not deleted and \
+                 the destination holds only the marker copy"
             ))),
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(key.to_string())),
             status => Err(ProviderError::ServerError(format!(
@@ -3077,8 +3087,12 @@ impl S3Provider {
             // A delete that fails leaves the folder under both names: that is
             // a failed rename, never a success. A marker whose copy fell
             // back to a marker PUT is not in the batch: its delete carries
-            // the validated ETag as If-Match, so content written to the
-            // source after the validating HEAD is refused (412) and kept.
+            // the validated ETag as If-Match and runs FIRST, while that ETag
+            // is still the current one: on a directory-backed backend
+            // deleting a child can rotate the marker's tag, and deleting the
+            // marker after the children could then refuse (412) the rename's
+            // own cleanup. With this order, content written to the source
+            // after the validating HEAD is still refused (412) and kept.
             if !to_delete.is_empty() {
                 let mut originals: Vec<(String, Option<String>)> =
                     Vec::with_capacity(to_delete.len());
@@ -3089,6 +3103,17 @@ impl S3Provider {
                         None => originals.push((key.clone(), None)),
                     }
                 }
+                for (key, etag) in validated {
+                    self.delete_if_match(&key, &etag).await.map_err(|e| {
+                        ProviderError::Other(format!(
+                            "rename copied {} objects to {}, but deleting the validated marker \
+                             {} failed, so the rename is incomplete: {e}",
+                            to_delete.len(),
+                            to,
+                            key
+                        ))
+                    })?;
+                }
                 if !originals.is_empty() {
                     self.batch_delete_objects(&originals).await.map_err(|e| {
                         ProviderError::Other(format!(
@@ -3096,17 +3121,6 @@ impl S3Provider {
                              so the folder now exists under both names: {e}",
                             to_delete.len(),
                             to
-                        ))
-                    })?;
-                }
-                for (key, etag) in validated {
-                    self.delete_if_match(&key, &etag).await.map_err(|e| {
-                        ProviderError::Other(format!(
-                            "rename copied {} objects to {}, but deleting the validated marker \
-                             {} failed, so its source was kept: {e}",
-                            to_delete.len(),
-                            to,
-                            key
                         ))
                     })?;
                 }
@@ -14020,13 +14034,18 @@ mod tests {
         skip_dir_markers: bool,
         /// The marker PUT (no copy source) answers 500.
         fail_marker_put: bool,
-        /// The strong ETag HEAD names for a key ending in `/`.
-        head_marker_etag: String,
-        /// The ETag a conditional DELETE of a marker compares `If-Match`
-        /// against; different from `head_marker_etag` it simulates content
-        /// written to the marker after the validating HEAD, so the delete
-        /// answers 412 as S3's conditional delete does.
-        delete_marker_etag: String,
+        /// The ETag HEAD names for a key ending in `/`; `None` names no tag,
+        /// a `W/"..."` value names a weak one, both of which must fail the
+        /// fallback validation.
+        head_marker_etag: Option<String>,
+        /// The ETag a conditional DELETE of a marker starts comparing
+        /// `If-Match` against; different from the HEAD value it simulates
+        /// content written to the marker after the validating HEAD, so the
+        /// delete answers 412 as S3's conditional delete does.
+        initial_delete_marker_etag: String,
+        /// A directory-backed backend can rotate the marker's tag when a
+        /// child key is deleted; the double then does the same.
+        child_delete_rotates_marker_etag: bool,
     }
 
     impl Default for MarkerDouble {
@@ -14035,8 +14054,9 @@ mod tests {
                 refuse_marker_copy: false,
                 skip_dir_markers: false,
                 fail_marker_put: false,
-                head_marker_etag: "\"marker-v1\"".to_string(),
-                delete_marker_etag: "\"marker-v1\"".to_string(),
+                head_marker_etag: Some("\"marker-v1\"".to_string()),
+                initial_delete_marker_etag: "\"marker-v1\"".to_string(),
+                child_delete_rotates_marker_etag: false,
             }
         }
     }
@@ -14049,16 +14069,22 @@ mod tests {
             skip_dir_markers,
             fail_marker_put,
             head_marker_etag,
-            delete_marker_etag,
+            initial_delete_marker_etag,
+            child_delete_rotates_marker_etag,
         } = double;
         use std::sync::{Arc, Mutex};
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&log);
+        // The marker's current tag: a conditional DELETE compares If-Match
+        // against it, and deleting a child rotates it when the backend is
+        // directory-backed.
+        let current_etag: Arc<Mutex<String>> = Arc::new(Mutex::new(initial_delete_marker_etag));
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let seen = Arc::clone(&seen);
                 let head_etag = head_marker_etag.clone();
-                let delete_etag = delete_marker_etag.clone();
+                let rotate = child_delete_rotates_marker_etag;
+                let current_etag = Arc::clone(&current_etag);
                 async move {
                     let path = req.uri().path().to_string();
                     let copy_source = req
@@ -14136,10 +14162,9 @@ mod tests {
                             let builder = axum::response::Response::builder()
                                 .status(200)
                                 .header("content-length", "0");
-                            let builder = if path.ends_with('/') {
-                                builder.header("etag", head_etag.as_str())
-                            } else {
-                                builder
+                            let builder = match (&head_etag, path.ends_with('/')) {
+                                (Some(tag), true) => builder.header("etag", tag.as_str()),
+                                _ => builder,
                             };
                             builder.body(axum::body::Body::empty()).unwrap()
                         }
@@ -14159,12 +14184,15 @@ mod tests {
                             )
                         }
                         ("DELETE", _) => {
+                            // A directory-backed backend rotates the marker's
+                            // tag when a child key goes.
+                            if rotate && !path.ends_with('/') {
+                                *current_etag.lock().unwrap() = "\"marker-rotated\"".to_string();
+                            }
                             // S3 conditional delete: If-Match is compared with
                             // the object's current ETag, and a mismatch is 412.
-                            if if_match
-                                .as_deref()
-                                .is_some_and(|tag| tag != delete_etag.as_str())
-                            {
+                            let current = current_etag.lock().unwrap().clone();
+                            if if_match.as_deref().is_some_and(|tag| tag != current) {
                                 reply(
                                     412,
                                     "<Error><Code>PreconditionFailed</Code>\
@@ -14499,7 +14527,7 @@ mod tests {
             refuse_marker_copy: true,
             // The object the server holds now has a different ETag than the
             // one the validating HEAD named.
-            delete_marker_etag: "\"marker-v2\"".to_string(),
+            initial_delete_marker_etag: "\"marker-v2\"".to_string(),
             ..MarkerDouble::default()
         })
         .await;
@@ -14508,19 +14536,224 @@ mod tests {
             .await
             .expect_err("the marker changed after validation");
         let log = log.lock().unwrap().clone();
-        assert!(err.to_string().contains("was kept"), "{err}");
-        assert!(
-            err.to_string().contains("changed after it was validated"),
-            "{err}"
-        );
-        // The marker was still copied to the destination, the file's delete
-        // went through, and the marker's delete was sent with the stale
-        // ETag and refused.
+        assert!(err.to_string().contains("refused (412)"), "{err}");
+        assert!(err.to_string().contains("not deleted"), "{err}");
+        assert!(err.to_string().contains("incomplete"), "{err}");
+        // The marker was still copied to the destination, and its delete was
+        // sent with the stale ETag and refused; the child's delete never ran.
         assert!(puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
         assert!(
-            log.contains(&"DELETE /test-bucket/src/a.txt".to_string()),
+            log.contains(&"DELETE /test-bucket/src/ if-match=\"marker-v1\"".to_string()),
             "{log:?}"
         );
+        assert!(
+            !log.iter()
+                .any(|r| r.starts_with("DELETE /test-bucket/src/a.txt")),
+            "{log:?}"
+        );
+    }
+
+    /// On a directory-backed backend deleting a child key rotates the
+    /// marker's ETag. The rename deletes the validated marker FIRST, while
+    /// its tag is still the validated one, so its own cleanup is not
+    /// refused by the rotation.
+    #[tokio::test]
+    async fn marker_delete_runs_before_child_deletes_on_a_rotating_backend() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            child_delete_rotates_marker_etag: true,
+            ..MarkerDouble::default()
+        })
+        .await;
+        provider.rename("/src", "/dst").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        let marker_delete = log
+            .iter()
+            .position(|r| r == "DELETE /test-bucket/src/ if-match=\"marker-v1\"")
+            .expect("the marker delete carries the validated ETag");
+        let child_delete = log
+            .iter()
+            .position(|r| r.starts_with("DELETE /test-bucket/src/a.txt"))
+            .expect("the child delete ran");
+        assert!(marker_delete < child_delete, "{log:?}");
+    }
+
+    /// A HEAD that names no ETag, or only a weak one (`If-Match` compares
+    /// strong tags), does not validate the marker: the refused copy stays
+    /// an error, no marker PUT is written and nothing is deleted.
+    #[tokio::test]
+    async fn rename_without_a_strong_marker_etag_fails_without_put_or_delete() {
+        for head_etag in [None, Some("W/\"marker-v1\"".to_string())] {
+            let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+                refuse_marker_copy: true,
+                head_marker_etag: head_etag.clone(),
+                ..MarkerDouble::default()
+            })
+            .await;
+            let err = provider
+                .rename("/src", "/dst")
+                .await
+                .expect_err("no strong ETag, no fallback");
+            let log = log.lock().unwrap().clone();
+            assert!(err.to_string().contains("404"), "{head_etag:?}: {err}");
+            assert!(
+                !puts(&log).contains(&"PUT /test-bucket/dst/"),
+                "{head_etag:?}: {log:?}"
+            );
+            assert!(
+                !log.iter().any(|r| r.starts_with("DELETE")),
+                "{head_etag:?}: {log:?}"
+            );
+        }
+    }
+
+    /// A raw-socket marker double whose DELETE is never answered: the socket
+    /// is closed after the request, as when the server deleted the object
+    /// and the response was lost. The rename must report the deletion as
+    /// unconfirmed, not as preserved.
+    async fn provider_for_unanswered_delete_double(
+    ) -> (S3Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let seen = Arc::clone(&seen);
+                tokio::spawn(async move {
+                    let mut stream = BufReader::new(socket);
+                    loop {
+                        let mut request_line = String::new();
+                        if stream.read_line(&mut request_line).await.unwrap_or(0) == 0 {
+                            return;
+                        }
+                        let mut parts = request_line.split_whitespace();
+                        let method = parts.next().unwrap_or("").to_string();
+                        let target = parts.next().unwrap_or("").to_string();
+                        let (mut length, mut copy_source, mut if_match) =
+                            (0usize, None::<String>, None::<String>);
+                        loop {
+                            let mut line = String::new();
+                            stream.read_line(&mut line).await.unwrap();
+                            let line = line.trim_end();
+                            if line.is_empty() {
+                                break;
+                            }
+                            if let Some((name, value)) = line.split_once(':') {
+                                match name.trim().to_ascii_lowercase().as_str() {
+                                    "content-length" => length = value.trim().parse().unwrap(),
+                                    "x-amz-copy-source" => {
+                                        copy_source = Some(value.trim().to_string())
+                                    }
+                                    "if-match" => if_match = Some(value.trim().to_string()),
+                                    _ => {}
+                                }
+                            }
+                        }
+                        let mut body = vec![0; length];
+                        stream.read_exact(&mut body).await.unwrap();
+                        let url = reqwest::Url::parse(&format!("http://h{target}")).unwrap();
+                        let path = url.path().to_string();
+                        let mut suffix =
+                            String::from(if copy_source.is_some() { " copy" } else { "" });
+                        if let Some(tag) = &if_match {
+                            suffix.push_str(&format!(" if-match={tag}"));
+                        }
+                        seen.lock()
+                            .unwrap()
+                            .push(format!("{method} {path}{suffix}"));
+                        let prefix = url
+                            .query_pairs()
+                            .find(|(k, _)| k == "prefix")
+                            .map(|(_, v)| v.to_string());
+                        let answer = |status: &str, body: String, extra: &str| {
+                            format!(
+                                "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{extra}\r\n{body}",
+                                body.len()
+                            )
+                        };
+                        match (method.as_str(), prefix.as_deref()) {
+                            ("GET", Some(prefix)) => {
+                                let keys: &[&str] = if prefix == "src/" {
+                                    &["src/", "src/a.txt"]
+                                } else {
+                                    &[]
+                                };
+                                let contents: String = keys
+                                    .iter()
+                                    .map(|k| format!("<Contents><Key>{k}</Key></Contents>"))
+                                    .collect();
+                                let body = format!(
+                                    "<ListBucketResult><IsTruncated>false</IsTruncated>\
+                                     {contents}</ListBucketResult>"
+                                );
+                                let out = stream.get_mut();
+                                out.write_all(answer("200 OK", body, "").as_bytes())
+                                    .await
+                                    .unwrap();
+                            }
+                            ("HEAD", _) if path.ends_with('/') => {
+                                let out = stream.get_mut();
+                                out.write_all(
+                                    answer("200 OK", String::new(), "ETag: \"marker-v1\"\r\n")
+                                        .as_bytes(),
+                                )
+                                .await
+                                .unwrap();
+                            }
+                            ("PUT", _)
+                                if copy_source.as_deref().is_some_and(|s| s.ends_with('/')) =>
+                            {
+                                let body = "<Error><Code>NoSuchKey</Code>\
+                                            <Message>gone</Message></Error>"
+                                    .to_string();
+                                let out = stream.get_mut();
+                                out.write_all(answer("404 Not Found", body, "").as_bytes())
+                                    .await
+                                    .unwrap();
+                            }
+                            ("DELETE", _) => {
+                                // The server "deleted" but the answer is lost:
+                                // close the socket without responding.
+                                return;
+                            }
+                            _ => {
+                                // The marker PUT and the batch-delete POST answer.
+                                let status = if method == "POST" {
+                                    "405 Method Not Allowed"
+                                } else {
+                                    "200 OK"
+                                };
+                                let out = stream.get_mut();
+                                out.write_all(answer(status, String::new(), "").as_bytes())
+                                    .await
+                                    .unwrap();
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (provider, log)
+    }
+
+    /// A DELETE that the server answers by closing the connection (it may
+    /// already have deleted the object) is reported as unconfirmed, never
+    /// as "not deleted".
+    #[tokio::test]
+    async fn an_unanswered_marker_delete_is_reported_unconfirmed() {
+        let (mut provider, log) = provider_for_unanswered_delete_double().await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the marker delete was never answered");
+        let log = log.lock().unwrap().clone();
+        assert!(err.to_string().contains("unconfirmed"), "{err}");
+        assert!(!err.to_string().contains("not deleted"), "{err}");
         assert!(
             log.contains(&"DELETE /test-bucket/src/ if-match=\"marker-v1\"".to_string()),
             "{log:?}"
