@@ -723,7 +723,49 @@ fn without_private_export_options(entry: &Value) -> Value {
 /// session tokens (`aws_session_token_*`) use the explicitly typed private-token
 /// writer so a secondary account with an empty partition gets its own partition
 /// row without ever touching the legacy owner's shared vault fallback.
+/// Read the current value of a bridge-import vault key for rollback snapshots.
+fn read_bridge_import_secret_for_user(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+) -> Result<Option<String>, String> {
+    match user_id {
+        Some(uid) => Ok(
+            crate::user_partitions::resolve_credential_for_user(store, uid, key)?
+                .map(|z| z.to_string()),
+        ),
+        None => Ok(store.get(key).ok().filter(|v| !v.is_empty())),
+    }
+}
+
 pub(crate) fn store_bridge_import_secret_for_user(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+    secret: &str,
+) -> Result<(), String> {
+    // Snapshot the prior value first: a dual write can fail HALFWAY (partition
+    // written, legacy mirror failed, or vice versa), and the caller must be
+    // able to restore the exact prior state (or delete the new entry) instead
+    // of leaving the new secret half-stored.
+    let prior = read_bridge_import_secret_for_user(store, user_id, key)
+        .ok()
+        .flatten();
+    let result = store_bridge_import_secret_for_user_inner(store, user_id, key, secret);
+    if result.is_err() {
+        match prior {
+            Some(prev) => {
+                let _ = store_bridge_import_secret_for_user_inner(store, user_id, key, &prev);
+            }
+            None => {
+                let _ = delete_bridge_import_secret_for_user(store, user_id, key);
+            }
+        }
+    }
+    result
+}
+
+fn store_bridge_import_secret_for_user_inner(
     store: &CredentialStore,
     user_id: Option<i64>,
     key: &str,
@@ -856,11 +898,16 @@ pub async fn import_bridge_config(
     // The account the scan wrote its secrets into. The commit compares it
     // against the account active at commit time and refuses on a mismatch,
     // so a switch between scan and commit cannot land hasStored* flags that
-    // point at another account's partition.
-    resp["scanUserId"] = match captured_user {
-        Some(uid) => Value::from(uid),
-        None => Value::Null,
-    };
+    // point at another account's partition. A CONFIRMED legacy scan (vault
+    // open, no account) reports null; a vault that is locked or unreadable
+    // reports NOTHING (the key stays absent), because "no account could be
+    // read" is not the same as "the legacy store is confirmed": a later
+    // unlock + rescan must not trip a false account-changed refusal.
+    match captured_user {
+        Some(uid) => resp["scanUserId"] = Value::from(uid),
+        None if store.is_some() => resp["scanUserId"] = Value::Null,
+        None => {}
+    }
     Ok(resp)
 }
 
@@ -1961,7 +2008,11 @@ pub fn inject_rclone_zoho_export_options(
 
 /// Live-discover Zoho's privatespace id when the profile does not already
 /// carry `root_folder_id`. rclone cannot list a zoho remote without it.
-pub async fn ensure_zoho_rclone_root_folder(options: &mut Option<Value>, profile_id: &str) {
+pub async fn ensure_zoho_rclone_root_folder(
+    options: &mut Option<Value>,
+    profile_id: &str,
+    user: Option<i64>,
+) {
     let needs = !options
         .as_ref()
         .and_then(|o| o.get("root_folder_id"))
@@ -2003,6 +2054,7 @@ pub async fn ensure_zoho_rclone_root_folder(options: &mut Option<Value>, profile
             &client_id,
             &client_secret,
             &region,
+            user,
         );
     let root = match tokio::time::timeout(std::time::Duration::from_secs(45), discovery).await {
         Ok(Some(root)) => root,
@@ -2172,8 +2224,19 @@ pub async fn export_bridge_config(
     servers_json: String,
     include_credentials: bool,
     file_path: String,
+    account_id: Option<i64>,
 ) -> Result<Value, String> {
     let store = CredentialStore::from_cache();
+    // Bind the export to the account the caller read the list under: a switch
+    // since that read refuses the export (ACCOUNT_CHANGED) BEFORE any file is
+    // written, so one account's profile selection can never be paired with
+    // another account's secrets. `None` keeps the capture-at-start behavior.
+    if let (Some(st), Some(captured)) = (store.as_ref(), account_id) {
+        let active = crate::user_partitions::cli_get_active_user(st)?.map(|u| u.id);
+        if active != Some(captured) {
+            return Err(crate::user_partitions::ACCOUNT_CHANGED.to_string());
+        }
+    }
     export_bridge_profiles(
         &source,
         &servers_json,
@@ -2374,7 +2437,7 @@ async fn export_bridge_profiles(
                         let initial_path = e.get("initialPath").and_then(|v| v.as_str());
                         inject_rclone_zoho_export_options(&mut opts, &proto, initial_path);
                         if proto == "zohoworkdrive" {
-                            ensure_zoho_rclone_root_folder(&mut opts, &id).await;
+                            ensure_zoho_rclone_root_folder(&mut opts, &id, read_user).await;
                         }
                         inject_rclone_crypt_export_options(
                             &mut opts,
@@ -2450,20 +2513,27 @@ async fn export_bridge_profiles(
                     .map_err(|e| format!("Invalid server data: {e}"))?;
                 // By id, the key the secret is read under: by name, two
                 // profiles of one name both went out with the second one's.
-                if include_credentials && !id.is_empty() {
+                if include_credentials && matches!(source, "aws" | "kopia") {
+                    // The AWS and Kopia formats reject a section without its
+                    // secret (the AWS importer skips key-only sections), so a
+                    // credential-enabled row is accepted only with a nonempty
+                    // profile id AND a resolved password; anything else is
+                    // skipped, never written and counted as exported.
+                    match secret_for(read_user, &id) {
+                        Some(pw) if !id.is_empty() => {
+                            passwords.insert(id, pw);
+                        }
+                        _ => {
+                            skipped.push(json!({
+                                "name": name,
+                                "reason": "no secret in the vault for this profile; the target format cannot carry a section without one"
+                            }));
+                            continue;
+                        }
+                    }
+                } else if include_credentials && !id.is_empty() {
                     if let Some(pw) = secret_for(read_user, &id) {
                         passwords.insert(id, pw);
-                    } else if matches!(source, "aws" | "kopia") {
-                        // The AWS and Kopia formats reject a section without
-                        // its secret (the AWS importer skips key-only
-                        // sections), so a profile whose vault secret is
-                        // missing is skipped here, never written and counted
-                        // as exported.
-                        skipped.push(json!({
-                            "name": name,
-                            "reason": "no secret in the vault for this profile; the target format cannot carry a section without one"
-                        }));
-                        continue;
                     }
                 }
                 typed.push(one);
@@ -3990,6 +4060,7 @@ mod tests {
             servers.to_string(),
             false,
             out.to_string_lossy().into_owned(),
+            None,
         )
         .await
         .unwrap();
@@ -4772,6 +4843,321 @@ mod tests {
         assert!(
             !written.contains("SECOND"),
             "no second-account secret may leak in: {written}"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
+
+    /// A credential-enabled AWS/Kopia export accepts a row only with a
+    /// nonempty profile id AND a resolved password: a row failing either is
+    /// skipped, never written, and not counted as exported. A credential-free
+    /// export writes every row.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn an_aws_credential_row_without_id_or_secret_is_skipped_never_written() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::an_aws_credential_row_without_id_or_secret_is_skipped_never_written",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic aws row skip master").unwrap();
+        CredentialStore::unlock_with_master("synthetic aws row skip master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+
+        let row = |id: &str, name: &str| {
+            json!({
+                "id": id, "name": name, "host": "", "port": 443,
+                "username": "ASIAX", "protocol": "s3", "providerId": "amazon-s3",
+                "options": { "region": "us-east-1" }
+            })
+        };
+        let servers = json!([
+            row("sts-ok", "ok"),
+            row("sts-missing", "missing"),
+            row("", "noid")
+        ])
+        .to_string();
+
+        // Credential-enabled: only sts-ok has both a nonempty id and a
+        // resolved password (the empty-id row resolves a secret too, but its
+        // id is empty).
+        let target = dir.path().join("credentials.ini");
+        let out = export_bridge_profiles(
+            "aws",
+            &servers,
+            true,
+            &target.to_string_lossy(),
+            Some(&store),
+            |_user, id| match id {
+                "sts-ok" => Some("PW-OK".to_string()),
+                "" => Some("PW-NOID".to_string()),
+                _ => None,
+            },
+        )
+        .await
+        .expect("the export must succeed");
+        assert_eq!(
+            out["exported"], 1,
+            "only the fully-resolved row is exported: {out}"
+        );
+        let skipped = out["skipped"].as_array().unwrap();
+        assert!(
+            skipped.iter().any(|s| s["name"] == "missing"),
+            "the row without a vault secret must be skipped: {skipped:?}"
+        );
+        assert!(
+            skipped.iter().any(|s| s["name"] == "noid"),
+            "the empty-id row must be skipped even when a secret resolves: {skipped:?}"
+        );
+        let written = std::fs::read_to_string(&target).unwrap();
+        assert!(
+            written.contains("PW-OK"),
+            "the resolved row is written: {written}"
+        );
+        assert!(
+            !written.contains("missing") && !written.contains("noid"),
+            "skipped rows must not reach the file: {written}"
+        );
+
+        // Control: a credential-free export writes every row.
+        let target2 = dir.path().join("credentials2.ini");
+        let out2 = export_bridge_profiles(
+            "aws",
+            &servers,
+            false,
+            &target2.to_string_lossy(),
+            Some(&store),
+            |_user, _id| None,
+        )
+        .await
+        .expect("the credential-free export must succeed");
+        assert_eq!(
+            out2["exported"], 3,
+            "every row exports without credentials: {out2}"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
+
+    /// The bridge export is bound to the account the caller read the list
+    /// under: with the active account switched after the selection (the same
+    /// profile id in both accounts), the export is refused BEFORE any file is
+    /// written; with the account unchanged the export works; and `None` keeps
+    /// the capture-at-start behavior.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_bridge_export_is_refused_when_the_account_switched_after_the_list_read() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::a_bridge_export_is_refused_when_the_account_switched_after_the_list_read",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic bridge export bind master").unwrap();
+        CredentialStore::unlock_with_master("synthetic bridge export bind master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+
+        // Both accounts hold a secret for the SAME profile id, so a mix-up is
+        // visible in the written file.
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            first,
+            "server_sts-x",
+            "password",
+            "PW-FIRST",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            second,
+            "server_sts-x",
+            "password",
+            "PW-SECOND",
+        )
+        .unwrap();
+        let servers = json!([{
+            "id": "sts-x", "name": "sts", "host": "", "port": 443,
+            "username": "ASIAX", "protocol": "s3", "providerId": "amazon-s3",
+            "options": { "region": "us-east-1" }
+        }])
+        .to_string();
+
+        // Same account as the list read: the export works and carries the
+        // first account's secret. Each export gets its own directory: the AWS
+        // format writes a credentials/config PAIR, and a shared directory
+        // would make the second export's config collide with the first's.
+        let ok_dir = dir.path().join("ok");
+        std::fs::create_dir(&ok_dir).unwrap();
+        let ok_file = ok_dir.join("credentials.ini");
+        let out = export_bridge_config(
+            "aws".to_string(),
+            servers.clone(),
+            true,
+            ok_file.to_string_lossy().into_owned(),
+            Some(first),
+        )
+        .await
+        .expect("the same-account export must succeed");
+        assert_eq!(out["exported"], 1, "{out}");
+        let written = std::fs::read_to_string(&ok_file).unwrap();
+        assert!(written.contains("PW-FIRST"), "{written}");
+
+        // The active account switched to the second one after the selection,
+        // while the export still carries the captured list account: refused,
+        // and NO file is written.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+        }
+        let switched_dir = dir.path().join("switched");
+        std::fs::create_dir(&switched_dir).unwrap();
+        let switched_file = switched_dir.join("credentials.ini");
+        let err = export_bridge_config(
+            "aws".to_string(),
+            servers.clone(),
+            true,
+            switched_file.to_string_lossy().into_owned(),
+            Some(first),
+        )
+        .await
+        .expect_err("an export whose list was read under another account must be refused");
+        assert_eq!(err, crate::user_partitions::ACCOUNT_CHANGED);
+        assert!(
+            !switched_file.exists(),
+            "a refused export must not write a file"
+        );
+
+        // None keeps the capture-at-start behavior: under the now-active
+        // second account the export works and carries ITS secret.
+        let none_dir = dir.path().join("none");
+        std::fs::create_dir(&none_dir).unwrap();
+        let none_file = none_dir.join("credentials.ini");
+        let out = export_bridge_config(
+            "aws".to_string(),
+            servers,
+            true,
+            none_file.to_string_lossy().into_owned(),
+            None,
+        )
+        .await
+        .expect("a no-account export follows the active account");
+        assert_eq!(out["exported"], 1, "{out}");
+        let written = std::fs::read_to_string(&none_file).unwrap();
+        assert!(written.contains("PW-SECOND"), "{written}");
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
+
+    /// A bridge-import secret write that fails HALFWAY (vault written, active
+    /// partition mirror refused because the active account is locked) rolls
+    /// back: the prior value is restored when it existed, and the newly
+    /// written entry is deleted when it did not.
+    #[test]
+    fn a_half_failed_bridge_secret_write_rolls_back_to_prior_or_deletes_the_new_entry() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::a_half_failed_bridge_secret_write_rolls_back_to_prior_or_deletes_the_new_entry",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic bridge rollback master").unwrap();
+        CredentialStore::unlock_with_master("synthetic bridge rollback master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        // A passphrase-protected secondary account, active but NOT unlocked
+        // (no AEROFTP_USER_PASSPHRASE): its partition mirror refuses the write.
+        let locked = crate::user_partitions::create_user(
+            &mut conn,
+            &root_key,
+            "Locked Second",
+            None,
+            None,
+            Some("synthetic user passphrase"),
+        )
+        .unwrap()
+        .id;
+        crate::user_partitions::set_active_user(&conn, locked).unwrap();
+        drop(conn);
+
+        // Case 1: a prior value exists -> the half-failed write restores it.
+        store.store("server_rb16", "PRIOR-VALUE").unwrap();
+        store_bridge_import_secret_for_user(&store, None, "server_rb16", "NEW-VALUE")
+            .expect_err("the dual write must fail on the locked active partition");
+        assert_eq!(
+            store.get("server_rb16").unwrap(),
+            "PRIOR-VALUE",
+            "the prior value must be restored after the half-failed write"
+        );
+
+        // Case 2: no prior value -> the newly written vault entry is deleted.
+        assert!(store.get("server_rb16new").is_err());
+        store_bridge_import_secret_for_user(&store, None, "server_rb16new", "NEW-VALUE")
+            .expect_err("the dual write must fail on the locked active partition");
+        assert!(
+            store.get("server_rb16new").is_err(),
+            "the half-written new entry must be deleted, not left behind"
         );
 
         match previous_xdg {

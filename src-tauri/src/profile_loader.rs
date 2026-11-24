@@ -267,7 +267,17 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
             if normalized == "profile_id" {
                 continue;
             }
+            // The inline S3 session token is resolved once, below, through the
+            // same selector the backup export uses, so a conflicting camelCase
+            // vs snake_case pair resolves identically on every surface instead
+            // of depending on map iteration order.
+            if normalized == "session_token" {
+                continue;
+            }
             insert_profile_option(extra, k, v);
+        }
+        if let Some(token) = crate::inline_s3_session_token(profile.get("options")) {
+            extra.insert("session_token".to_string(), token);
         }
     }
     // Every surface that loads a saved profile comes through here (CLI, MCP,
@@ -1621,6 +1631,44 @@ mod tests {
         apply_profile_options(&mut extra, &profile);
         assert_eq!(extra.get("tls_mode").map(String::as_str), Some("explicit"));
         assert_eq!(extra.get("verify_cert").map(String::as_str), Some("true"));
+    }
+
+    #[test]
+    fn apply_profile_options_resolves_the_inline_session_token_with_the_shared_selector() {
+        // A conflicting camelCase vs snake_case pair resolves identically here
+        // and in the backup export (both use inline_s3_session_token), not by
+        // map iteration order.
+        let mut extra = HashMap::new();
+        apply_profile_options(
+            &mut extra,
+            &json!({"options": {"sessionToken": "CAMEL", "session_token": "SNAKE",
+                "region": "us-east-1"}}),
+        );
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("CAMEL")
+        );
+        assert!(
+            !extra.contains_key("sessionToken"),
+            "the raw camelCase key must not leak into extra: {extra:?}"
+        );
+        assert_eq!(extra.get("region").map(String::as_str), Some("us-east-1"));
+
+        // A blank camelCase token falls back to the usable snake_case one.
+        let mut extra = HashMap::new();
+        apply_profile_options(
+            &mut extra,
+            &json!({"options": {"sessionToken": "  ", "session_token": "SNAKE"}}),
+        );
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("SNAKE")
+        );
+
+        // No token at all: no session_token key is invented.
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &json!({"options": {"region": "us-east-1"}}));
+        assert!(!extra.contains_key("session_token"));
     }
 
     #[test]

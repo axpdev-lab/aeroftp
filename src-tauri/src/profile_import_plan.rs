@@ -747,6 +747,17 @@ pub fn overwrite_profile(
             options.extend(kept);
             target.insert("options".to_string(), serde_json::Value::Object(options));
         }
+        // A credential-replacing import owns the token state even when it has
+        // NO options object at all: the merged options would otherwise still
+        // carry the existing inline sessionToken/session_token beside the
+        // replacement credentials. Strip both spellings; other existing
+        // options stay.
+        if import_replaces_credentials {
+            if let Some(opts) = target.get_mut("options").and_then(|v| v.as_object_mut()) {
+                opts.remove("sessionToken");
+                opts.remove("session_token");
+            }
+        }
         // When a credential-enabled S3 overwrite replaces credentials without a
         // session token, `import_secret_writes` deletes `aws_session_token_<id>`,
         // so `hasStoredSessionToken` must be cleared to `false` rather than
@@ -1251,6 +1262,55 @@ mod tests {
             Some("OLD-INLINE-TOKEN"),
             "a credential-free overwrite must keep the stored inline token: {merged}"
         );
+    }
+
+    /// A credential-replacing import that carries NO options object at all
+    /// still owns the token state: the merged options keep every other
+    /// existing option but lose both `sessionToken` spellings, so no stale
+    /// inline token survives beside the replacement credentials. A
+    /// credential-free import without options keeps them.
+    #[test]
+    fn a_credential_replacing_overwrite_without_options_still_drops_the_inline_token() {
+        let existing = json!({
+            "id": "srv_s3", "name": "S3", "protocol": "s3",
+            "hasStoredCredential": true, "hasStoredSessionToken": true,
+            "options": {"region": "us-east-1", "sessionToken": "OLD-INLINE-TOKEN",
+                "session_token": "OLD-INLINE-TOKEN-2", "totp_secret": "seed"}
+        });
+        // No "options" key at all in the import.
+        let imported = json!({
+            "id": "srv_s3", "protocol": "s3", "hasStoredCredential": true,
+            "hasStoredSessionToken": false
+        });
+        let merged = overwrite_profile(&existing, &imported);
+        let opts = merged["options"].as_object().unwrap();
+        assert!(
+            opts.get("sessionToken").is_none() && opts.get("session_token").is_none(),
+            "both inline token spellings must be stripped when the import has no options: {merged}"
+        );
+        assert_eq!(
+            opts.get("region").and_then(|v| v.as_str()),
+            Some("us-east-1"),
+            "other existing options stay"
+        );
+        assert_eq!(
+            opts.get("totp_secret").and_then(|v| v.as_str()),
+            Some("seed"),
+            "other existing options stay"
+        );
+        assert_eq!(merged["hasStoredSessionToken"], false);
+
+        // Credential-free import without options: the inline tokens stay.
+        let imported_free = json!({
+            "id": "srv_s3", "protocol": "s3", "hasStoredCredential": false
+        });
+        let merged = overwrite_profile(&existing, &imported_free);
+        assert_eq!(
+            merged["options"]["sessionToken"].as_str(),
+            Some("OLD-INLINE-TOKEN"),
+            "a credential-free overwrite without options must keep the stored inline token: {merged}"
+        );
+        assert_eq!(merged["hasStoredSessionToken"], true);
     }
 
     /// A shared singleton is written when empty or when it is this import's

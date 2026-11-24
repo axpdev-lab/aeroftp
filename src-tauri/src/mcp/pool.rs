@@ -843,7 +843,15 @@ mod tests {
     /// turn a security check off. The full vault path refuses them before any
     /// credential is read; non-strict mode keeps its existing behavior.
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn the_vault_connect_path_applies_strict_mode() {
+        // Hermetic: no reads from the real config dir, no leaked env.
+        let _env = crate::test_env::lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let env_dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", env_dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vault.db");
         let key = [0x24; 32];
@@ -889,6 +897,15 @@ mod tests {
         });
         assert_eq!(allowed.unwrap(), "fixture-secret");
         assert!(read.get());
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
     }
 
     /// The profile list and the password must come from the SAME account: the
@@ -921,7 +938,7 @@ mod tests {
             .expect("first account")
             .id;
         let root_key = store.derive_user_partition_wrapping_key();
-        let _second =
+        let second =
             crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
                 .unwrap()
                 .id;
@@ -942,6 +959,12 @@ mod tests {
                 let seen = &seen;
                 move |_, user| {
                     seen.borrow_mut().push(format!("profiles:{user:?}"));
+                    // Switch the active account to the second account INSIDE the
+                    // profile read: the credential read after it must still use
+                    // the account captured before this callback ran.
+                    let conn = crate::user_partitions::open_or_init_cli().unwrap();
+                    crate::user_partitions::set_active_user(&conn, second).unwrap();
+                    drop(conn);
                     Ok(vec![profile])
                 }
             },

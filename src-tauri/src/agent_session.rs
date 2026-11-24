@@ -181,10 +181,14 @@ fn profile_summary_from(matched: &Value) -> ProfileSummary {
 /// printed by `profiles --json` is accepted directly.
 pub fn lookup_profile(query: &str) -> Result<ProfileSummary, LookupError> {
     let store = CredentialStore::from_cache().ok_or(LookupError::VaultClosed)?;
-    let user_id = crate::user_partitions::cli_get_active_user(&store)
-        .ok()
-        .flatten()
-        .map(|u| u.id);
+    // Propagate capture errors: collapsing an Err to `None` would read the
+    // legacy blob even when the account lookup failed, and a successful
+    // no-account capture is represented distinctly below so an account
+    // activated later cannot leak into the list read.
+    let user_id = match crate::user_partitions::cli_get_active_user(&store) {
+        Ok(u) => u.map(|u| u.id),
+        Err(e) => return Err(LookupError::ProfilesUnavailable(e)),
+    };
     lookup_profile_for_user(&store, user_id, query)
 }
 
@@ -197,7 +201,12 @@ pub fn lookup_profile_for_user(
     user_id: Option<i64>,
     query: &str,
 ) -> Result<ProfileSummary, LookupError> {
-    let profiles: Vec<Value> = crate::user_partitions::mcp_list_server_profiles(store, user_id)
+    // A captured `None` (no account at capture time) reads the legacy blob
+    // ONLY: passing it through as `None` would make mcp_list_server_profiles
+    // re-read the active account at call time, so an account activated after
+    // the capture would leak into the lookup.
+    let list_user = user_id.or(Some(crate::user_partitions::LEGACY_ONLY_ACCOUNT));
+    let profiles: Vec<Value> = crate::user_partitions::mcp_list_server_profiles(store, list_user)
         .map_err(LookupError::ProfilesUnavailable)?;
     lookup_profile_in(&profiles, query)
 }
@@ -1097,10 +1106,12 @@ pub async fn build_agent_connect_payload_with(query: &str, no_scp_fallback: bool
     };
     // Capture the account ONCE: the profile lookup and the connect below must
     // read the same account, even if the active account switches in between.
-    let user_id = crate::user_partitions::cli_get_active_user(&store)
-        .ok()
-        .flatten()
-        .map(|u| u.id);
+    // A capture error is propagated, never collapsed to `None` (which would
+    // read the legacy blob and could follow an account activated later).
+    let user_id = match crate::user_partitions::cli_get_active_user(&store) {
+        Ok(u) => u.map(|u| u.id),
+        Err(e) => return lookup_error_payload(query, &LookupError::ProfilesUnavailable(e)),
+    };
     let profile = match lookup_profile_for_user(&store, user_id, query) {
         Ok(p) => p,
         Err(e) => return lookup_error_payload(query, &e),
@@ -1987,6 +1998,88 @@ mod tests {
             "",
             "a secondary account must not receive the legacy owner's password"
         );
+
+        CredentialStore::clear_cache();
+    }
+
+    /// A lookup that captured NO active account reads the legacy blob only:
+    /// an account activated AFTER the capture must not leak its partition into
+    /// the lookup (the captured `None` is mapped to `LEGACY_ONLY_ACCOUNT`, it
+    /// is not re-resolved against the active account at call time). The
+    /// no-switch control reads the legacy blob successfully first.
+    #[test]
+    fn a_captured_no_account_lookup_never_follows_an_account_activated_later() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "agent_session::tests::a_captured_no_account_lookup_never_follows_an_account_activated_later",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let xdg = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", xdg.path());
+        std::env::set_var("AEROFTP_MASTER_PASSWORD", "synthetic test master");
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic test master").unwrap();
+        CredentialStore::unlock_with_master("synthetic test master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+
+        // The legacy blob holds one profile under the lookup name "lab".
+        store
+            .store(
+                "config_server_profiles",
+                &json!([{"id": "srv-legacy", "name": "lab", "protocol": "sftp",
+                    "host": "legacy.example", "port": 22, "username": "u"}])
+                .to_string(),
+            )
+            .unwrap();
+
+        // Capture with NO active account.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                .unwrap();
+        }
+        let captured = crate::user_partitions::cli_get_active_user(&store)
+            .unwrap()
+            .map(|u| u.id);
+        assert_eq!(captured, None, "precondition: no active account at capture");
+
+        // No-switch control: the captured None reads the legacy blob.
+        let found = lookup_profile_for_user(&store, captured, "lab").unwrap();
+        assert_eq!(found.id, "srv-legacy");
+        assert_eq!(found.host, "legacy.example");
+
+        // Activate an account whose partition holds a DIFFERENT profile under
+        // the same lookup name.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::replace_server_profiles_for(
+            &mut conn,
+            &root_key,
+            second,
+            &[json!({"id": "srv-b", "name": "lab", "protocol": "sftp",
+                "host": "b.example", "port": 22, "username": "u"})],
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, second).unwrap();
+        drop(conn);
+
+        // The SAME captured None must still answer from the legacy blob, never
+        // from the account activated after the capture.
+        let found = lookup_profile_for_user(&store, captured, "lab").unwrap();
+        assert_eq!(
+            found.id, "srv-legacy",
+            "a captured no-account lookup must not follow an account activated after the capture"
+        );
+        assert_eq!(found.host, "legacy.example");
 
         CredentialStore::clear_cache();
     }

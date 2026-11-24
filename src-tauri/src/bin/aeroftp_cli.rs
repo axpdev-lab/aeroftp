@@ -14312,11 +14312,21 @@ fn load_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
 ) -> Result<Vec<serde_json::Value>, String> {
+    Ok(load_active_user_profiles_with_account(cli, store)?.0)
+}
+
+/// Like [`load_active_user_profiles`] but also returns the account id the
+/// list was read under, so callers can bind later reads (exports) to it.
+fn load_active_user_profiles_with_account(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Result<(Vec<serde_json::Value>, i64), String> {
     use ftp_client_gui_lib::user_partitions;
     let target = match ensure_active_user_unlocked(cli, store)? {
         Some(t) => t,
         None => return Err("NO_ACTIVE_USER".to_string()),
     };
+    let account = target.id;
     match user_partitions::cli_list_server_profiles_for_user(store, target.id) {
         Ok(mut profiles) => {
             // rclone-crypt secrets that `import rclone --apply` used to leave in
@@ -14351,7 +14361,7 @@ fn load_active_user_profiles(
                     eprintln!("Warning: {note}");
                 }
             }
-            Ok(profiles)
+            Ok((profiles, account))
         }
         Err(e) if e == "USER_LOCKED" => Err(e),
         Err(e) if e == "NO_ACTIVE_USER" => Err(e),
@@ -14368,8 +14378,9 @@ fn load_active_user_profiles(
             let raw = store
                 .get("config_server_profiles")
                 .map_err(|e| format!("Failed to read server profiles: {}", e))?;
-            serde_json::from_str(&raw)
-                .map_err(|e| format!("Failed to parse server profiles: {}", e))
+            let profiles: Vec<serde_json::Value> = serde_json::from_str(&raw)
+                .map_err(|e| format!("Failed to parse server profiles: {}", e))?;
+            Ok((profiles, account))
         }
     }
 }
@@ -44032,7 +44043,7 @@ async fn cmd_export_rclone(
     // session and crypt injections) goes through this captured id, so a switch
     // mid-export cannot mix accounts.
     let export_user = scoped_credential_user_id(cli, &store);
-    let servers_json = match read_vault_profiles(cli, &store) {
+    let servers_json = match read_vault_profiles_for(cli, &store, export_user) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -44129,6 +44140,7 @@ async fn cmd_export_rclone(
             ftp_client_gui_lib::bridge_commands::ensure_zoho_rclone_root_folder(
                 &mut options,
                 &p.id,
+                export_user,
             )
             .await;
         }
@@ -44722,8 +44734,9 @@ async fn cmd_profile_export(
     };
 
     // 2. Load the active user's profiles (the GUI-shared config_server_profiles
-    //    shape, camelCase, already carrying persistModeCredentials).
-    let mut profiles = match load_active_user_profiles(cli, &store) {
+    //    shape, camelCase, already carrying persistModeCredentials), capturing
+    //    the account the list was read under so the export below is bound to it.
+    let (mut profiles, list_account) = match load_active_user_profiles_with_account(cli, &store) {
         Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("cannot read profiles: {e}"), 1);
@@ -44797,14 +44810,20 @@ async fn cmd_profile_export(
     //    the vault (under the include_credentials flag) and writes the strong-
     //    KDF encrypted envelope. The account the list above was read under is
     //    sent along, so the export is refused (ACCOUNT_CHANGED, no file) when
-    //    the active account changed since that read.
-    let account_id = scoped_credential_user_id(cli, &store);
-    let result = ftp_client_gui_lib::export_server_profiles_core(
+    //    the active account changed since that read. An explicit `--user`
+    //    selects that account directly instead (the list was read under it).
+    let binding = match &cli.user {
+        Some(_) => ftp_client_gui_lib::ExportAccountBinding::ExplicitUser(
+            scoped_credential_user_id(cli, &store).unwrap_or(list_account),
+        ),
+        None => ftp_client_gui_lib::ExportAccountBinding::MatchActive(Some(list_account)),
+    };
+    let result = ftp_client_gui_lib::export_server_profiles_core_with_policy(
         servers_json,
         password.clone(),
         include_credentials,
         output.to_string(),
-        account_id,
+        binding,
     )
     .await;
     password.zeroize();
@@ -47006,6 +47025,24 @@ fn read_vault_profiles(
 ) -> Result<serde_json::Value, String> {
     let profiles = load_active_user_profiles(cli, store)?;
     Ok(serde_json::Value::Array(profiles))
+}
+
+/// Read the profile list under a captured account id, so a `users switch`
+/// between the capture and this read cannot mix accounts. `None` keeps the
+/// active/legacy resolution of [`read_vault_profiles`].
+fn read_vault_profiles_for(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user: Option<i64>,
+) -> Result<serde_json::Value, String> {
+    match user {
+        Some(uid) => {
+            let profiles =
+                ftp_client_gui_lib::user_partitions::cli_list_server_profiles_for_user(store, uid)?;
+            Ok(serde_json::Value::Array(profiles))
+        }
+        None => read_vault_profiles(cli, store),
+    }
 }
 
 async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
@@ -88324,6 +88361,76 @@ mod tests {
                 ("XDG_CONFIG_HOME", cfg_dir.to_str().unwrap()),
                 ("XDG_DATA_HOME", cfg_dir.to_str().unwrap()),
                 ("HOME", cfg_dir.to_str().unwrap()),
+            ],
+        );
+    }
+
+    /// The profile-list read behind the rclone export is bound to the captured
+    /// account id: a `users switch` between the capture and the read cannot mix
+    /// accounts (`read_vault_profiles_for` passes the captured id through to
+    /// the account-scoped list read).
+    #[test]
+    fn read_vault_profiles_for_returns_the_captured_accounts_list_across_a_switch() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_READ_VAULT_PROFILES_FOR_CHILD";
+        if std::env::var(CHILD).is_ok() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                use ftp_client_gui_lib::user_partitions as up;
+                let cli = test_cli();
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let first = up::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("first account")
+                    .id;
+                let second = up::cli_create_user(&store, "Second", None, None, None)
+                    .unwrap()
+                    .id;
+                up::cli_replace_server_profiles_for_user(
+                    &store,
+                    first,
+                    &[
+                        serde_json::json!({"id":"srv-first","name":"first-lab","protocol":"sftp",
+                        "host":"a.example","port":22,"username":"u"}),
+                    ],
+                )
+                .unwrap();
+                up::cli_replace_server_profiles_for_user(
+                    &store,
+                    second,
+                    &[
+                        serde_json::json!({"id":"srv-second","name":"second-lab","protocol":"sftp",
+                        "host":"b.example","port":22,"username":"u"}),
+                    ],
+                )
+                .unwrap();
+                up::cli_set_active_user(&store, first).unwrap();
+
+                // Capture the account the export is scoped to, then switch the
+                // active account before the list read.
+                let export_user = scoped_credential_user_id(&cli, &store);
+                assert_eq!(export_user, Some(first));
+                up::cli_set_active_user(&store, second).unwrap();
+                let read = read_vault_profiles_for(&cli, &store, export_user).unwrap();
+                let arr = read.as_array().unwrap();
+                assert_eq!(arr.len(), 1);
+                assert_eq!(
+                    arr[0]["id"], "srv-first",
+                    "the captured account's list must be returned even after the active account switched"
+                );
+
+                // Control: None keeps the active-account resolution.
+                let read2 = read_vault_profiles_for(&cli, &store, None).unwrap();
+                assert_eq!(read2.as_array().unwrap()[0]["id"], "srv-second");
+            });
+            return;
+        }
+        let root = crate::isolated_cli::root();
+        assert_child_finishes_in(
+            root.path(),
+            "tests::read_vault_profiles_for_returns_the_captured_accounts_list_across_a_switch",
+            &[
+                (CHILD, "1"),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
             ],
         );
     }

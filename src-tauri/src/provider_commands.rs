@@ -19872,12 +19872,17 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         crate::local_bridge::alias_test_port(port, 1800);
         let (requested_tx, mut requested_rx) = tokio::sync::mpsc::channel::<()>(4);
+        // The reply is held on a oneshot, not on a fixed delay: it is released
+        // only after the account switch below has landed.
+        let (hold_tx, hold_rx) = tokio::sync::oneshot::channel::<()>();
         let server = tokio::spawn(async move {
+            let mut hold_rx = Some(hold_rx);
             loop {
                 let Ok((mut stream, _)) = listener.accept().await else {
                     return;
                 };
                 let requested_tx = requested_tx.clone();
+                let hold_rx = hold_rx.take();
                 tokio::spawn(async move {
                     let mut request = Vec::new();
                     let mut buffer = [0u8; 4096];
@@ -19890,7 +19895,9 @@ mod tests {
                     let _ = requested_tx.send(()).await;
                     // Hold the reply so the account switch lands while the
                     // discovery is still awaiting it.
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    if let Some(hold_rx) = hold_rx {
+                        let _ = hold_rx.await;
+                    }
                     let body = "<ListAllMyBucketsResult><Buckets><Bucket><Name>Documents</Name></Bucket></Buckets></ListAllMyBucketsResult>";
                     let reply = format!(
                         "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -19922,6 +19929,8 @@ mod tests {
                 let conn = crate::user_partitions::open_or_init_cli().unwrap();
                 crate::user_partitions::set_active_user(&conn, second).unwrap();
                 drop(conn);
+                // Release the held reply only now that the switch has landed.
+                let _ = hold_tx.send(());
             }
             early = &mut discovery => {
                 panic!("discovery ended before the account switch: {:?}", early.unwrap());
