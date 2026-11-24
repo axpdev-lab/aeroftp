@@ -110,6 +110,10 @@ pub struct McpRemoteBackend {
     expected_identity: Option<String>,
 }
 
+type PooledFuture<'p, T> = std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<T, crate::providers::ProviderError>> + Send + 'p>,
+>;
+
 /// Heuristic: does this error look like an expired / invalid OAuth or auth
 /// token rather than a transport or logic failure? Used to trigger a single
 /// vault hot-reload retry (F5 #2): the long-running MCP process pools the
@@ -320,6 +324,21 @@ impl McpRemoteBackend {
                 }
                 Err(crate::providers::sanitize_api_error(&error.to_string()))
             }
+        }
+    }
+    fn delete_version_op(
+        path: String,
+        version_id: String,
+    ) -> impl for<'p> FnOnce(
+        &'p mut Box<dyn crate::providers::StorageProvider>,
+    ) -> PooledFuture<'p, ()>
+           + Clone {
+        move |p| {
+            let path = path.clone();
+            let version_id = version_id.clone();
+            Box::pin(async move {
+                crate::providers::purge_version_guarded(p.as_mut(), &path, &version_id).await
+            })
         }
     }
 }
@@ -566,11 +585,10 @@ impl RemoteBackend for McpRemoteBackend {
     }
 
     async fn delete_version(&self, path: &str, version_id: &str) -> Result<(), String> {
-        let path = path.to_string();
-        let version_id = version_id.to_string();
-        self.with_provider(move |p| {
-            Box::pin(async move { p.delete_version(&path, &version_id).await })
-        })
+        self.with_provider(Self::delete_version_op(
+            path.to_string(),
+            version_id.to_string(),
+        ))
         .await
     }
 
@@ -837,5 +855,31 @@ mod tests {
             2,
             "a second auth failure is not another reload and does not drop the entry"
         );
+    }
+
+    #[tokio::test]
+    async fn mcp_delete_version_refuses_when_listing_is_denied_without_sending_delete() {
+        use crate::providers::probe_fake::ProbeFake;
+        use crate::providers::ProviderError;
+        use std::sync::{Arc, Mutex};
+
+        let pool = std::sync::Arc::new(crate::mcp::pool::ConnectionPool::new(
+            4,
+            std::time::Duration::from_secs(300),
+        ));
+        let writes = Arc::new(Mutex::new(Vec::new()));
+        let mut fake = ProbeFake::new();
+        fake.shared_writes = Some(Arc::clone(&writes));
+        fake.list_versions_error = Some(|| ProviderError::PermissionDenied("listing".into()));
+        let arc = pool.insert_for_test("srv_s3", "s3", Box::new(fake)).await;
+        let backend = super::McpRemoteBackend::new(std::sync::Arc::clone(&pool), "s3".to_string());
+        let op = super::McpRemoteBackend::delete_version_op("/f.bin".into(), "v1".into());
+        let outcome = {
+            let mut guard = arc.lock().await;
+            op(&mut guard).await
+        };
+        let err = backend.finish_retried_call(arc, outcome).await.unwrap_err();
+        assert!(err.contains("cannot tell the live version"), "{err}");
+        assert!(writes.lock().unwrap().is_empty(), "{:?}", writes.lock());
     }
 }

@@ -529,3 +529,122 @@ async fn owned_part_survives_nonce_rotation_and_transient_refusal() {
         .iter()
         .all(|r| r.path == puts[0].path && r.body == b"abc"));
 }
+
+#[tokio::test]
+async fn persisted_v2_handle_is_rejected_once_and_restart_creates_fresh_v3_handle() {
+    use crate::transfer_dag::{
+        CheckpointDestinationIdentity, CheckpointLayout, CheckpointSourceIdentity,
+        CheckpointStatus, MultipartCheckpoint, NoopDagObserver, TransferCheckpointStore,
+        TransferDagBuilder, TransferDirection,
+    };
+    use std::sync::atomic::AtomicU64;
+
+    let server = Server::start(vec![response(201, "")]).await;
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source.bin");
+    std::fs::write(&source, b"abcdefghijklmnopqr").unwrap();
+    let source_meta = std::fs::metadata(&source).unwrap();
+    let webdav = server.provider();
+    let endpoint = webdav.endpoint_identity();
+    let provider: crate::transfer_dag_single_file::SharedProvider = Arc::new(
+        tokio::sync::Mutex::new(Some(Box::new(webdav) as Box<dyn StorageProvider>)),
+    );
+    let dag =
+        TransferDagBuilder::shaped_file(TransferDirection::Upload, &small_multipart_caps(), 18);
+    assert_eq!(dag.profile.upload_parts, 3);
+
+    let checkpoint_dir = directory.path().join("checkpoints");
+    let store = TransferCheckpointStore::new(&checkpoint_dir).unwrap();
+    let source_id = CheckpointSourceIdentity {
+        local_path: source.to_string_lossy().into_owned(),
+        size: source_meta.len(),
+        modified_unix_nanos: source_meta
+            .modified()
+            .ok()
+            .and_then(|stamp| stamp.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|stamp| stamp.as_nanos()),
+    };
+    let dest_id = CheckpointDestinationIdentity {
+        provider: format!("{:?}", ProviderType::WebDav),
+        protocol: endpoint.protocol,
+        host: endpoint.host,
+        account: endpoint.account,
+        remote_path: "/graph.bin".into(),
+    };
+    let layout = CheckpointLayout {
+        total_size: 18,
+        total_parts: dag.profile.upload_parts as u32,
+        preferred_part_size: dag.profile.preferred_chunk_size,
+    };
+    let mut seeded = store.open_or_create(source_id, dest_id, layout).unwrap();
+    store
+        .begin(
+            &mut seeded.checkpoint,
+            "webdav-chunked-v2|legacy-tx|alice|18".to_string(),
+        )
+        .unwrap();
+    store.mark_failed(&mut seeded.checkpoint).unwrap();
+
+    // First attempt with the persisted v2 checkpoint preserves the rejection
+    // before touching the server and drops the unresumable record.
+    let first = crate::transfer_dag_single_file::execute_single_file_dag(
+        &dag,
+        Arc::clone(&provider),
+        "/graph.bin".into(),
+        source.to_string_lossy().into_owned(),
+        None,
+        None,
+        Arc::new(NoopDagObserver),
+        Arc::new(AtomicU64::new(0)),
+        18,
+        Some(tokio_util::sync::CancellationToken::new()),
+        Some(TransferCheckpointStore::new(&checkpoint_dir).unwrap()),
+    )
+    .await;
+    assert!(
+        matches!(&first, Err(ProviderError::Other(m)) if m.contains("start the upload again")),
+        "{first:?}"
+    );
+    assert!(
+        server.seen.lock().unwrap().is_empty(),
+        "rejected v2 handle must send no HTTP requests"
+    );
+
+    // Restarting the upload opens a fresh session and persists a v3 handle.
+    crate::transfer_dag_single_file::execute_single_file_dag(
+        &dag,
+        provider,
+        "/graph.bin".into(),
+        source.to_string_lossy().into_owned(),
+        None,
+        None,
+        Arc::new(NoopDagObserver),
+        Arc::new(AtomicU64::new(0)),
+        18,
+        Some(tokio_util::sync::CancellationToken::new()),
+        Some(TransferCheckpointStore::new(&checkpoint_dir).unwrap()),
+    )
+    .await
+    .unwrap();
+
+    let mkcols = server.requests("MKCOL");
+    assert_eq!(mkcols.len(), 1);
+    assert!(!mkcols[0].path.contains("legacy-tx"), "{}", mkcols[0].path);
+    let puts = server.requests("PUT");
+    assert_eq!(puts.len(), 3);
+    assert_eq!(server.requests("MOVE").len(), 1);
+
+    let files: Vec<_> = std::fs::read_dir(&checkpoint_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|ext| ext.to_str()) == Some("json"))
+        .collect();
+    assert_eq!(files.len(), 1, "{files:?}");
+    let persisted: MultipartCheckpoint =
+        serde_json::from_slice(&std::fs::read(&files[0]).unwrap()).unwrap();
+    assert_eq!(persisted.status, CheckpointStatus::Committed);
+    let upload_id = persisted.upload_id.as_deref().unwrap();
+    assert!(upload_id.starts_with("webdav-chunked-v3|"), "{upload_id}");
+    assert!(!upload_id.contains("legacy-tx"), "{upload_id}");
+}

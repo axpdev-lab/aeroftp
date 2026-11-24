@@ -1188,6 +1188,17 @@ pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
     }
 }
 
+/// Guard a version purge against deleting the live version (or doing so blind
+/// when the version listing is denied) and then execute `delete_version`.
+pub async fn purge_version_guarded<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<(), ProviderError> {
+    refuse_a_purge_of_the_live_version(provider, path, version_id).await?;
+    provider.delete_version(path, version_id).await
+}
+
 /// The error of a restore whose version listing failed: a file gone or
 /// replaced, a disconnect or a provider without versions keep their own
 /// error; any other failure says no restore was sent.
@@ -2891,6 +2902,24 @@ pub struct MultipartHandle {
     pub upload_id: String,
     /// Destination remote path or key the handle is bound to.
     pub remote_path: String,
+}
+
+/// Phrase emitted when a persisted multipart handle is unbound or stale (e.g.
+/// a legacy Nextcloud `webdav-chunked-v2` handle without destination binding, or
+/// a handle whose profile root moved) and the caller must drop any stored
+/// checkpoint before restarting the upload.
+pub(crate) const MULTIPART_RESTART_UPLOAD_HINT: &str = "start the upload again";
+
+/// Whether a multipart transfer error means the persisted handle itself cannot
+/// be resumed, so any durable checkpoint holding it must be dropped rather than
+/// kept for resume.
+pub(crate) fn is_unresumable_multipart_handle_error(err: &ProviderError) -> bool {
+    match err {
+        ProviderError::Other(msg) | ProviderError::PermissionDenied(msg) => {
+            msg.contains(MULTIPART_RESTART_UPLOAD_HINT)
+        }
+        _ => false,
+    }
 }
 
 impl std::fmt::Debug for MultipartHandle {
