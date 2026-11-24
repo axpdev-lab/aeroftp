@@ -2347,10 +2347,12 @@ impl OAuth2Manager {
                 // pending, leaves the row as the live chain and the vault
                 // possibly holding the spent predecessor. Whenever the arm
                 // did not return, the row, not the vault, is what migrates;
-                // the vault is read back only while the row is absent, and a
-                // value that is not the adopted chain is the spent
-                // predecessor and leaves conditionally, while a value equal
-                // to the chain is the live copy and stays. A pending kept
+                // the vault is read back only while the row is absent. A
+                // value equal to the adopted chain is the same copy and is
+                // consumed; an unequal value leaves only while it is the
+                // spent predecessor of this same authorization
+                // (owner_family absent or the chain's), so a fresh
+                // sign-in's family stays. A pending kept
                 // in the vault is the exception: its successor lands in the
                 // vault, so the row still holds only the spent predecessor
                 // and must not be adopted.
