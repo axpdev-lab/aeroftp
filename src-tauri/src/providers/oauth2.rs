@@ -1383,6 +1383,13 @@ impl OAuth2Manager {
         self.credential_user = user_id;
         self
     }
+
+    /// The account this manager is bound to, for tests that prove a caller
+    /// bound it before a lookup.
+    #[cfg(test)]
+    pub(crate) fn bound_credential_user(&self) -> Option<i64> {
+        self.credential_user
+    }
     /// The account a new authorization is written for, read once: the bound
     /// account, else the one active now (`Ok(None)`: no account exists). The
     /// partition copy goes to the account the vault write was decided for,

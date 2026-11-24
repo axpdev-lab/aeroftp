@@ -29,6 +29,23 @@ use crate::{
     rclone_import, restic_import, s3cmd_import, ssh_config_import, winscp_import,
 };
 
+// Test fixture for `inject_rclone_crypt_export_options`: while armed, every
+// vault read inside it first moves the active account to this id, so a read
+// that followed the active account instead of the captured one picks up
+// that account's secrets.
+#[cfg(test)]
+thread_local! {
+    static CRYPT_EXPORT_ACTIVE_SWITCH: std::cell::Cell<Option<i64>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Arm the crypt-export fixture: vault reads switch the active account to
+/// `user_id` first. `None` disarms it.
+#[cfg(test)]
+pub(crate) fn arm_crypt_export_active_switch(user_id: Option<i64>) {
+    CRYPT_EXPORT_ACTIVE_SWITCH.with(|c| c.set(user_id));
+}
+
 fn known(source: &str) -> Result<(), String> {
     if bridge_supported_protocols(source).is_empty() {
         return Err(format!("unknown bridge source: {source}"));
@@ -1874,6 +1891,14 @@ pub fn inject_rclone_crypt_export_options(
             return None;
         }
         let user = user?;
+        #[cfg(test)]
+        if let Some(active) = CRYPT_EXPORT_ACTIVE_SWITCH.with(|c| c.get()) {
+            // The export may have captured its account before this read;
+            // the active one may have moved. The fixture re-points it so a
+            // read that followed the active account instead of `user`
+            // picks up the wrong secrets.
+            let _ = crate::user_partitions::cli_set_active_user(store, active);
+        }
         crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, &key)
             .ok()
             .flatten()
@@ -1980,8 +2005,9 @@ pub async fn export_bridge_config(
 }
 
 /// The password the vault holds for the profile with id `id`, stored as a
-/// JSON credential blob (`{"password": "..."}`) or a bare string. MUV-3:
-/// per-user store (active user) with vault fallback.
+/// JSON credential blob (`{"password": "..."}`) or a bare string, read for
+/// the account the export captured (`user`): `None` leaves it empty without
+/// re-reading the active account or the vault.
 fn vault_export_password(store: &CredentialStore, user: Option<i64>, id: &str) -> Option<String> {
     let user = user?;
     let stored = crate::user_partitions::resolve_credential_for_user_owner_aware(
@@ -3379,6 +3405,110 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A vault with two accounts, the second active, for the export-binding
+    /// pins: `captured` is the account an export binds to, `active` the one
+    /// a stray active-account read would pick.
+    fn with_two_export_accounts(test: impl FnOnce(&CredentialStore, i64, i64)) {
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("bridge-export-bind").unwrap();
+        CredentialStore::unlock_with_master("bridge-export-bind", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let captured =
+            crate::user_partitions::cli_create_user(&store, "Export captured", None, None, None)
+                .unwrap();
+        let active =
+            crate::user_partitions::cli_create_user(&store, "Export active", None, None, None)
+                .unwrap();
+        crate::user_partitions::cli_set_active_user(&store, active.id).unwrap();
+        test(&store, captured.id, active.id);
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Some(value) = previous_passphrase {
+            std::env::set_var("AEROFTP_USER_PASSPHRASE", value);
+        }
+    }
+
+    /// The crypt overlay secrets are read for the account the export
+    /// captured: the fixture moves the active account to B inside the read,
+    /// and the exported password and salt must still be A's.
+    #[test]
+    fn crypt_export_secrets_stay_with_the_captured_account() {
+        with_two_export_accounts(|store, captured, active| {
+            for (user, pw, salt) in [
+                (captured, "pw-of-A", "salt-of-A"),
+                (active, "pw-of-B", "salt-of-B"),
+            ] {
+                crate::user_partitions::store_credential_for_user_dual(
+                    store,
+                    user,
+                    "aerocrypt_overlay_pw_crypt1",
+                    pw,
+                )
+                .unwrap();
+                crate::user_partitions::store_credential_for_user_dual(
+                    store,
+                    user,
+                    "aerocrypt_overlay_salt_crypt1",
+                    salt,
+                )
+                .unwrap();
+            }
+            arm_crypt_export_active_switch(Some(active));
+            let overlay = json!({
+                "enabled": true,
+                "kind": "rclone-crypt",
+                "passwordForm": "clear",
+                "saltForm": "clear",
+            });
+            let mut options = Some(json!({}));
+            inject_rclone_crypt_export_options(
+                &mut options,
+                store,
+                "crypt1",
+                Some(&overlay),
+                Some(captured),
+            );
+            arm_crypt_export_active_switch(None);
+            let opts = options.unwrap();
+            assert_eq!(opts["rcloneCryptPassword"], json!("pw-of-A"));
+            assert_eq!(opts["rcloneCryptPassword2"], json!("salt-of-A"));
+        });
+    }
+
+    /// The GUI bridge password is read for the account the export captured:
+    /// with B active, `Some(A)` still answers A's password, and `None`
+    /// answers nothing rather than whichever account is active.
+    #[test]
+    fn vault_export_password_reads_the_captured_account() {
+        with_two_export_accounts(|store, captured, active| {
+            for (user, password) in [(captured, "pw-of-A"), (active, "pw-of-B")] {
+                crate::user_partitions::store_credential_for_user_dual(
+                    store,
+                    user,
+                    "server_sharedpw",
+                    &format!(r#"{{"password":"{password}"}}"#),
+                )
+                .unwrap();
+            }
+            assert_eq!(
+                vault_export_password(store, Some(captured), "sharedpw"),
+                Some("pw-of-A".to_string())
+            );
+            assert_eq!(vault_export_password(store, None, "sharedpw"), None);
+        });
     }
 
     #[test]

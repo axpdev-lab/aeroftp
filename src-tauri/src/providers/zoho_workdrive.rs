@@ -26,6 +26,48 @@ use super::{
     StorageProvider,
 };
 
+/// Test fixture for [`ZohoWorkdriveProvider::discover_team`]: when armed,
+/// the discovery switches the active account to `active_user`, records the
+/// account the OAuth manager was bound to (the just-switched active one
+/// when unbound) and returns before any request.
+#[cfg(test)]
+#[derive(Clone, Copy)]
+pub(crate) struct DiscoveryTestFixture {
+    pub(crate) active_user: i64,
+}
+
+#[cfg(test)]
+thread_local! {
+    static DISCOVERY_TEST_FIXTURE: std::cell::Cell<Option<DiscoveryTestFixture>> =
+        const { std::cell::Cell::new(None) };
+    static DISCOVERY_TEST_LOG: std::cell::RefCell<Vec<i64>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(test)]
+fn discovery_test_fixture() -> Option<DiscoveryTestFixture> {
+    DISCOVERY_TEST_FIXTURE.with(|c| c.get())
+}
+
+#[cfg(test)]
+fn discovery_test_record(bound: i64) {
+    DISCOVERY_TEST_LOG.with(|l| l.borrow_mut().push(bound));
+}
+
+/// Arm the `discover_team` fixture: the next discovery calls move the
+/// active account to `active_user` and log the bound account of each.
+#[cfg(test)]
+pub(crate) fn arm_discovery_test_fixture(active_user: i64) {
+    DISCOVERY_TEST_FIXTURE.with(|c| c.set(Some(DiscoveryTestFixture { active_user })));
+    DISCOVERY_TEST_LOG.with(|l| l.borrow_mut().clear());
+}
+
+/// The accounts the armed `discover_team` calls were bound to, in order.
+#[cfg(test)]
+pub(crate) fn discovery_test_log() -> Vec<i64> {
+    DISCOVERY_TEST_LOG.with(|l| l.borrow().clone())
+}
+
 /// Zoho WorkDrive provider configuration
 #[derive(Debug, Clone)]
 pub struct ZohoWorkdriveConfig {
@@ -1895,6 +1937,23 @@ impl ZohoWorkdriveProvider {
 
     /// Discover team ID and privatespace root folder
     async fn discover_team(&mut self) -> Result<(), ProviderError> {
+        #[cfg(test)]
+        if let Some(fixture) = discovery_test_fixture() {
+            // An export captured its account before this call; the active
+            // account may have moved since. Move it to the fixture's
+            // account, record which account the manager is bound to (the
+            // one just made active when it is not), then return before any
+            // request.
+            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                let _ = crate::user_partitions::cli_set_active_user(&store, fixture.active_user);
+            }
+            let bound = self
+                .oauth_manager
+                .bound_credential_user()
+                .unwrap_or(fixture.active_user);
+            discovery_test_record(bound);
+            return Ok(());
+        }
         // Step 1: Get user info and user ID
         let user_url = format!("{}/users/me", self.api_base());
         info!("Zoho WorkDrive: GET {}", user_url);
@@ -11997,6 +12056,49 @@ mod tests {
             body,
             serde_json::json!({"data":{"attributes":{"revert_to":"2.0","resource_id":"file-1"},"type":"versions"}})
         );
+    }
+
+    /// The rclone export's Zoho discovery stays bound to the account the
+    /// profile list was read under: the fixture moves the active account to
+    /// B inside `discover_team`, and the recorded binding must still be A.
+    #[tokio::test]
+    async fn rclone_root_folder_discovery_keeps_the_captured_account() {
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password("zoho-discovery-bind")
+            .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("zoho-discovery-bind", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let captured =
+            crate::user_partitions::cli_create_user(&store, "Zoho captured", None, None, None)
+                .unwrap();
+        let active =
+            crate::user_partitions::cli_create_user(&store, "Zoho active", None, None, None)
+                .unwrap();
+        crate::user_partitions::cli_set_active_user(&store, active.id).unwrap();
+
+        arm_discovery_test_fixture(active.id);
+        let _ = ZohoWorkdriveProvider::rclone_root_folder_id_for_export(
+            "zoho-profile",
+            "cid",
+            "csecret",
+            "us",
+            Some(captured.id),
+        )
+        .await;
+        assert_eq!(discovery_test_log(), vec![captured.id]);
+
+        crate::credential_store::CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
     }
 
     /// A request error's text names its URL, and a WorkDrive URL carries

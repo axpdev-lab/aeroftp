@@ -249,8 +249,8 @@ fn staged_two_account_vault(
     user_partitions::cli_set_active_user(&store, user_b.id).expect("activate B");
     drop(store);
     stage_portable_vault(root);
-    drop(_lock);
     drop(_env);
+    drop(_lock);
 }
 
 #[test]
@@ -334,6 +334,101 @@ fn export_lftp_with_user_reads_that_accounts_server_password() {
     assert!(
         !exported.contains("pw-of-B"),
         "account B's password must not leak into A's export:\n{exported}"
+    );
+}
+
+#[test]
+fn export_with_user_and_no_active_account_reads_that_account_not_the_vault() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = point_env_at(root);
+    let (store, _owner) = vault_with_owner();
+    let user_a = user_partitions::cli_create_user(&store, "Alpha", None, None, None)
+        .expect("create account A");
+    user_partitions::cli_create_user(&store, "Bravo", None, None, None).expect("create account B");
+    give_profile_and_secret(
+        &store,
+        &user_a,
+        jottacloud_profile(),
+        "jottacloud_refresh_sharedjotta",
+        r#"{"refresh_token":"refresh-of-partition-A","token_endpoint":"https://idp.jottacloud.com/token","username":"a@example.com"}"#,
+    );
+    give_profile_and_secret(
+        &store,
+        &user_a,
+        ftp_profile(),
+        "server_sharedftp",
+        r#"{"password":"pw-of-partition-A"}"#,
+    );
+    // No active account: `--user Alpha` is the only scope. The shared vault
+    // holds different values on the same keys, so a read that fell back to
+    // it (or to `active_credential_user_id`, which is None here) exports
+    // the vault's secrets or nothing, never A's.
+    let conn = user_partitions::open_or_init_cli().expect("cli db");
+    conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+        .expect("clear active user");
+    drop(conn);
+    store
+        .store(
+            "jottacloud_refresh_sharedjotta",
+            r#"{"refresh_token":"refresh-of-vault","token_endpoint":"https://idp.jottacloud.com/token","username":"v@example.com"}"#,
+        )
+        .expect("vault jottacloud chain");
+    store
+        .store("server_sharedftp", r#"{"password":"pw-of-vault"}"#)
+        .expect("vault server password");
+    drop(store);
+    stage_portable_vault(root);
+    drop(_env);
+    drop(_lock);
+
+    let out_path = root.join("export-noactive.conf");
+    let out = cli(
+        root,
+        &[
+            "--user",
+            "Alpha",
+            "export",
+            "rclone",
+            "-o",
+            out_path.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let exported = std::fs::read_to_string(&out_path).expect("export file");
+    assert!(
+        exported.contains("refresh-of-partition-A"),
+        "the export must carry account A's Jotta chain:\n{exported}"
+    );
+    assert!(
+        !exported.contains("refresh-of-vault"),
+        "the unscoped vault chain must not leak into A's export:\n{exported}"
+    );
+
+    let lftp_path = root.join("export-noactive.lftp");
+    let out = cli(
+        root,
+        &[
+            "--user",
+            "Alpha",
+            "export",
+            "lftp",
+            "-o",
+            lftp_path.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let exported = std::fs::read_to_string(&lftp_path).expect("lftp export file");
+    assert!(
+        exported.contains("pw-of-partition-A"),
+        "the export must carry account A's password:\n{exported}"
+    );
+    assert!(
+        !exported.contains("pw-of-vault"),
+        "the unscoped vault password must not leak into A's export:\n{exported}"
     );
 }
 
