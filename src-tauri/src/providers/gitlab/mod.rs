@@ -96,10 +96,16 @@ impl GitLabConfig {
 
 /// Parse the host field into (api_base, project_path).
 fn parse_host_field(host: &str) -> Result<(String, String), ProviderError> {
-    let stripped = host
-        .strip_prefix("https://")
-        .or_else(|| host.strip_prefix("http://"))
-        .unwrap_or(host);
+    // The scheme is stripped case-insensitively, as the connection form does:
+    // `HTTPS://git.example.com/...` must name the same instance as the
+    // lowercase form, never a host read out of the scheme itself.
+    let stripped = match host.get(..8) {
+        Some(prefix) if prefix.eq_ignore_ascii_case("https://") => &host[8..],
+        _ => match host.get(..7) {
+            Some(prefix) if prefix.eq_ignore_ascii_case("http://") => &host[7..],
+            _ => host,
+        },
+    };
 
     // Split into domain and path parts
     let (domain, path) = match stripped.split_once('/') {
@@ -117,15 +123,45 @@ fn parse_host_field(host: &str) -> Result<(String, String), ProviderError> {
         ));
     }
 
-    // If domain looks like a GitLab instance (contains a dot), use it as the base
-    if domain.contains('.') {
-        let api_base = format!("https://{}/api/v4", domain);
-        Ok((api_base, path.to_string()))
-    } else {
+    match instance_authority(domain)? {
+        Some(authority) => Ok((format!("https://{authority}/api/v4"), path.to_string())),
         // "owner/repo" format: domain is actually the owner
-        let api_base = "https://gitlab.com/api/v4".to_string();
-        Ok((api_base, format!("{}/{}", domain, path)))
+        None => Ok((
+            "https://gitlab.com/api/v4".to_string(),
+            format!("{}/{}", domain, path),
+        )),
     }
+}
+
+/// The instance a host field's first segment names, as the `host[:port]`
+/// authority its API is reached on, or `None` when the segment is a project
+/// owner on gitlab.com (`owner/repo`). A segment names an instance when it
+/// holds a dot (`git.example.com`), is `localhost`, carries a port
+/// (`gitlab:8443`) or is an IP address (`10.0.0.5`, `[::1]:8443`): an owner
+/// name is none of these, so the token goes to the server the segment names
+/// and never to gitlab.com instead. A segment that names an instance but is
+/// not a valid address is refused rather than read as an owner.
+pub(crate) fn instance_authority(segment: &str) -> Result<Option<String>, ProviderError> {
+    let marked = segment.contains(['.', ':', '[']) || segment.eq_ignore_ascii_case("localhost");
+    if !marked {
+        return Ok(None);
+    }
+    // A refused segment can carry credentials (`user:password@host`), and a
+    // secret must never reach an error message, so the answer is fixed.
+    let invalid =
+        || ProviderError::InvalidConfig("GitLab host is not a valid instance address".into());
+    if segment.contains(['@', '?', '#', '\\']) {
+        return Err(invalid());
+    }
+    let url = url::Url::parse(&format!("https://{segment}/")).map_err(|_| invalid())?;
+    let host = url
+        .host_str()
+        .filter(|h| !h.is_empty())
+        .ok_or_else(invalid)?;
+    Ok(Some(match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_string(),
+    }))
 }
 
 /// URL-encode a project path for GitLab API.
@@ -1416,6 +1452,102 @@ mod tests {
         assert!(parse_host_field("gitlab.com/").is_err());
         // Empty input
         assert!(parse_host_field("").is_err());
+    }
+
+    /// A self-hosted instance named by a short name with its port, by
+    /// localhost or by an IP address is that instance, port kept: on 4.2.7
+    /// these sent the token to gitlab.com. A bare name stays a project owner
+    /// on gitlab.com, and a segment that names an instance but is not a valid
+    /// address is refused, never read as an owner. The table is shared with
+    /// `gitlabInstanceOf` in the connection form, so the two rules cannot
+    /// drift apart.
+    #[test]
+    fn a_self_hosted_host_field_names_its_instance_never_gitlab_com() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../src/shared/gitlab-instance-cases.json"
+        ))
+        .expect("the shared table parses");
+        let cases = table["cases"].as_array().expect("cases");
+        assert!(cases.iter().any(|case| case["instance"].is_null()));
+        for case in cases {
+            let server = case["server"].as_str().unwrap();
+            match case["instance"].as_str() {
+                Some(instance) => assert_eq!(
+                    parse_host_field(server).unwrap(),
+                    (
+                        format!("https://{instance}/api/v4"),
+                        case["project"].as_str().unwrap().to_string()
+                    ),
+                    "{server}"
+                ),
+                None => assert!(parse_host_field(server).is_err(), "{server}"),
+            }
+        }
+    }
+
+    /// A refused authority can hold credentials (`user:password@host`), and a
+    /// secret must never reach an error message: the refusal is a fixed
+    /// string, so the password is in neither the message nor its Display.
+    #[test]
+    fn a_refused_host_never_leaks_credentials_into_the_error() {
+        let err = parse_host_field("https://user:secret-pw@git.example.com/group/project")
+            .expect_err("userinfo is refused");
+        match err {
+            ProviderError::InvalidConfig(msg) => {
+                assert!(!msg.contains("secret-pw"), "{msg}");
+                assert!(!msg.contains("user:"), "{msg}");
+                assert!(!msg.to_string().contains("secret-pw"));
+            }
+            other => panic!("expected InvalidConfig, got {other:?}"),
+        }
+    }
+
+    /// The proof that nothing reaches gitlab.com: a connect to a saved
+    /// profile naming a local instance by IP, by localhost or by IPv6 dials
+    /// that listener. The connect is stopped at the first accept, so the
+    /// client's retry budget (the TLS handshake fails on the listener) never
+    /// runs and the test takes milliseconds.
+    #[tokio::test]
+    async fn a_self_hosted_instance_named_by_ip_or_localhost_is_dialed_itself() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let mut cases = vec![("127.0.0.1:0", "127.0.0.1"), ("127.0.0.1:0", "localhost")];
+        if tokio::net::TcpListener::bind("[::1]:0").await.is_ok() {
+            cases.push(("[::1]:0", "[::1]"));
+        }
+        for (bind, name) in cases {
+            let listener = tokio::net::TcpListener::bind(bind).await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let accepted = Arc::new(AtomicUsize::new(0));
+            let seen = Arc::clone(&accepted);
+            let server = tokio::spawn(async move {
+                while let Ok((socket, _)) = listener.accept().await {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    drop(socket);
+                }
+            });
+            let config = ProviderConfig {
+                name: "GitLab".into(),
+                provider_type: crate::providers::ProviderType::GitLab,
+                host: format!("{name}:{port}/group/project"),
+                port: None,
+                username: None,
+                password: Some("glpat-test".into()),
+                initial_path: Some("/".into()),
+                extra: Default::default(),
+            };
+            let config = GitLabConfig::from_provider_config(&config).unwrap();
+            assert_eq!(config.api_base, format!("https://{name}:{port}/api/v4"));
+            let mut provider = GitLabProvider::new(config).unwrap();
+            let connect = tokio::spawn(async move { provider.connect().await });
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+            while accepted.load(Ordering::SeqCst) == 0 && tokio::time::Instant::now() < deadline {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            connect.abort();
+            assert!(accepted.load(Ordering::SeqCst) > 0, "{name}: no dial");
+            server.abort();
+        }
     }
 
     #[test]

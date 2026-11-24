@@ -5958,7 +5958,8 @@
             "mrTitle": "Naslov MR",
             "mrBody": "Opis (neobvezno)",
             "sourceCode": "Izvorna koda",
-            "downloadAssetTitle": "Prenesi {name}"
+            "downloadAssetTitle": "Prenesi {name}",
+            "tokenGoesTo": "Žeton bo poslan na {instance}"
         },
         "mcp": {
             "title": "MCP Server",

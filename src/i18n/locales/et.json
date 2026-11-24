@@ -5958,7 +5958,8 @@
             "mrTitle": "MR pealkiri",
             "mrBody": "Kirjeldus (valikuline)",
             "sourceCode": "Lähtekood",
-            "downloadAssetTitle": "Laadi alla {name}"
+            "downloadAssetTitle": "Laadi alla {name}",
+            "tokenGoesTo": "Tokenit saadetakse serverisse {instance}"
         },
         "mcp": {
             "title": "MCP Server",

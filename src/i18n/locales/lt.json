@@ -5958,7 +5958,8 @@
             "mrTitle": "MR antraštė",
             "mrBody": "Aprašymas (neprivaloma)",
             "sourceCode": "Šaltinio kodas",
-            "downloadAssetTitle": "Atsisiųsti {name}"
+            "downloadAssetTitle": "Atsisiųsti {name}",
+            "tokenGoesTo": "Prieigos raktas bus išsiųstas į {instance}"
         },
         "mcp": {
             "title": "MCP Server",

@@ -5958,7 +5958,8 @@
             "mrTitle": "MR 标题",
             "mrBody": "描述 (可选)",
             "sourceCode": "源代码",
-            "downloadAssetTitle": "下载 {name}"
+            "downloadAssetTitle": "下载 {name}",
+            "tokenGoesTo": "令牌将发送到 {instance}"
         },
         "mcp": {
             "title": "MCP Server",

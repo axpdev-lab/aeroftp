@@ -5977,7 +5977,8 @@
             "mrTitle": "ចំណងជើង MR",
             "mrBody": "ការពិពណ៌នា (ស្រេចចិត្ត)",
             "sourceCode": "កូដប្រភព",
-            "downloadAssetTitle": "ទាញយក {name}"
+            "downloadAssetTitle": "ទាញយក {name}",
+            "tokenGoesTo": "ថូខឹននឹងត្រូវបានផ្ញើទៅ {instance}"
         },
         "mcp": {
             "title": "MCP Server",

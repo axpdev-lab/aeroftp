@@ -5958,7 +5958,8 @@
             "mrTitle": "Título da MR",
             "mrBody": "Descrição (opcional)",
             "sourceCode": "Código-fonte",
-            "downloadAssetTitle": "Baixar {name}"
+            "downloadAssetTitle": "Baixar {name}",
+            "tokenGoesTo": "O token será enviado para {instance}"
         },
         "mcp": {
             "title": "MCP Server",

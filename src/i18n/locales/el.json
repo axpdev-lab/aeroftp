@@ -5958,7 +5958,8 @@
             "mrTitle": "Τίτλος MR",
             "mrBody": "Περιγραφή (προαιρετική)",
             "sourceCode": "Πηγαίος κώδικας",
-            "downloadAssetTitle": "Λήψη {name}"
+            "downloadAssetTitle": "Λήψη {name}",
+            "tokenGoesTo": "Το διακριτικό θα σταλεί στο {instance}"
         },
         "mcp": {
             "title": "MCP Server",

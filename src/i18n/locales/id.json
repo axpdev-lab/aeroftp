@@ -5958,7 +5958,8 @@
             "mrTitle": "Judul MR",
             "mrBody": "Deskripsi (opsional)",
             "sourceCode": "Kode sumber",
-            "downloadAssetTitle": "Unduh {name}"
+            "downloadAssetTitle": "Unduh {name}",
+            "tokenGoesTo": "Token akan dikirim ke {instance}"
         },
         "mcp": {
             "title": "MCP Server",

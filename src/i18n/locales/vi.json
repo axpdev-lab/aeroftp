@@ -5958,7 +5958,8 @@
             "mrTitle": "Tiêu đề MR",
             "mrBody": "Mô tả (tùy chọn)",
             "sourceCode": "Mã nguồn",
-            "downloadAssetTitle": "Tải xuống {name}"
+            "downloadAssetTitle": "Tải xuống {name}",
+            "tokenGoesTo": "Token sẽ được gửi đến {instance}"
         },
         "mcp": {
             "title": "MCP Server",
