@@ -725,6 +725,52 @@ mod tests {
         assert_eq!(FILE_SHARE_DELETE, 0x0000_0004);
     }
 
+    /// The handle-based rename preserves the native Win32 error kind, so a
+    /// noclobber publish onto an occupied destination reports AlreadyExists
+    /// (retryable, next side slot) instead of a generic Other, and the error
+    /// path keeps temp cleanup armed while a successful publish disarms it
+    /// without touching whatever later appears at the old staging path.
+    #[test]
+    fn handle_rename_preserves_native_error_kind_and_publication_disarms_cleanup_safely() {
+        let dir = scratch("rename-publish");
+        let parent = dir.as_path();
+        let dest = parent.join("dest");
+        std::fs::write(&dest, b"occupied").unwrap();
+
+        // Error path: noclobber rename onto the occupied destination.
+        let tmp = crate::bridge_shared::stage_export_temp_600(parent, b"payload").unwrap();
+        let staging = tmp.path().to_path_buf();
+        let err = crate::bridge_shared::persist_staged_temp_noclobber(tmp, &dest)
+            .expect_err("noclobber publish onto an occupied destination must fail");
+        assert_eq!(
+            err.error.kind(),
+            std::io::ErrorKind::AlreadyExists,
+            "the native Win32 kind must survive the rename wrapper: {err:?}"
+        );
+        drop(err.file);
+        assert!(
+            !staging.exists(),
+            "a failed publish must still clean up its staging file"
+        );
+        assert_eq!(std::fs::read(&dest).unwrap(), b"occupied");
+
+        // Success path: replace publish moves the staged file, and a
+        // replacement created at the old staging path afterwards is untouched.
+        let tmp2 = crate::bridge_shared::stage_export_temp_600(parent, b"payload2").unwrap();
+        let staging2 = tmp2.path().to_path_buf();
+        crate::bridge_shared::persist_staged_temp(tmp2, &dest)
+            .expect("replace publish must succeed");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"payload2");
+        assert!(!staging2.exists());
+        std::fs::write(&staging2, b"replacement").unwrap();
+        assert_eq!(
+            std::fs::read(&staging2).unwrap(),
+            b"replacement",
+            "publication must not touch the old staging path"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn scratch(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("aeroftp-acl-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

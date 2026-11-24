@@ -343,7 +343,9 @@ pub(crate) fn persist_staged_temp_noclobber(
 }
 
 fn persist_staged_temp_impl(
-    tmp: tempfile::NamedTempFile,
+    // `mut` is only needed on Windows (disable_cleanup takes &mut self); on
+    // other targets the value is consumed by persist*.
+    #[cfg_attr(not(windows), allow(unused_mut))] mut tmp: tempfile::NamedTempFile,
     path: &Path,
     replace: bool,
 ) -> Result<(), tempfile::PersistError> {
@@ -353,8 +355,9 @@ fn persist_staged_temp_impl(
             return Err(tempfile::PersistError { error, file: tmp });
         }
         // The file object now sits at `path`; disarm the temp file's drop
-        // cleanup (the old temp path no longer exists).
-        let _ = tmp.keep();
+        // cleanup without touching the old staging path (keep() would rename
+        // or remove whatever sits at that path now).
+        tmp.disable_cleanup(true);
         fsync_parent_dir(path);
         Ok(())
     }
@@ -409,7 +412,17 @@ fn rename_staged_by_handle(
             size as u32,
         )
         .map_err(|e| {
-            std::io::Error::other(format!("SetFileInformationByHandle(FileRenameInfo): {e}"))
+            // Preserve the native error kind (e.g. AlreadyExists for a
+            // noclobber rename onto an occupied destination) so callers can
+            // retry the next side slot; fall back to Other only when the
+            // windows error carries no Win32 code.
+            windows::Win32::Foundation::WIN32_ERROR::from_error(&e)
+                .map(|w| std::io::Error::from_raw_os_error(w.0 as i32))
+                .unwrap_or_else(|| {
+                    std::io::Error::other(format!(
+                        "SetFileInformationByHandle(FileRenameInfo): {e}"
+                    ))
+                })
         })?;
     }
     Ok(())

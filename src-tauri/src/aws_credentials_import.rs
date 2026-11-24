@@ -264,10 +264,16 @@ impl<'a> MergedProfileView<'a> {
 
     fn get(&self, key: &str) -> Option<&'a str> {
         debug_assert!(!AWS_CREDENTIAL_KEYS.contains(&key));
+        self.raw_get(key).filter(|v| !v.is_empty())
+    }
+
+    /// Like [`Self::get`] but keeps empty values: distinguishes an omitted key
+    /// from a present `key =` with an empty value.
+    fn raw_get(&self, key: &str) -> Option<&'a str> {
+        debug_assert!(!AWS_CREDENTIAL_KEYS.contains(&key));
         self.cred
             .and_then(|s| s.raw_get(key))
             .or_else(|| self.cfg.and_then(|s| s.raw_get(key)))
-            .filter(|v| !v.is_empty())
     }
 
     fn nested_get(&self, block: &str, key: &str) -> Option<&'a str> {
@@ -718,7 +724,11 @@ fn import_aws_credentials_with_config_limits(
         let raw_endpoint_url = if kv.is_true("ignore_configured_endpoint_urls") {
             None
         } else {
-            let service = match kv.get("services") {
+            // `raw_get` distinguishes an omitted `services` key from an
+            // empty `services =` value: the latter is a present reference to
+            // an undefined/empty section, which the AWS CLI refuses, so it
+            // must not fall back to the profile-level `endpoint_url`.
+            let service = match kv.raw_get("services") {
                 Some(section) => match services.get(section) {
                     Some(s) => Some(s),
                     None => {
@@ -857,7 +867,11 @@ fn import_aws_credentials_with_config_limits(
         // the generated profile ID, derived host, and provider ID) before
         // cloning inherited `[DEFAULT]` fields into each `ServerProfileExport`.
         let region_opt = kv.get("region");
-        let generated_id_len = "aws-".len() + name.len() + 1 + 8;
+        // Charge the actual generated ID length: lowercasing can expand
+        // UTF-8 (e.g. U+0130 expands 2 -> 3 bytes), so estimate from the
+        // transformed slug, not the original name.
+        let id_slug = name.to_lowercase().replace(' ', "-");
+        let generated_id_len = "aws-".len() + id_slug.len() + 1 + 8;
         let field_lens = [
             name.len(),
             akid.len(),
@@ -911,11 +925,7 @@ fn import_aws_credentials_with_config_limits(
             _ => {}
         }
 
-        let id = format!(
-            "aws-{}-{}",
-            name.to_lowercase().replace(' ', "-"),
-            &crate::bridge_shared::uuid_v4()[..8]
-        );
+        let id = format!("aws-{id_slug}-{}", &crate::bridge_shared::uuid_v4()[..8]);
 
         servers.push(ServerProfileExport {
             id,
@@ -1185,6 +1195,19 @@ fn paths_collide(candidate: &Path, avoid: Option<&Path>) -> bool {
 
 const AWS_MAX_SIDE_SLOTS: usize = 10_000;
 
+/// Parse the side-slot index out of a directory entry name for `base_path`
+/// (`<name>.aeroftp` -> 0, `<name>.aeroftp.<n>` -> n), mirroring
+/// [`aws_side_path`].
+fn aws_side_index_of(entry_name: &std::ffi::OsStr, base_path: &Path) -> Option<usize> {
+    let base_name = base_path.file_name()?.to_str()?;
+    let name = entry_name.to_str()?;
+    let suffix = name.strip_prefix(base_name)?.strip_prefix(".aeroftp")?;
+    if suffix.is_empty() {
+        return Some(0);
+    }
+    suffix.strip_prefix('.')?.parse().ok()
+}
+
 /// Select side-file slots for `config` and `credentials` TOGETHER as one
 /// matched pair:
 /// - Pass 1: reuse the first index where BOTH `config` and `credentials` side
@@ -1198,8 +1221,25 @@ fn aws_side_pair_modes_with_limit(
     cred_marker: &str,
     max_slots: usize,
 ) -> Result<(AwsProtectedWriteMode, AwsProtectedWriteMode), String> {
-    let mut first_both_absent: Option<usize> = None;
-    for index in 0..max_slots {
+    // Enumerate existing directory entries once per parent directory instead
+    // of stat-ing all `max_slots` candidates: only existing entries can hold
+    // an owned matched pair, and only absent indices can be allocated.
+    let mut existing: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+    for path in [config_path, cred_path] {
+        if let Some(parent) = path.parent() {
+            if let Ok(entries) = std::fs::read_dir(parent) {
+                for entry in entries.flatten() {
+                    if let Some(index) = aws_side_index_of(&entry.file_name(), path) {
+                        existing.insert(index);
+                    }
+                }
+            }
+        }
+    }
+    // Pass 1: reuse the lowest index where BOTH side files exist and are
+    // owned by this pair's markers. Existing matched pair wins over any
+    // lower free slot.
+    for index in existing.iter().copied().filter(|i| *i < max_slots) {
         let cfg_cand = aws_side_path(config_path, index);
         let cred_cand = aws_side_path(cred_path, index);
         if paths_collide(&cfg_cand, Some(cred_path))
@@ -1208,24 +1248,28 @@ fn aws_side_pair_modes_with_limit(
         {
             continue;
         }
-        let cfg_meta = std::fs::symlink_metadata(&cfg_cand);
-        let cred_meta = std::fs::symlink_metadata(&cred_cand);
-        let cfg_owned = cfg_meta.is_ok() && aws_file_is_aeroftp_owned(&cfg_cand, config_marker);
-        let cred_owned = cred_meta.is_ok() && aws_file_is_aeroftp_owned(&cred_cand, cred_marker);
+        let cfg_owned = aws_file_is_aeroftp_owned(&cfg_cand, config_marker);
+        let cred_owned = aws_file_is_aeroftp_owned(&cred_cand, cred_marker);
         if cfg_owned && cred_owned {
             return Ok((
                 AwsProtectedWriteMode::ReplaceSide(index),
                 AwsProtectedWriteMode::ReplaceSide(index),
             ));
         }
-        if first_both_absent.is_none()
-            && matches!(cfg_meta, Err(ref e) if e.kind() == std::io::ErrorKind::NotFound)
-            && matches!(cred_meta, Err(ref e) if e.kind() == std::io::ErrorKind::NotFound)
-        {
-            first_both_absent = Some(index);
-        }
     }
-    if let Some(index) = first_both_absent {
+    // Pass 2: allocate the first index absent from both directories, with no
+    // collision against the active paths or between the two candidates. A
+    // non-existing candidate cannot be same-file with anything, so textual
+    // comparison suffices here.
+    for index in 0..max_slots {
+        if existing.contains(&index) {
+            continue;
+        }
+        let cfg_cand = aws_side_path(config_path, index);
+        let cred_cand = aws_side_path(cred_path, index);
+        if cfg_cand == *cred_path || cred_cand == *config_path || cfg_cand == cred_cand {
+            continue;
+        }
         return Ok((
             AwsProtectedWriteMode::SideAt(index),
             AwsProtectedWriteMode::SideAt(index),
@@ -1430,6 +1474,18 @@ fn write_aws_protected_staged_with(
     const MAX_RETRIES: usize = 10_000;
     let mut mode = initial_mode;
     let mut retries = 0usize;
+    macro_rules! bump_retry {
+        ($label:expr, $path:expr) => {{
+            retries += 1;
+            if retries >= MAX_RETRIES {
+                return Err(format!(
+                    "write {} {}: exhausted retry budget",
+                    $label,
+                    $path.display()
+                ));
+            }
+        }};
+    }
     loop {
         match mode {
             AwsProtectedWriteMode::Replace => {
@@ -1442,6 +1498,7 @@ fn write_aws_protected_staged_with(
                 // Absent -> Replace after an AlreadyExists race.
                 let Some(previous_bytes) = read_owned_aws_file_bytes(target_path, expected_marker)
                 else {
+                    bump_retry!(label, target_path);
                     (_, mode) = aws_protected_output_path_with_limit(
                         target_path,
                         avoid,
@@ -1467,6 +1524,7 @@ fn write_aws_protected_staged_with(
                     if paired {
                         return Err(AWS_PAIR_SLOT_COLLISION.to_string());
                     }
+                    bump_retry!(label, &candidate);
                     mode = AwsProtectedWriteMode::Side;
                     continue;
                 }
@@ -1475,6 +1533,7 @@ fn write_aws_protected_staged_with(
                     if paired {
                         return Err(AWS_PAIR_SLOT_COLLISION.to_string());
                     }
+                    bump_retry!(label, &candidate);
                     mode = AwsProtectedWriteMode::Side;
                     continue;
                 };
@@ -1499,6 +1558,7 @@ fn write_aws_protected_staged_with(
                     if paired {
                         return Err(AWS_PAIR_SLOT_COLLISION.to_string());
                     }
+                    bump_retry!(label, &candidate);
                     mode = AwsProtectedWriteMode::Side;
                     continue;
                 }
@@ -1549,6 +1609,7 @@ fn write_aws_protected_staged_with(
                     max_side_slots,
                 )?;
                 if let AwsProtectedWriteMode::ReplaceSide(index) = next_mode {
+                    bump_retry!(label, target_path);
                     mode = AwsProtectedWriteMode::ReplaceSide(index);
                     continue;
                 }
@@ -1820,6 +1881,28 @@ fn persist_aws_export_pair_with_hooks(
         };
         if replan_as_pair && !config_needs_side {
             cfg_written.paired_inactive = true;
+        }
+
+        // An active-planned config write that redirected to a side file must
+        // never be followed by an active credentials write: the two
+        // independent side scans could pick different slots and split an
+        // older pair. Roll the config write back and replan BOTH files as
+        // one matched pair BEFORE any credentials persist hook runs.
+        if !replan_as_pair && cfg_written.protected {
+            if let Err(rb_err) = rollback_written_file(&cfg_written, config_bytes, "AWS config") {
+                return Err(format!(
+                    "the AWS config write redirected to side file {} and rolling it back failed: {rb_err}",
+                    cfg_written.path.display()
+                ));
+            }
+            pair_replans += 1;
+            if pair_replans > max_side_slots {
+                return Err(format!(
+                    "write AWS protected pair: no free matched .aeroftp side-file pair after {pair_replans} replans"
+                ));
+            }
+            replan_as_pair = true;
+            continue;
         }
 
         let mut cred_written = match write_aws_protected_staged_with(
@@ -6153,5 +6236,187 @@ region = eu-west-1
         .err()
         .expect("derived host must be charged to max_materialized_bytes");
         assert!(err.contains("maximum allowed output size"), "{err}");
+    }
+
+    /// An empty `services =` value is a present-but-unresolved reference: the
+    /// profile is skipped like any undefined services section and must NOT
+    /// fall back to the profile-level `endpoint_url`. With
+    /// `ignore_configured_endpoint_urls` the reference is bypassed instead.
+    #[test]
+    fn an_empty_services_value_skips_instead_of_falling_back_to_endpoint_url() {
+        let result = import_pair(
+            "[lab]\naws_access_key_id = AKLAB\naws_secret_access_key = labsecret\n",
+            Some(
+                "[profile lab]\nregion = eu-west-1\nservices =\nendpoint_url = https://fallback.example.com:9000\n",
+            ),
+        )
+        .unwrap();
+        assert!(
+            result.servers.iter().all(|s| s.name != "lab"),
+            "empty services = must skip the profile: {:?}",
+            result.skipped
+        );
+        let skip = result
+            .skipped
+            .iter()
+            .find(|s| s.name == "lab")
+            .expect("lab must be skipped");
+        assert!(
+            skip.reason.contains("services"),
+            "unexpected skip reason: {}",
+            skip.reason
+        );
+
+        let result = import_pair(
+            "[lab]\naws_access_key_id = AKLAB\naws_secret_access_key = labsecret\n",
+            Some(
+                "[profile lab]\nregion = eu-west-1\nservices =\nignore_configured_endpoint_urls = true\n",
+            ),
+        )
+        .unwrap();
+        assert_eq!(result.servers.len(), 1, "skipped: {:?}", result.skipped);
+        assert_eq!(result.servers[0].host, "");
+        assert_eq!(result.servers[0].provider_id.as_deref(), Some("amazon-s3"));
+    }
+
+    /// The generated profile ID is charged by its actual lowercase UTF-8
+    /// length: U+0130 expands 2 -> 3 bytes under to_lowercase, so a name that
+    /// fits the old raw-length estimate must still fail the real charge.
+    #[test]
+    fn output_budget_charges_the_actual_lowercase_id_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let k = 100;
+        let name = "\u{0130}".repeat(k);
+        std::fs::write(
+            &cred,
+            format!("[{name}]\naws_access_key_id = AK1\naws_secret_access_key = sec1\n"),
+        )
+        .unwrap();
+        // Old estimate charges name.len() = 200 for the slug; the real slug
+        // is 300 bytes. Fields: name 200 + akid 3 + secret 4 + provider 9,
+        // id prefix/suffix 13 -> old total 429, real total 529. A 450-byte
+        // budget fits the OLD estimate (would pass) but not the real charge.
+        let res = import_aws_credentials_with_config_limits(
+            &cred,
+            None,
+            crate::bridge_shared::MAX_IMPORT_FILE_BYTES,
+            450,
+        );
+        let err = match res {
+            Err(e) => e,
+            Ok(_) => {
+                panic!("the real (expanded) id length must be charged, not the raw name length")
+            }
+        };
+        assert!(err.contains("maximum allowed output size"), "{err}");
+        let ok = import_aws_credentials_with_config_limits(
+            &cred,
+            None,
+            crate::bridge_shared::MAX_IMPORT_FILE_BYTES,
+            600,
+        );
+        assert!(
+            ok.is_ok(),
+            "a budget covering the real charge accepts the profile: {:?}",
+            ok.err()
+        );
+    }
+
+    /// The matched-pair selector enumerates existing directory entries once:
+    /// an empty namespace allocates slot 0 without per-slot stats, and an
+    /// existing owned matched pair wins over any lower free slot.
+    #[test]
+    fn a_matched_existing_pair_wins_over_a_lower_free_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        let (m1, m2) =
+            aws_side_pair_modes_with_limit(&cfg, &cred, "cfgm", "credm", AWS_MAX_SIDE_SLOTS)
+                .unwrap();
+        assert!(
+            matches!(m1, AwsProtectedWriteMode::SideAt(0))
+                && matches!(m2, AwsProtectedWriteMode::SideAt(0)),
+            "empty namespace must allocate slot 0: {m1:?} {m2:?}"
+        );
+
+        let cfg_m = aws_config_marker_for(&cred);
+        let cred_m = aws_credentials_marker_for(&cred);
+        std::fs::write(
+            dir.path().join("config.aeroftp.3"),
+            aws_marked_file_bytes(&cfg_m, "x"),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("credentials.aeroftp.3"),
+            aws_marked_file_bytes(&cred_m, "y"),
+        )
+        .unwrap();
+        let (m1, m2) =
+            aws_side_pair_modes_with_limit(&cfg, &cred, &cfg_m, &cred_m, AWS_MAX_SIDE_SLOTS)
+                .unwrap();
+        assert!(
+            matches!(m1, AwsProtectedWriteMode::ReplaceSide(3))
+                && matches!(m2, AwsProtectedWriteMode::ReplaceSide(3)),
+            "an existing owned matched pair must win over free slot 0: {m1:?} {m2:?}"
+        );
+    }
+
+    /// When the active-planned CONFIG write redirects to a side file at write
+    /// time, the credentials persist hook must never run for the active
+    /// credentials path: both files are rolled back and replanned as one
+    /// matched pair before any credentials write.
+    #[test]
+    fn an_active_config_redirect_replans_before_any_active_credentials_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        let cfg_bytes = aws_marked_file_bytes(
+            &aws_config_marker_for(&cred),
+            "[profile x]\nregion = eu-west-1\n",
+        );
+        let cred_bytes = aws_marked_file_bytes(
+            &aws_credentials_marker_for(&cred),
+            "[x]\naws_access_key_id = AK1\naws_secret_access_key = s\n",
+        );
+        let raced = std::cell::Cell::new(false);
+        let cred_active_calls = std::cell::Cell::new(0usize);
+        let (cfg_out, cred_out) = persist_aws_export_pair(
+            &cred,
+            &cfg,
+            &cfg_bytes,
+            &cred_bytes,
+            |_, tmp, path| crate::bridge_shared::persist_staged_temp(tmp, path),
+            |kind, tmp, path| {
+                if kind == "config" && path == cfg && !raced.replace(true) {
+                    std::fs::write(path, b"external").unwrap();
+                }
+                if kind == "credentials" && path == cred {
+                    cred_active_calls.set(cred_active_calls.get() + 1);
+                }
+                crate::bridge_shared::persist_staged_temp_noclobber(tmp, path)
+            },
+        )
+        .unwrap();
+        assert!(
+            raced.get(),
+            "the injected active-config race must have fired"
+        );
+        assert_eq!(
+            cred_active_calls.get(),
+            0,
+            "the credentials hook must never run for the active path after a config redirect"
+        );
+        assert!(
+            cfg_out.protected && cred_out.protected,
+            "both files must land in one matched side pair"
+        );
+        assert_eq!(cfg_out.path, dir.path().join("config.aeroftp"));
+        assert_eq!(cred_out.path, dir.path().join("credentials.aeroftp"));
+        assert_eq!(std::fs::read(&cfg).unwrap(), b"external");
+        assert!(
+            !cred.exists(),
+            "the active credentials path must stay untouched"
+        );
     }
 }
