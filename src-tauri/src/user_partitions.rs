@@ -13874,6 +13874,26 @@ mod tests {
             "the conflicted key keeps its vault copy"
         );
         assert!(!vault.borrow().contains_key(&key_b));
+
+        // A later pass on the same key still sees the open conflict: the
+        // account was never marked aligned and the digest survived, so the
+        // row's writer value and the vault copy both stay.
+        align_private_tokens_of(
+            &conn,
+            &root,
+            first.id,
+            &keys,
+            Some(std::slice::from_ref(&key_a)),
+            &read,
+            &delete,
+        )
+        .unwrap();
+        assert_eq!(row(&key_a).as_deref(), Some("writer-a"));
+        assert_eq!(
+            vault.borrow().get(&key_a).map(String::as_str),
+            Some("chain-a0"),
+            "a marked-aligned pass would have dropped the digest and let the vault leave"
+        );
     }
 
     /// A profile id the legacy owner and another account both hold: the vault
