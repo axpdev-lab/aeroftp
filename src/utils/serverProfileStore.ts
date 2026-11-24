@@ -36,6 +36,26 @@ const canUseLegacyProfileFallback = (error: unknown): boolean => {
     );
 };
 
+/**
+ * A CONFIRMED legacy store is one the backend says has no accounts
+ * (NO_ACTIVE_USER) or an old backend without the partition commands
+ * (`unknown command` / `not found` / `failed to invoke` / missing Tauri
+ * internals). Anything else is UNAVAILABLE, not legacy: STORE_NOT_READY and
+ * USER_LOCKED mean the active account's partition could not be read, so an
+ * account-aware read that falls back on them would silently return a legacy
+ * list with no `userId` even though an active account exists.
+ */
+export const isConfirmedLegacyProfileFallback = (error: unknown): boolean => {
+    const message = String(error ?? '');
+    return (
+        message.includes('NO_ACTIVE_USER') ||
+        message.includes('unknown command') ||
+        message.includes('not found') ||
+        message.includes('failed to invoke') ||
+        message.includes('window.__TAURI_INTERNALS__')
+    );
+};
+
 const loadLegacySavedServerProfiles = async (): Promise<ServerProfile[]> => {
     const vaultProfiles = await secureGet<ServerProfile[]>(SAVED_SERVERS_ACCOUNT);
     if (vaultProfiles !== null) return vaultProfiles;
@@ -136,7 +156,10 @@ export const loadSavedServerProfilesWithAccount = async (): Promise<SavedProfile
         const scoped = await loadActiveServerProfilesScoped();
         return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
     } catch (error) {
-        if (!canUseLegacyProfileFallback(error) && !String(error ?? '').includes('NO_ACTIVE_USER')) {
+        // Only a CONFIRMED legacy store falls back: STORE_NOT_READY / USER_LOCKED
+        // are unavailable reads, and returning the legacy list with no userId
+        // would pair it with an active account that exists after all.
+        if (!isConfirmedLegacyProfileFallback(error)) {
             throw error;
         }
         return { profiles: await loadLegacySavedServerProfiles() };
@@ -184,14 +207,7 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
         // if the legacy store were confirmed and later trip a false
         // account-changed refusal. It throws instead: the caller reports a
         // retryable failure and nothing is written.
-        const message = String(error ?? '');
-        const confirmedLegacy =
-            message.includes('NO_ACTIVE_USER') ||
-            message.includes('unknown command') ||
-            message.includes('not found') ||
-            message.includes('failed to invoke') ||
-            message.includes('window.__TAURI_INTERNALS__');
-        if (!confirmedLegacy) throw error;
+        if (!isConfirmedLegacyProfileFallback(error)) throw error;
         const legacy = await loadLegacySavedServerProfiles();
         if (legacy.length > 0) return { profiles: legacy, revision: LEGACY_STORE_REVISION + JSON.stringify(legacy) };
         throw error;
@@ -393,7 +409,9 @@ export const reloadRestoredServerProfilesWithAccount = async (): Promise<SavedPr
         announceStoredServerProfiles(scoped.profiles, accountBefore);
         return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
     } catch (error) {
-        if (!canUseLegacyProfileFallback(error) && !String(error ?? '').includes('NO_ACTIVE_USER')) {
+        // Only a CONFIRMED legacy store falls back here too: STORE_NOT_READY /
+        // USER_LOCKED are unavailable reads, not a legacy answer.
+        if (!isConfirmedLegacyProfileFallback(error)) {
             throw error;
         }
         const legacy = await loadLegacySavedServerProfiles();

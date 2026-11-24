@@ -19871,18 +19871,28 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         crate::local_bridge::alias_test_port(port, 1800);
+        // A preliminary probe that connects and closes without a COMPLETE HTTP
+        // request must not consume the hold barrier: only the real bucket-list
+        // request may hold its reply.
+        {
+            let mut probe = tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .unwrap();
+            let _ = probe.write_all(b"GET /probe-without-header-end").await;
+            drop(probe);
+        }
         let (requested_tx, mut requested_rx) = tokio::sync::mpsc::channel::<()>(4);
         // The reply is held on a oneshot, not on a fixed delay: it is released
         // only after the account switch below has landed.
         let (hold_tx, hold_rx) = tokio::sync::oneshot::channel::<()>();
+        let hold_rx = std::sync::Arc::new(tokio::sync::Mutex::new(Some(hold_rx)));
         let server = tokio::spawn(async move {
-            let mut hold_rx = Some(hold_rx);
             loop {
                 let Ok((mut stream, _)) = listener.accept().await else {
                     return;
                 };
                 let requested_tx = requested_tx.clone();
-                let hold_rx = hold_rx.take();
+                let hold_rx = hold_rx.clone();
                 tokio::spawn(async move {
                     let mut request = Vec::new();
                     let mut buffer = [0u8; 4096];
@@ -19892,6 +19902,9 @@ mod tests {
                             Ok(n) => request.extend_from_slice(&buffer[..n]),
                         }
                     }
+                    // Take the hold barrier ONLY after a complete HTTP request
+                    // arrived: a probe that closed early left it for this one.
+                    let hold_rx = hold_rx.lock().await.take();
                     let _ = requested_tx.send(()).await;
                     // Hold the reply so the account switch lands while the
                     // discovery is still awaiting it.

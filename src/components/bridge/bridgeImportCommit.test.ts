@@ -511,12 +511,25 @@ describe('BridgeSourcePanel scan generation', () => {
         };
         const scanB = {
             servers: [{ id: 'b1', name: 'scan-B', host: '', port: 443, username: 'x', protocol: 's3' }],
-            skipped: [], sourcePath: '/b.ini', totalRemotes: 1, scanUserId: 7,
+            skipped: [], sourcePath: '/b.ini', totalRemotes: 1, scanUserId: 9,
         };
         // Reverse order: the NEWER scan (b) resolves first, then the older (a).
         await act(async () => { deferred[1].resolve(scanB); });
         await act(async () => { deferred[0].resolve(scanA); });
         expect(host.textContent).toContain('scan-B');
         expect(host.textContent).not.toContain('scan-A');
+
+        // Commit the surviving scan: onImport must receive the NEWER scan's
+        // owner (9), not the superseded scan's (7).
+        vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [], userId: 9, revision: 'r9' });
+        const importButton = Array.from(host.querySelectorAll('button'))
+            .find(b => b.textContent?.includes('bridgeImportSelected'));
+        expect(importButton).toBeDefined();
+        await act(async () => { importButton!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+        expect(props.onImport).toHaveBeenCalledWith(
+            [expect.objectContaining({ id: 'b1' })],
+            9,
+            undefined,
+        );
     });
 });

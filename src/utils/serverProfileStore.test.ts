@@ -19,6 +19,8 @@ import {
     PROFILES_CHANGED_EVENT,
     loadSavedServerProfiles,
     loadSavedServerProfilesStrict,
+    loadSavedServerProfilesWithAccount,
+    reloadRestoredServerProfilesWithAccount,
     mergeSavedServerProfile,
     readSavedServerProfilesForWrite,
     reloadRestoredServerProfiles,
@@ -555,4 +557,49 @@ describe('account-bound profile writes', () => {
             expectedUserId: 4,
         });
     });
+});
+
+describe('account-aware list reads fall back only on a CONFIRMED legacy store', () => {
+    const readers = [
+        ['loadSavedServerProfilesWithAccount', loadSavedServerProfilesWithAccount],
+        ['reloadRestoredServerProfilesWithAccount', reloadRestoredServerProfilesWithAccount],
+    ] as const;
+
+    for (const [name, read] of readers) {
+        it(`${name} rejects when the scoped read fails with STORE_NOT_READY even though legacy is readable`, async () => {
+            const legacy = [sampleProfile({ name: 'legacy fallback' })];
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+                if (command === 'get_credential') return JSON.stringify(legacy);
+                return undefined;
+            });
+            // STORE_NOT_READY is UNAVAILABLE, not legacy: the account-aware read
+            // must reject rather than return a legacy list with no userId.
+            await expect(read()).rejects.toThrow('STORE_NOT_READY');
+            mockInvoke.mockReset();
+        });
+
+        it(`${name} rejects on USER_LOCKED too`, async () => {
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('USER_LOCKED');
+                if (command === 'get_credential') return JSON.stringify([sampleProfile()]);
+                return undefined;
+            });
+            await expect(read()).rejects.toThrow('USER_LOCKED');
+            mockInvoke.mockReset();
+        });
+
+        it(`${name} falls back to the legacy list on a CONFIRMED NO_ACTIVE_USER`, async () => {
+            const legacy = [sampleProfile({ name: 'confirmed legacy' })];
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('NO_ACTIVE_USER');
+                if (command === 'get_credential') return JSON.stringify(legacy);
+                return undefined;
+            });
+            const result = await read();
+            expect(result.profiles).toEqual(legacy);
+            expect(result.userId).toBeUndefined();
+            mockInvoke.mockReset();
+        });
+    }
 });
