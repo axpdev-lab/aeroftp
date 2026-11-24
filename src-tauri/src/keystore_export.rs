@@ -1991,131 +1991,158 @@ fn profile_plan_inputs(
         local_conn.as_ref()
     };
     let mut failure = None;
-    'keys: for profile in local.iter().chain(backup.iter().flatten()) {
+    // Private token keys the two partitions' legacy owners hold in their
+    // credential scope, named by no active list: a vault copy under one is
+    // still this device's account's token, foreign to the other side's
+    // owner once its partition is published.
+    let mut candidate_keys: Vec<String> = Vec::new();
+    for profile in local.iter().chain(backup.iter().flatten()) {
         for key in keystore_profile_plan::secret_keys(profile) {
-            if local_secrets.contains_key(&key) {
-                continue;
+            if !candidate_keys.contains(&key) {
+                candidate_keys.push(key);
             }
-            let private = crate::user_partitions::private_token_type(&key).is_some();
-            if private {
-                match store.get(&key) {
-                    Ok(v) => local_vault.insert(key.clone(), Some(Zeroizing::new(v))),
-                    Err(crate::credential_store::CredentialError::NotFound(_)) => {
-                        local_vault.insert(key.clone(), None)
-                    }
-                    Err(e) => {
-                        failure = Some(from_store_error(e));
-                        break 'keys;
-                    }
-                };
-            }
-            // This device's value for the receiver: what this device's
-            // account reads, when it is the receiver, the same account by its
-            // identity and not only by its id (another database may give that
-            // id to someone else). A private token of another account is not
-            // the receiver's: it has the vault's when it reads the vault,
-            // nothing otherwise.
-            let local_value = if private && receiver != here {
-                // The vault's copy is this device's account's: it is the
-                // receiver's when the receiver is that same account (the
-                // identity tells it apart, an equal id does not), when both
-                // partitions give it to the same legacy owner, or when a
-                // side has no account at all.
-                let attributable = match (receiver, here) {
-                    (Some(r), Some(h)) => {
-                        r.identity == h.identity
-                            || matches!(
-                                (local_legacy_owner, receiver_legacy_owner),
-                                (Some(local), Some(receiver)) if local == receiver
-                            )
-                    }
-                    _ => true,
-                };
-                // "Skip existing" leaves this device's vault entry in place
-                // even though the plan gives the receiver nothing: once the
-                // backup's partition is published its owner has no row and
-                // would read that foreign token as its own.
-                if !attributable && merge_strategy == "skip_existing" {
-                    if let Some(Some(value)) = local_vault.get(&key) {
-                        vault_foreign_private.push((key.clone(), value.clone()));
-                    }
-                }
-                Ok((attributable && reads_vault_tokens(receiver))
-                    .then(|| local_vault.get(&key).cloned().flatten())
-                    .flatten())
-            } else {
-                read_effective_secret(store, local_conn.as_ref(), &root_key, &key)
-            };
-            // A row of this device's own account that its sign-in stamped.
-            if let (true, Some(conn), Some(r)) =
-                (private && receiver_is_here, local_conn.as_ref(), receiver)
+        }
+    }
+    for conn in [local_conn.as_ref(), backup_conn.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        let Some(owner) = crate::user_partitions::nonprofile_secret_owner_unpersisted(conn)
+            .map_err(|e| KeystoreExportError::Encryption(format!("Read the legacy owner: {e}")))?
+        else {
+            continue;
+        };
+        for (id, _) in
+            crate::user_partitions::list_user_credential_ids_for(conn, owner).map_err(|e| {
+                KeystoreExportError::Encryption(format!("List the legacy owner's credentials: {e}"))
+            })?
+        {
+            if crate::user_partitions::private_token_type(&id).is_some()
+                && !candidate_keys.contains(&id)
             {
-                if !r.legacy_owner
-                    && crate::user_partitions::signed_in_row(conn, r.user_id, &key).unwrap_or(false)
-                {
-                    local_signed_in.insert(key.clone());
-                }
+                candidate_keys.push(id);
             }
-            match local_value {
-                Ok(v) => {
-                    local_secrets.insert(key.clone(), v);
+        }
+    }
+    'keys: for key in candidate_keys {
+        let private = crate::user_partitions::private_token_type(&key).is_some();
+        if private {
+            match store.get(&key) {
+                Ok(v) => local_vault.insert(key.clone(), Some(Zeroizing::new(v))),
+                Err(crate::credential_store::CredentialError::NotFound(_)) => {
+                    local_vault.insert(key.clone(), None)
                 }
                 Err(e) => {
-                    failure = Some(e);
+                    failure = Some(from_store_error(e));
                     break 'keys;
                 }
-            }
-            // The backup's value as the receiver will read it after the
-            // import: its row in the restored partition, else the backup's
-            // vault entry (vault section only), which is a private token's
-            // only when the receiver reads the vault.
-            // A row that may be a copy of another account's token is not the
-            // receiver's to copy under another key
-            // (`backup_row_if_own`), against the vault as the import leaves it.
-            // "Skip existing" does not import a key the vault already holds
-            // here: the vault keeps this device's value.
-            let vault_keeps_local = merge_strategy == "skip_existing"
-                && local_vault.get(&key).is_some_and(Option::is_some);
-            let vault_after_import =
-                if sections.vault && payload.vault_entries.contains_key(&key) && !vault_keeps_local
-                {
-                    payload.vault_entries.get(&key).map(String::as_str)
-                } else {
-                    local_vault
-                        .get(&key)
-                        .and_then(Option::as_ref)
-                        .map(|v| v.as_str())
-                };
-            let from_partition = backup_conn.as_ref().zip(receiver).and_then(|(conn, r)| {
-                crate::user_partitions::backup_row_if_own(
-                    conn,
-                    &root_key,
-                    r.user_id,
-                    &key,
-                    vault_after_import,
-                )
-                .ok()
-                .flatten()
-            });
-            let value = from_partition.or_else(|| {
-                (sections.vault && (!private || reads_vault_tokens(receiver)))
-                    .then(|| payload.vault_entries.get(&key))
-                    .flatten()
-                    .map(|v| Zeroizing::new(v.clone()))
-            });
-            // The receiver's row as the import leaves it: the one that mirrors
-            // the vault value, where its write goes through the vault, or its
-            // private token's only copy.
-            if let Some((conn, r)) = rows_conn.zip(receiver) {
-                if let Ok(row) = crate::user_partitions::get_user_credential_for(
-                    conn, &root_key, r.user_id, &key,
-                ) {
-                    receiver_rows.insert(key.clone(), row);
+            };
+        }
+        // This device's value for the receiver: what this device's
+        // account reads, when it is the receiver, the same account by its
+        // identity and not only by its id (another database may give that
+        // id to someone else). A private token of another account is not
+        // the receiver's: it has the vault's when it reads the vault,
+        // nothing otherwise.
+        let local_value = if private && receiver != here {
+            // The vault's copy is this device's account's: it is the
+            // receiver's when the receiver is that same account (the
+            // identity tells it apart, an equal id does not), when both
+            // partitions give it to the same legacy owner, or when a
+            // side has no account at all.
+            let attributable = match (receiver, here) {
+                (Some(r), Some(h)) => {
+                    r.identity == h.identity
+                        || matches!(
+                            (local_legacy_owner, receiver_legacy_owner),
+                            (Some(local), Some(receiver)) if local == receiver
+                        )
+                }
+                _ => true,
+            };
+            // "Skip existing" leaves this device's vault entry in place
+            // even though the plan gives the receiver nothing: once the
+            // backup's partition is published its owner has no row and
+            // would read that foreign token as its own.
+            if !attributable && merge_strategy == "skip_existing" {
+                if let Some(Some(value)) = local_vault.get(&key) {
+                    vault_foreign_private.push((key.clone(), value.clone()));
                 }
             }
-            if let Some(v) = value {
-                backup_secrets.insert(key, v);
+            Ok((attributable && reads_vault_tokens(receiver))
+                .then(|| local_vault.get(&key).cloned().flatten())
+                .flatten())
+        } else {
+            read_effective_secret(store, local_conn.as_ref(), &root_key, &key)
+        };
+        // A row of this device's own account that its sign-in stamped.
+        if let (true, Some(conn), Some(r)) =
+            (private && receiver_is_here, local_conn.as_ref(), receiver)
+        {
+            if !r.legacy_owner
+                && crate::user_partitions::signed_in_row(conn, r.user_id, &key).unwrap_or(false)
+            {
+                local_signed_in.insert(key.clone());
             }
+        }
+        match local_value {
+            Ok(v) => {
+                local_secrets.insert(key.clone(), v);
+            }
+            Err(e) => {
+                failure = Some(e);
+                break 'keys;
+            }
+        }
+        // The backup's value as the receiver will read it after the
+        // import: its row in the restored partition, else the backup's
+        // vault entry (vault section only), which is a private token's
+        // only when the receiver reads the vault.
+        // A row that may be a copy of another account's token is not the
+        // receiver's to copy under another key
+        // (`backup_row_if_own`), against the vault as the import leaves it.
+        // "Skip existing" does not import a key the vault already holds
+        // here: the vault keeps this device's value.
+        let vault_keeps_local =
+            merge_strategy == "skip_existing" && local_vault.get(&key).is_some_and(Option::is_some);
+        let vault_after_import =
+            if sections.vault && payload.vault_entries.contains_key(&key) && !vault_keeps_local {
+                payload.vault_entries.get(&key).map(String::as_str)
+            } else {
+                local_vault
+                    .get(&key)
+                    .and_then(Option::as_ref)
+                    .map(|v| v.as_str())
+            };
+        let from_partition = backup_conn.as_ref().zip(receiver).and_then(|(conn, r)| {
+            crate::user_partitions::backup_row_if_own(
+                conn,
+                &root_key,
+                r.user_id,
+                &key,
+                vault_after_import,
+            )
+            .ok()
+            .flatten()
+        });
+        let value = from_partition.or_else(|| {
+            (sections.vault && (!private || reads_vault_tokens(receiver)))
+                .then(|| payload.vault_entries.get(&key))
+                .flatten()
+                .map(|v| Zeroizing::new(v.clone()))
+        });
+        // The receiver's row as the import leaves it: the one that mirrors
+        // the vault value, where its write goes through the vault, or its
+        // private token's only copy.
+        if let Some((conn, r)) = rows_conn.zip(receiver) {
+            if let Ok(row) =
+                crate::user_partitions::get_user_credential_for(conn, &root_key, r.user_id, &key)
+            {
+                receiver_rows.insert(key.clone(), row);
+            }
+        }
+        if let Some(v) = value {
+            backup_secrets.insert(key, v);
         }
     }
     root_key.zeroize();
@@ -6481,6 +6508,177 @@ mod tests {
             }
             drop(conn);
         }
+    }
+
+    /// A private token named by no active list still enters the foreign-token
+    /// sweep when an inactive legacy owner holds it in its credential scope:
+    /// two owners of different identities share the profile id, the restored
+    /// owner has no row for it, and "Skip existing" would leave this device's
+    /// vault token readable by it. Red if the sweep candidates come from the
+    /// active lists alone.
+    #[test]
+    fn a_foreign_vault_token_of_an_inactive_owner_is_swept() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_shared";
+        // This device's partition: the legacy owner is idle and holds the
+        // token in its credential scope; a second account is active and its
+        // list names no such profile.
+        partition_with(&store, &cfg, &[dropbox("srv_shared", "Shared")]);
+        store.store(key, "local-token").unwrap();
+        let db = cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(&db).unwrap();
+        let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&conn)
+            .unwrap()
+            .expect("a legacy owner");
+        crate::user_partitions::set_user_credential_for(
+            &conn,
+            &root,
+            owner,
+            key,
+            "oauth",
+            "local-token",
+        )
+        .unwrap();
+        let other = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Other", None, None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, other.id).unwrap();
+        drop(conn);
+        // The backup's partition: another identity owns the legacy secrets,
+        // idle, with the same profile id and its own token; a second
+        // account is active.
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &[dropbox("srv_shared", "Shared")]);
+        let source_db = source_cfg.join("user_partitions.db");
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let source_owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&source)
+            .unwrap()
+            .expect("a legacy owner");
+        crate::user_partitions::set_user_credential_for(
+            &source,
+            &root,
+            source_owner,
+            key,
+            "oauth",
+            "backup-token",
+        )
+        .unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let receiver = active_receiver(&source_db).unwrap();
+        assert!(!receiver.legacy_owner, "the active account is no owner");
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[dropbox("srv_d", "D")]).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("inactive-owner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert!(
+            matches!(
+                store.get(key),
+                Err(crate::credential_store::CredentialError::NotFound(_))
+            ),
+            "the inactive owner's foreign token must not stay in the vault"
+        );
+    }
+
+    /// The same-owner control of the scope sweep: the token an inactive
+    /// legacy owner holds in its credential scope stays when the backup's
+    /// partition gives that key to the same legacy owner identity, even
+    /// though no active list names the profile.
+    #[test]
+    fn a_scope_token_of_the_same_legacy_owner_stays() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_shared";
+        let list = [dropbox("srv_shared", "Shared")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let db = cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(&db).unwrap();
+        let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&conn)
+            .unwrap()
+            .expect("a legacy owner");
+        crate::user_partitions::set_user_credential_for(
+            &conn,
+            &root,
+            owner,
+            key,
+            "oauth",
+            "local-token",
+        )
+        .unwrap();
+        // The backup is this device's own partition taken while the owner
+        // was still active; a second account becomes active only after.
+        let backup = full_backup(dir.path(), &db, &list);
+        let other = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Other", None, None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, other.id).unwrap();
+        drop(conn);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert_eq!(
+            store.get(key).unwrap(),
+            "local-token",
+            "the same legacy owner on both sides keeps its vault token"
+        );
     }
 
     /// `cli_db_path` isolation for the block-record pins: the readers under
