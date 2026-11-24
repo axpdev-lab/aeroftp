@@ -29,6 +29,14 @@ import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from '.
 interface ExportImportDialogProps {
     servers: ServerProfile[];
     /**
+     * The account that produced `servers`, captured by the caller when the
+     * list entered its state. The export writes secrets for this account,
+     * never for whichever account happens to be active at write time; an
+     * absent prop refuses the export rather than falling back to the active
+     * account.
+     */
+    listAccountId?: number | null;
+    /**
      * Store the profiles a bridge import read from another client's config; the
      * write is refused unless the active account is still `expectedUserId`.
      */
@@ -104,7 +112,7 @@ interface ImportResult {
  * or without credentials; import with Skip, Overwrite or Duplicate for a
  * profile that already exists) and the bridges to other clients' configs.
  */
-export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onProfilesStored, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
+export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, listAccountId, onImport, onProfilesStored, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [mode, setMode] = useState<'export' | 'import' | 'template-import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
@@ -246,17 +254,23 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
 
         // The export's secrets must come from the account that produced the
         // profile list, not from whichever account is active when the write
-        // runs. The account is captured with the generation before the save
-        // picker opens; a switch while the picker is open (or between the
-        // status read and it) refuses the export, like the import path's
-        // accountChangeGeneration check.
+        // runs. `listAccountId` is that binding, captured by the caller when
+        // the list entered the dialog's state; the active account is read
+        // before the save picker opens and again after it closes, and any
+        // difference - including a switch another process already finished -
+        // refuses the export, like the import path's accountChangeGeneration
+        // check.
+        if (listAccountId === undefined) {
+            setError('ACCOUNT_CHANGED: the profile list is not bound to an account; nothing was exported');
+            return;
+        }
         const accountBefore = accountChangeGeneration();
         const status = await getUnlockStatus().catch(() => null);
-        if (accountChangeGeneration() !== accountBefore) {
+        const activeId = status?.activeUserId ?? null;
+        if (accountChangeGeneration() !== accountBefore || activeId !== listAccountId) {
             setError('ACCOUNT_CHANGED: the active account changed; nothing was exported');
             return;
         }
-        const accountId = status?.activeUserId ?? null;
 
         // Open save dialog first
         const filePath = await pickSave({
@@ -265,7 +279,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             defaultPath: `aeroftp_backup_${new Date().toISOString().slice(0, 10)}.aeroftp`,
         });
         if (!filePath) return;
-        if (accountChangeGeneration() !== accountBefore) {
+        const statusAfter = await getUnlockStatus().catch(() => null);
+        if (
+            accountChangeGeneration() !== accountBefore ||
+            (statusAfter?.activeUserId ?? null) !== listAccountId
+        ) {
             setError('ACCOUNT_CHANGED: the active account changed while the save dialog was open; nothing was exported');
             return;
         }
@@ -279,7 +297,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 password,
                 includeCredentials,
                 filePath,
-                accountId,
+                accountId: listAccountId,
             });
             setSuccess(t('settings.exportSuccess').replace('{count}', String(selectedServers.length)));
             cancelScheduledClose();

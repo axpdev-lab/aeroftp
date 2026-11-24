@@ -175,6 +175,15 @@ export const lockUserSession = (): Promise<void> =>
 export const getUnlockStatus = (): Promise<UserUnlockStatus> =>
     invoke<UserUnlockStatus>('user_partitions_unlock_status');
 
+/**
+ * The active account id, or null when the status cannot be read. A profile
+ * list bound to the account that produced it compares this against that
+ * binding before writing: a different answer means the list is another
+ * account's.
+ */
+export const activeAccountId = async (): Promise<number | null> =>
+    (await getUnlockStatus().catch(() => null))?.activeUserId ?? null;
+
 export const changeUserPassphrase = (
     userId: number,
     oldPassphrase?: string | null,

@@ -398,6 +398,7 @@ import {
     SECURITY_RESET_EVENT,
     decideBootAccountAction,
     defaultUserIdFromList,
+    activeAccountId,
     getUnlockStatus,
     initUserPartitions,
     legacyDefaultToMigrate,
@@ -522,6 +523,7 @@ import { updateAppSettings } from './utils/appSettings';
 import { notifyVaultReady, secureGetWithFallback } from './utils/secureStorage';
 import {
   loadSavedServerProfiles,
+  loadSavedServerProfilesBound,
   mergeSavedServerProfile,
   storeSavedServerProfiles,
   recordProfileConnectFailure,
@@ -1350,6 +1352,9 @@ const App: React.FC = () => {
   const [showMcpDialog, setShowMcpDialog] = useState(false);
   const [showExportImport, setShowExportImport] = useState(false);
   const [exportImportServers, setExportImportServers] = useState<ServerProfile[]>([]);
+  // The account that produced `exportImportServers`, bound when the list
+  // entered the dialog's state; the export refuses any other account.
+  const [exportImportAccountId, setExportImportAccountId] = useState<number | null | undefined>(undefined);
   // Optional starting mode + preset bridge-config file for the Export/Import
   // dialog (set by AeroFile "Import to AeroFTP"); reset whenever it closes.
   const [exportImportInitialMode, setExportImportInitialMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | undefined>(undefined);
@@ -4618,18 +4623,32 @@ const App: React.FC = () => {
     (file: LocalFile) => (file.is_dir ? null : bridgeConfigsLocal2.get(file.path) ?? null),
     [bridgeConfigsLocal2],
   );
+  // Open the Export/Import dialog with the saved profile list bound to the
+  // account that produced it. A switch while the list was being read leaves
+  // it bound to no account, so the dialog does not open at all.
+  const openExportImportWithProfiles = useCallback(async (
+    mode?: 'export' | 'import' | 'bridge-import' | 'bridge-export',
+    bridgeFile?: string | null,
+  ) => {
+    try {
+      const bound = await loadSavedServerProfilesBound();
+      if (!bound) return;
+      setExportImportServers(bound.profiles);
+      setExportImportAccountId(bound.accountId);
+    } catch {
+      setExportImportServers([]);
+      setExportImportAccountId(null);
+    }
+    setExportImportInitialMode(mode);
+    setExportImportBridgeFile(bridgeFile ?? null);
+    setShowExportImport(true);
+  }, []);
+
   // Open the Export/Import dialog straight into the bridge import flow for a
   // recognized config file (reuses the dialog's identify+route logic).
   const openBridgeImportForFile = useCallback(async (filePath: string) => {
-    try {
-      setExportImportServers(await loadSavedServerProfiles());
-    } catch {
-      setExportImportServers([]);
-    }
-    setExportImportInitialMode('bridge-import');
-    setExportImportBridgeFile(filePath);
-    setShowExportImport(true);
-  }, []);
+    await openExportImportWithProfiles('bridge-import', filePath);
+  }, [openExportImportWithProfiles]);
 
   // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above).
   // Written once the render commits: a render React discards never reaches them.
@@ -19922,14 +19941,7 @@ const App: React.FC = () => {
           onShowConnectionScreen={handleNewTabFromSavedServer}
           showConnectionScreen={showConnectionScreen}
           onOpenSettings={() => setShowSettingsPanel(true)}
-          onShowExportImport={async () => {
-            try {
-              setExportImportServers(await loadSavedServerProfiles());
-            } catch {
-              setExportImportServers([]);
-            }
-            setShowExportImport(true);
-          }}
+          onShowExportImport={() => { void openExportImportWithProfiles(); }}
           onShowSupport={() => setShowSupportDialog(true)}
           onShowCyberTools={() => setShowCyberTools(true)}
           onShowVault={() => setShowVaultPanel({ mode: 'home', outputDir: currentLocalPath })}
@@ -20816,6 +20828,7 @@ const App: React.FC = () => {
         {showExportImport && (
           <ExportImportDialog
             servers={exportImportServers}
+            listAccountId={exportImportAccountId}
             initialMode={exportImportInitialMode}
             initialBridgeFilePath={exportImportBridgeFile ?? undefined}
             onImport={async (newServers, expectedUserId) => {
@@ -20826,17 +20839,29 @@ const App: React.FC = () => {
               const accountBefore = accountChangeGeneration();
               const merged = await appendImportedProfiles(newServers, expectedUserId);
               // A switch meanwhile brings its own re-read: this list is the previous account's.
-              if (accountChangeGeneration() === accountBefore) setExportImportServers(merged);
+              if (accountChangeGeneration() === accountBefore) {
+                const id = await activeAccountId();
+                if (accountChangeGeneration() === accountBefore) {
+                  setExportImportServers(merged);
+                  setExportImportAccountId(id);
+                }
+              }
               setServersRefreshKey(k => k + 1);
             }}
-            onProfilesStored={(stored) => {
-              setExportImportServers(stored);
+            onProfilesStored={async (stored) => {
+              const accountBefore = accountChangeGeneration();
+              const id = await activeAccountId();
+              if (accountChangeGeneration() === accountBefore) {
+                setExportImportServers(stored);
+                setExportImportAccountId(id);
+              }
               setServersRefreshKey(k => k + 1);
             }}
             onClose={() => {
               setShowExportImport(false);
               setExportImportInitialMode(undefined);
               setExportImportBridgeFile(null);
+              setExportImportAccountId(undefined);
             }}
           />
         )}

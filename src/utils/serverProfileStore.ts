@@ -5,6 +5,7 @@ import type { ServerProfile } from '../types';
 import { secureGet, secureStore } from './secureStorage';
 import {
     accountChangeGeneration,
+    getUnlockStatus,
     loadActiveServerProfiles,
     loadActiveServerProfilesScoped,
     readLegacyServerProfilesBound,
@@ -95,6 +96,27 @@ export const loadSavedServerProfiles = async (): Promise<ServerProfile[]> => {
         if (!canUseLegacyProfileFallback(error)) throw error;
     }
     return loadLegacySavedServerProfiles();
+};
+
+/**
+ * The saved profiles bound to the account that produced them. `accountId`
+ * is the active account read in the same step as the list, so a caller that
+ * keeps the pair can later prove the list is still that account's before
+ * writing secrets against it. The whole answer is `null` when an account
+ * switch landed while the list was being read: then it belongs to no
+ * single account and must not be shown or exported.
+ */
+export const loadSavedServerProfilesBound = async (): Promise<{
+    profiles: ServerProfile[];
+    accountId: number | null;
+} | null> => {
+    const accountBefore = accountChangeGeneration();
+    const [profiles, status] = await Promise.all([
+        loadSavedServerProfiles(),
+        getUnlockStatus().catch(() => null),
+    ]);
+    if (accountChangeGeneration() !== accountBefore) return null;
+    return { profiles, accountId: status?.activeUserId ?? null };
 };
 
 /**

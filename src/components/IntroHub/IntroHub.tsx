@@ -16,8 +16,8 @@ import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { newFormTabOptions } from './newFormTabOptions';
 import { useTranslation } from '../../i18n';
-import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
-import { accountChangeGeneration } from '../../utils/userPartitions';
+import { loadSavedServerProfiles, loadSavedServerProfilesBound } from '../../utils/serverProfileStore';
+import { accountChangeGeneration, activeAccountId } from '../../utils/userPartitions';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
 import type { ProviderType } from '../../types';
 import type { CatalogCategoryId } from '../../types/catalog';
@@ -168,11 +168,16 @@ export function IntroHub(props: IntroHubProps) {
 
     // Saved servers for Command Palette
     const [paletteServers, setPaletteServers] = useState<ServerProfile[]>([]);
+    // The account that produced `paletteServers`, bound when the list was
+    // read; the export dialog refuses any other account.
+    const [paletteAccountId, setPaletteAccountId] = useState<number | null | undefined>(undefined);
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            const vaultServers = await loadSavedServerProfiles();
-            if (!cancelled) setPaletteServers(vaultServers);
+            const bound = await loadSavedServerProfilesBound();
+            if (cancelled || !bound) return;
+            setPaletteServers(bound.profiles);
+            setPaletteAccountId(bound.accountId);
         })();
         return () => { cancelled = true; };
     }, [serversRefreshKey]);
@@ -188,9 +193,13 @@ export function IntroHub(props: IntroHubProps) {
     }, []);
     const openExportForProfiles = useCallback(async (serverIds: string[]) => {
         // Reload from the vault so a profile saved a moment ago is in the
-        // list the dialog selects from.
+        // list the dialog selects from, bound to the account that read it.
         try {
-            setPaletteServers(await loadSavedServerProfiles());
+            const bound = await loadSavedServerProfilesBound();
+            if (bound) {
+                setPaletteServers(bound.profiles);
+                setPaletteAccountId(bound.accountId);
+            }
         } catch { /* keep the cached list */ }
         setExportPreselect(serverIds);
         setShowExportImport(true);
@@ -462,8 +471,11 @@ export function IntroHub(props: IntroHubProps) {
                         onServersChange={() => {
                             (async () => {
                                 try {
-                                    const vaultServers = await loadSavedServerProfiles();
-                                    setPaletteServers(vaultServers);
+                                    const bound = await loadSavedServerProfilesBound();
+                                    if (bound) {
+                                        setPaletteServers(bound.profiles);
+                                        setPaletteAccountId(bound.accountId);
+                                    }
                                 } catch { setPaletteServers([]); }
                             })();
                         }}
@@ -529,6 +541,7 @@ export function IntroHub(props: IntroHubProps) {
             {showExportImport && (
                 <ExportImportDialog
                     servers={paletteServers}
+                    listAccountId={paletteAccountId}
                     initialMode={exportPreselect ? 'export' : undefined}
                     initialSelectedServerIds={exportPreselect ?? undefined}
                     onImport={async (newServers, expectedUserId) => {
@@ -536,11 +549,22 @@ export function IntroHub(props: IntroHubProps) {
                         const accountBefore = accountChangeGeneration();
                         const updated = await appendImportedProfiles(newServers, expectedUserId);
                         // A switch meanwhile brings its own re-read: this list is the previous account's.
-                        if (accountChangeGeneration() === accountBefore) setPaletteServers(updated);
+                        if (accountChangeGeneration() === accountBefore) {
+                            const id = await activeAccountId();
+                            if (accountChangeGeneration() === accountBefore) {
+                                setPaletteServers(updated);
+                                setPaletteAccountId(id);
+                            }
+                        }
                         onServersChanged?.();
                     }}
-                    onProfilesStored={(stored) => {
-                        setPaletteServers(stored);
+                    onProfilesStored={async (stored) => {
+                        const accountBefore = accountChangeGeneration();
+                        const id = await activeAccountId();
+                        if (accountChangeGeneration() === accountBefore) {
+                            setPaletteServers(stored);
+                            setPaletteAccountId(id);
+                        }
                         onServersChanged?.();
                     }}
                     onClose={closeExportImport}

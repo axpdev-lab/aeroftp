@@ -22,7 +22,7 @@ import { ServerProfile } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
-import { accountChangeGeneration } from '../utils/userPartitions';
+import { accountChangeGeneration, activeAccountId } from '../utils/userPartitions';
 import { KeystoreImportResultModal, KeystoreImportResult } from './KeystoreImportResultModal';
 import { RepairMultiUserPanel } from './RepairMultiUserPanel';
 import { GENERIC_BRIDGE_SOURCES, BRIDGE_FORMAT_EXTENSIONS } from './bridge/bridgeSources';
@@ -46,7 +46,7 @@ import { secureGetWithFallback } from '../utils/secureStorage';
 import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { loadSavedServerProfiles, readSavedServerProfilesForWrite, reloadRestoredServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfiles, loadSavedServerProfilesBound, readSavedServerProfilesForWrite, reloadRestoredServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -405,6 +405,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const oauthEdits = useRef<Partial<Record<keyof OAuthSettings, { clientId?: boolean; clientSecret?: boolean }>>>({});
     const [servers, setServers] = useState<ServerProfile[]>([]);
+    // The account that produced `servers`, bound when the list was read; the
+    // export dialog refuses any other account.
+    const [serversAccountId, setServersAccountId] = useState<number | null | undefined>(undefined);
     const [showExportImport, setShowExportImport] = useState(false);
     // #270 Backup table: starting mode handed to ExportImportDialog so a table
     // cell opens straight into the right action. Undefined = unified landing.
@@ -700,9 +703,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         // Opening the dialog reads preferences; migration must not rewrite a stale snapshot.
                     }
 
-                    // Load servers from the active user's vault partition.
-                    const vaultServers = await loadSavedServerProfiles();
-                    setServers(vaultServers);
+                    // Load servers from the active user's vault partition,
+                    // bound to the account that produced them.
+                    const boundServers = await loadSavedServerProfilesBound();
+                    if (boundServers) {
+                        setServers(boundServers.profiles);
+                        setServersAccountId(boundServers.accountId);
+                    }
 
                     // Resolve modern and legacy app pairs inside the vault only.
                     const loadOAuthFromStore = async () => {
@@ -3863,7 +3870,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             const accountBefore = accountChangeGeneration();
                                                                             const restored = await reloadRestoredServerProfiles();
                                                                             // A switch meanwhile brings its own re-read: this list is the previous account's.
-                                                                            if (accountChangeGeneration() === accountBefore) setServers(restored);
+                                                                            if (accountChangeGeneration() === accountBefore) {
+                                                                                const id = await activeAccountId();
+                                                                                if (accountChangeGeneration() === accountBefore) {
+                                                                                    setServers(restored);
+                                                                                    setServersAccountId(id);
+                                                                                }
+                                                                            }
                                                                             onServersChanged?.();
                                                                         } catch (err) {
                                                                             logger.warn('Imported server profiles could not be read', err);
@@ -4050,17 +4063,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             {showExportImport && (
                 <ExportImportDialog
                     servers={servers}
+                    listAccountId={serversAccountId}
                     initialMode={exportImportInitialMode}
                     onImport={async (newServers, expectedUserId) => {
                         // The dialog closes itself (onClose) after its result.
                         const accountBefore = accountChangeGeneration();
                         const updated = await appendImportedProfiles(newServers, expectedUserId);
                         // A switch meanwhile brings its own re-read: this list is the previous account's.
-                        if (accountChangeGeneration() === accountBefore) setServers(updated);
+                        if (accountChangeGeneration() === accountBefore) {
+                            const id = await activeAccountId();
+                            if (accountChangeGeneration() === accountBefore) {
+                                setServers(updated);
+                                setServersAccountId(id);
+                            }
+                        }
                         onServersChanged?.();
                     }}
-                    onProfilesStored={(stored) => {
-                        setServers(stored);
+                    onProfilesStored={async (stored) => {
+                        const accountBefore = accountChangeGeneration();
+                        const id = await activeAccountId();
+                        if (accountChangeGeneration() === accountBefore) {
+                            setServers(stored);
+                            setServersAccountId(id);
+                        }
                         void refreshStoredOAuthApps();
                         onServersChanged?.();
                     }}

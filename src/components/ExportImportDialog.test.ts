@@ -320,3 +320,84 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(host.textContent).toContain('settings.templateTitle');
     });
 });
+
+describe('ExportImportDialog export account binding', () => {
+    const profile = { id: 'srv_a', name: 'A', host: 'h', port: 21, username: 'u', protocol: 'ftp' } as ServerProfile;
+
+    const openExport = async (listAccountId?: number | null) => {
+        await act(async () => {
+            root.render(createElement(ExportImportDialog, {
+                servers: [profile],
+                listAccountId,
+                initialMode: 'export',
+                onImport: vi.fn(),
+                onProfilesStored: vi.fn(),
+                onClose: vi.fn(),
+            }));
+        });
+    };
+
+    const typePasswords = async () => {
+        const inputs = [...host.querySelectorAll<HTMLInputElement>('input[type="password"]')];
+        expect(inputs.length).toBe(2);
+        await act(async () => {
+            for (const input of inputs) {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'export-password-1');
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+    };
+
+    const exportButton = () =>
+        [...host.querySelectorAll('button')].find(b =>
+            (b.textContent ?? '').includes('settings.exportServers') && (b.textContent ?? '').includes('('));
+
+    const unlockStatus = (activeUserId: number | null | undefined) =>
+        vi.mocked(invoke).mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_unlock_status') return { activeUserId };
+            if (command === 'export_server_profiles') return {};
+            throw new Error(`unexpected invoke ${command}`);
+        });
+
+    it('refuses the export when the active account is not the list account', async () => {
+        unlockStatus(9);
+        const { pickSave } = await import('../utils/pickPath');
+        await openExport(7);
+        await typePasswords();
+        await click(exportButton()!);
+        expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('export_server_profiles', expect.anything());
+        expect(host.textContent).toContain('ACCOUNT_CHANGED');
+        expect(pickSave).not.toHaveBeenCalled();
+    });
+
+    it('refuses the export when the list has no account binding', async () => {
+        unlockStatus(7);
+        await openExport(undefined);
+        await typePasswords();
+        await click(exportButton()!);
+        expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('export_server_profiles', expect.anything());
+        expect(host.textContent).toContain('ACCOUNT_CHANGED');
+    });
+
+    it('exports with the list account id when it still matches the active one', async () => {
+        unlockStatus(7);
+        const { pickSave } = await import('../utils/pickPath');
+        vi.mocked(pickSave).mockResolvedValue('/tmp/out.aeroftp');
+        await openExport(7);
+        await typePasswords();
+        await click(exportButton()!);
+        await act(async () => { await Promise.resolve(); });
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('export_server_profiles', expect.objectContaining({ accountId: 7 }));
+    });
+
+    it('exports with a null account id when both the list and the active account are unbound', async () => {
+        unlockStatus(undefined);
+        const { pickSave } = await import('../utils/pickPath');
+        vi.mocked(pickSave).mockResolvedValue('/tmp/out.aeroftp');
+        await openExport(null);
+        await typePasswords();
+        await click(exportButton()!);
+        await act(async () => { await Promise.resolve(); });
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('export_server_profiles', expect.objectContaining({ accountId: null }));
+    });
+});
