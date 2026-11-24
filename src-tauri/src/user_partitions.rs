@@ -13343,6 +13343,15 @@ mod tests {
         (db, account_a.id, account_b.id)
     }
 
+    // Windows cannot drop a read-only file: give the write bit back so the
+    // tempdir removes cleanly.
+    #[allow(clippy::permissions_set_readonly_false)]
+    fn restore_write_bit(path: &std::path::Path) {
+        let mut permissions = std::fs::metadata(path).unwrap().permissions();
+        permissions.set_readonly(false);
+        std::fs::set_permissions(path, permissions).unwrap();
+    }
+
     /// The legacy-store write is bound to the account its read captured:
     /// with the partition unreachable but its active account readable, a
     /// list read under A is refused once B is active, and a list read with
@@ -13393,11 +13402,7 @@ mod tests {
             Some(account_b),
             None,
         );
-        // Windows cannot drop a read-only file: give the write bit back so
-        // the tempdir removes cleanly.
-        let mut permissions = std::fs::metadata(&db).unwrap().permissions();
-        permissions.set_readonly(false);
-        std::fs::set_permissions(&db, permissions).unwrap();
+        restore_write_bit(&db);
         CredentialStore::clear_cache();
 
         assert_eq!(captured_a.unwrap_err(), ACCOUNT_CHANGED);
@@ -13501,9 +13506,7 @@ mod tests {
             .unwrap();
 
         let read = read_legacy_server_profiles_at(&store, &db).unwrap();
-        let mut permissions = std::fs::metadata(&db).unwrap().permissions();
-        permissions.set_readonly(false);
-        std::fs::set_permissions(&db, permissions).unwrap();
+        restore_write_bit(&db);
         CredentialStore::clear_cache();
 
         // Active is B, owner is A: the frontend refuses on this triple, but
@@ -13560,9 +13563,7 @@ mod tests {
             Some(revision),
         )
         .unwrap();
-        let mut permissions = std::fs::metadata(&db).unwrap().permissions();
-        permissions.set_readonly(false);
-        std::fs::set_permissions(&db, permissions).unwrap();
+        restore_write_bit(&db);
         CredentialStore::clear_cache();
 
         let written = store.get(LEGACY_PROFILES_BLOB).unwrap();
@@ -13605,9 +13606,7 @@ mod tests {
             Some(account_b),
             Some(stale),
         );
-        let mut permissions = std::fs::metadata(&db).unwrap().permissions();
-        permissions.set_readonly(false);
-        std::fs::set_permissions(&db, permissions).unwrap();
+        restore_write_bit(&db);
         CredentialStore::clear_cache();
 
         assert_eq!(result.unwrap_err(), PROFILES_CHANGED);

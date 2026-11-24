@@ -3540,6 +3540,7 @@ mod tests {
     /// vault's server password and the overlay secrets still reach the file.
     /// `active_user_for_save` answering `Ok(None)` used to collapse into the
     /// same `None` a failed lookup produced, and `None` reads no secret.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn an_export_with_no_account_reads_the_legacy_stores() {
         if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
@@ -3697,6 +3698,7 @@ mod tests {
     /// the destination keeps its bytes and no vault token reaches it. The
     /// old `.ok().flatten()` turned the error into `None`, the same scope a
     /// no-account export has, and the vault's OAuth token was written.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_failed_account_lookup_fails_the_export_before_it_writes() {
         if !crate::provider_commands::isolated_account_fixture::in_isolated_child(

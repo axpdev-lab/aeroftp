@@ -1982,7 +1982,7 @@ fn profile_plan_inputs(
     // active receiver.
     let backup_legacy_owner = backup_conn
         .as_ref()
-        .map(|conn| crate::user_partitions::nonprofile_secret_owner_unpersisted(conn))
+        .map(crate::user_partitions::nonprofile_secret_owner_unpersisted)
         .transpose()
         .map_err(|e| KeystoreExportError::Encryption(format!("Read the backup legacy owner: {e}")))?
         .flatten();

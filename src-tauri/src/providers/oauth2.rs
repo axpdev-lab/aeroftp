@@ -6700,7 +6700,7 @@ mod tests {
         CredentialStore::clear_cache();
 
         let result = manager.load_tokens(OAuthProvider::Box, "mem-profile");
-        let error = result.err().expect("the blocked token must not load");
+        let error = result.expect_err("the blocked token must not load");
         assert!(!format!("{error:?}").contains("memory-token"), "{error:?}");
 
         CredentialStore::clear_cache();
