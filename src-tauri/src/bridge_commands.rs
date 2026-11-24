@@ -2331,8 +2331,11 @@ fn vault_export_password_for_user(
 
 /// [`export_bridge_config`] with the vault passed in: `store` for what the
 /// rclone export injects into options, `secret_for` for each profile's
-/// password by id. Captures the account once per export run (direct callers
-/// such as the CLI and the tests have no caller-side capture to validate).
+/// password by id. Captures the account once per export run, like the
+/// production caller used to; only the tests call this directly now, since
+/// `export_bridge_config` passes its validated owner to
+/// [`export_bridge_profiles_for_owner`] instead.
+#[cfg(test)]
 async fn export_bridge_profiles(
     source: &str,
     servers_json: &str,
@@ -5599,10 +5602,10 @@ mod tests {
             "OLD-PART",
         )
         .unwrap();
-        let _ = crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(true));
+        crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(true));
         let err = store_bridge_import_secret_for_user(&store, Some(uid), "server_rb18", "NEW")
             .expect_err("the refused partition mirror must fail the dual write");
-        let _ = crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(false));
+        crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(false));
         assert!(
             err.contains("refused"),
             "the failure must be the refused mirror: {err}"
@@ -5624,7 +5627,7 @@ mod tests {
         // secret must be deleted, and no partition row may appear.
         crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(true));
         let _ = store_bridge_import_secret_for_user(&store, Some(uid), "server_rb20", "NEW");
-        let _ = crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(false));
+        crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(false));
         assert!(
             matches!(
                 store.get("server_rb20"),
