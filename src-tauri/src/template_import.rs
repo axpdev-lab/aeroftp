@@ -83,7 +83,8 @@ pub struct TemplateApplyOptions {
     pub default_secret_form: Option<TemplateSecretForm>,
     #[serde(default)]
     pub secret_forms: HashMap<String, TemplateSecretForm>,
-    /// Optional subset of trimmed block names selected for import. `None` imports all valid blocks.
+    /// Optional subset of trimmed block names or stable preview `selectionId` values.
+    /// `None` imports all valid blocks.
     #[serde(default)]
     pub selected_blocks: Option<Vec<String>>,
     /// Security-relaxing option keys explicitly approved by the user or caller.
@@ -127,6 +128,7 @@ pub enum SecretDisposition {
 pub struct TemplatePreviewRow {
     pub file_index: usize,
     pub block_name: String,
+    pub selection_id: String,
     pub target_name: String,
     pub start_line: usize,
     pub protocol: String,
@@ -212,7 +214,14 @@ struct LoadedTemplate {
 pub fn build_secret_policy(
     default_form: Option<TemplateSecretForm>,
     per_block: &HashMap<String, TemplateSecretForm>,
+    content: &str,
 ) -> TemplateSecretPolicy {
+    let source_by_id: HashMap<String, String> =
+        crate::rclone_import::parse_ini_sections_with_spans(content)
+            .sections
+            .into_iter()
+            .map(|section| (source_selection_id(&section.name), section.name))
+            .collect();
     let cleaned = per_block
         .iter()
         .filter_map(|(k, v)| {
@@ -220,7 +229,11 @@ pub fn build_secret_policy(
             if trimmed.is_empty() {
                 None
             } else {
-                Some((trimmed.to_string(), *v))
+                let key = source_by_id
+                    .get(trimmed)
+                    .cloned()
+                    .unwrap_or_else(|| trimmed.to_string());
+                Some((key, *v))
             }
         })
         .collect();
@@ -340,8 +353,13 @@ fn find_existing_by_trimmed_name<'a>(
     })
 }
 
+fn source_selection_id(source_block_name: &str) -> String {
+    format!("source:{:x}", Sha256::digest(source_block_name.as_bytes()))
+}
+
 struct PlannedBlock {
     row: TemplatePreviewRow,
+    source_block_name: String,
     security: Option<ImportedSecurity>,
     prepared_server: ServerProfileExport,
     existing_target_digest: Option<String>,
@@ -373,6 +391,7 @@ fn build_plan(
     let mut out = Vec::with_capacity(eval.servers.len());
     for (file_index, raw_server) in eval.servers.iter().enumerate() {
         let mut server = raw_server.clone();
+        let source_block_name = server.name.clone();
         let trimmed_name = server.name.trim().to_string();
         let start_line = eval
             .block_start_lines
@@ -390,7 +409,12 @@ fn build_plan(
         let secret_form = secret_meta.and_then(|m| m.chosen_form);
         let needs_secret_form_choice = has_secret_input && secret_form.is_none();
 
-        let matched = find_existing_by_trimmed_name(current, &trimmed_name);
+        server.name = crate::bridge_shared::sanitize_warning_name(&server.name, "rclone remote");
+        let trimmed_name = server.name.trim().to_string();
+        let matched = find_existing_by_trimmed_name(current, &trimmed_name).filter(|_| {
+            existing_mode != ExistingProfileMode::Overwrite
+                || source_block_name.trim() == trimmed_name
+        });
         let existing_target_digest = matched.map(existing_target_digest_projection);
         let existing_match_id = matched
             .and_then(|p| p.get("id").and_then(Value::as_str))
@@ -542,6 +566,7 @@ fn build_plan(
         let row = TemplatePreviewRow {
             file_index,
             block_name: server.name.clone(),
+            selection_id: source_selection_id(&source_block_name),
             target_name,
             start_line,
             protocol,
@@ -564,6 +589,7 @@ fn build_plan(
         };
         out.push(PlannedBlock {
             row,
+            source_block_name,
             security,
             prepared_server: server,
             existing_target_digest,
@@ -575,7 +601,7 @@ fn build_plan(
     let mut inherited_needed_bases: HashSet<&str> = HashSet::new();
     for entry in &out {
         if entry.row.action != TemplatePlannedAction::Skip {
-            if let Some(ancestors) = eval.crypt_secret_ancestors.get(&entry.row.block_name) {
+            if let Some(ancestors) = eval.crypt_secret_ancestors.get(&entry.source_block_name) {
                 for ancestor in ancestors {
                     inherited_needed_bases.insert(ancestor.as_str());
                 }
@@ -587,8 +613,8 @@ fn build_plan(
             if entry.row.action == TemplatePlannedAction::Skip
                 && !entry.duplicate_in_template
                 && entry.row.has_secret_input
-                && (inherited_needed_bases.contains(entry.row.block_name.as_str())
-                    || inherited_needed_bases.contains(entry.row.block_name.trim()))
+                && (inherited_needed_bases.contains(entry.source_block_name.as_str())
+                    || inherited_needed_bases.contains(entry.source_block_name.trim()))
             {
                 entry.row.secret_choice_inherited = true;
             }
@@ -752,7 +778,11 @@ pub fn preview_template_with_current(
     current: &[Value],
 ) -> Result<TemplatePreviewReport, String> {
     let loaded = load_template_input(input)?;
-    let secret_policy = build_secret_policy(options.default_secret_form, &options.secret_forms);
+    let secret_policy = build_secret_policy(
+        options.default_secret_form,
+        &options.secret_forms,
+        &loaded.content,
+    );
     let eval = evaluate_template_text(
         &loaded.content,
         loaded.base_dir.as_deref(),
@@ -857,7 +887,11 @@ pub(crate) fn apply_template_with_slots<S: SecretSlots>(
         }
     }
 
-    let secret_policy = build_secret_policy(options.default_secret_form, &options.secret_forms);
+    let secret_policy = build_secret_policy(
+        options.default_secret_form,
+        &options.secret_forms,
+        &loaded.content,
+    );
     let relax_policy = RelaxationPolicy::Keep(options.keep_relaxed.clone());
     let eval = evaluate_template_text(
         &loaded.content,
@@ -921,6 +955,10 @@ fn apply_eval_with_slots<S: SecretSlots>(
             }
         }
         let planned = build_plan(&eval, &current, options.existing, relax_policy);
+        let known_selection_ids: HashSet<String> = planned
+            .iter()
+            .map(|entry| entry.row.selection_id.clone())
+            .collect();
 
         let mut skipped_existing = Vec::new();
         let mut skipped_duplicate_in_template = Vec::new();
@@ -942,7 +980,16 @@ fn apply_eval_with_slots<S: SecretSlots>(
                 continue;
             }
             if let Some(ref sel) = selected_set {
-                if !sel.contains(&entry.row.block_name) && !sel.contains(&trimmed_block) {
+                let selected = sel.iter().any(|selected| {
+                    if selected == &entry.row.selection_id {
+                        true
+                    } else if known_selection_ids.contains(selected.as_str()) {
+                        false
+                    } else {
+                        selected == &entry.row.block_name || selected == &trimmed_block
+                    }
+                });
+                if !selected {
                     skipped_unselected.push(entry.row.block_name.clone());
                     continue;
                 }
@@ -3172,6 +3219,82 @@ override.no_check_certificate = true
     }
 
     #[test]
+    fn overwrite_does_not_match_a_profile_through_a_sanitized_collision() {
+        let input = TemplateInput::Text {
+            content: "[vault?token=x]\ntype = sftp\nhost = one.example.test\nuser = alice\n\n\
+                      [vault?token=y]\ntype = sftp\nhost = two.example.test\nuser = alice\n"
+                .to_string(),
+        };
+        let current = vec![serde_json::json!({
+            "id": "srv_vault",
+            "name": "vault",
+            "protocol": "sftp",
+            "host": "saved.example.test",
+            "port": 22,
+            "username": "saved-user",
+            "hasStoredCredential": true
+        })];
+
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Overwrite,
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        assert_eq!(preview.rows.len(), 2);
+        for row in &preview.rows {
+            assert_ne!(row.action, TemplatePlannedAction::Replace);
+            assert_eq!(row.existing_match_id, None);
+        }
+        assert_ne!(preview.rows[0].target_name, preview.rows[1].target_name);
+        assert!(preview.rows.iter().all(|row| row.target_name != "vault"));
+    }
+
+    #[test]
+    fn inherited_secret_lookup_uses_raw_block_name_when_display_is_sanitized() {
+        let crypt_pw = crate::rclone_import::obscure_password("vault-pass").unwrap();
+        let input = TemplateInput::Text {
+            content: format!(
+                "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\npass = PlainSecret!\n\n\
+                 [vault?token=x]\ntype = crypt\nremote = base:enc\npassword = {crypt_pw}\n"
+            ),
+        };
+        let current = vec![serde_json::json!({
+            "id": "srv_base",
+            "name": "base",
+            "protocol": "sftp",
+            "host": "nas.example.test",
+            "port": 22,
+            "username": "alice"
+        })];
+
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Skip,
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        let base = preview
+            .rows
+            .iter()
+            .find(|row| row.block_name == "base")
+            .unwrap();
+        assert_eq!(base.action, TemplatePlannedAction::Skip);
+        assert!(base.has_secret_input);
+        assert!(base.needs_secret_form_choice);
+        assert!(base.secret_choice_inherited);
+        assert!(!serde_json::to_string(&preview)
+            .unwrap()
+            .contains("vault?token=x"));
+    }
+
+    #[test]
     fn alias_and_crypt_inherit_base_secret_form_requirement() {
         let env = TestVaultEnv::new();
         let crypt_pw = crate::rclone_import::obscure_password("vault-pass").unwrap();
@@ -3731,6 +3854,272 @@ remote = base:docs
             work2_pw.as_deref().map(|z| z.as_str()),
             Some("ObscuredAliasPw!")
         );
+    }
+
+    #[test]
+    fn apply_selects_colliding_source_blocks_independently_and_keeps_unique_names() {
+        let input = TemplateInput::Text {
+            content: "\
+[https://alice:source-pass@vault.example.test]
+type = sftp
+host = first.example.test
+user = alice
+pass = FirstProfileSecret!
+
+[https://bob:source-pass@vault.example.test]
+type = sftp
+host = second.example.test
+user = bob
+pass = SecondProfileSecret!
+
+[unique]
+type = sftp
+host = unique.example.test
+user = carol
+pass = UniqueProfileSecret!
+"
+            .to_string(),
+        };
+
+        for (index, host, secret) in [
+            (0, "first.example.test", "FirstProfileSecret!"),
+            (1, "second.example.test", "SecondProfileSecret!"),
+            (2, "unique.example.test", "UniqueProfileSecret!"),
+        ] {
+            let env = TestVaultEnv::new();
+            let preview = preview_template_with_current(
+                &input,
+                &TemplatePreviewOptions {
+                    existing: ExistingProfileMode::Duplicate,
+                    default_secret_form: Some(TemplateSecretForm::Clear),
+                    ..Default::default()
+                },
+                &[],
+            )
+            .unwrap();
+            assert_eq!(preview.rows.len(), 3);
+            assert_eq!(preview.rows[0].block_name, "vault.example.test");
+            assert_eq!(preview.rows[1].block_name, "vault.example.test");
+            assert_ne!(preview.rows[0].selection_id, preview.rows[1].selection_id);
+            let serialized = serde_json::to_string(&preview).unwrap();
+            assert!(!serialized.contains("source-pass"), "{serialized}");
+            assert!(!serialized.contains("https://alice"), "{serialized}");
+
+            let selected = if index == 2 {
+                "unique".to_string()
+            } else {
+                preview.rows[index].selection_id.clone()
+            };
+            let applied = apply_template_for_user(
+                &env.store,
+                env.user_id,
+                &input,
+                &TemplateApplyOptions {
+                    existing: ExistingProfileMode::Duplicate,
+                    default_secret_form: Some(TemplateSecretForm::Clear),
+                    selected_blocks: Some(vec![selected]),
+                    expected_digest_sha256: Some(preview.digest_sha256),
+                    expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert_eq!(applied.applied.len(), 1, "row {index}");
+            assert_eq!(applied.skipped_unselected.len(), 2, "row {index}");
+            let id = applied.applied[0].profile_id.clone();
+            let (profiles, _) =
+                user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id)
+                    .unwrap();
+            assert_eq!(profiles.len(), 1, "row {index}");
+            assert_eq!(
+                profiles[0].get("host").and_then(Value::as_str),
+                Some(host),
+                "row {index}"
+            );
+            let stored = user_partitions::resolve_credential_for_user(
+                &env.store,
+                env.user_id,
+                &format!("server_{id}"),
+            )
+            .unwrap();
+            assert_eq!(stored.as_deref().map(|s| s.as_str()), Some(secret));
+        }
+    }
+
+    #[test]
+    fn source_selection_token_does_not_select_a_legacy_name_with_the_same_text() {
+        let alpha_id = source_selection_id("alpha");
+        let input = TemplateInput::Text {
+            content: format!(
+                "[alpha]\ntype = sftp\nhost = intended.example.test\nuser = alice\npass = IntendedSecret!\n\n\
+                 [{alpha_id}]\ntype = sftp\nhost = other.example.test\nuser = bob\npass = OtherSecret!\n"
+            ),
+        };
+        let env = TestVaultEnv::new();
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Duplicate,
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        assert_eq!(preview.rows[0].selection_id, alpha_id);
+        assert_eq!(preview.rows[1].block_name, alpha_id);
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Duplicate,
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                selected_blocks: Some(vec![alpha_id]),
+                expected_digest_sha256: Some(preview.digest_sha256),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.applied.len(), 1);
+        assert_eq!(applied.skipped_unselected.len(), 1);
+        let id = applied.applied[0].profile_id.clone();
+        let (profiles, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(
+            profiles[0].get("host").and_then(Value::as_str),
+            Some("intended.example.test")
+        );
+        let stored = user_partitions::resolve_credential_for_user(
+            &env.store,
+            env.user_id,
+            &format!("server_{id}"),
+        )
+        .unwrap();
+        assert_eq!(
+            stored.as_deref().map(|s| s.as_str()),
+            Some("IntendedSecret!")
+        );
+    }
+
+    #[test]
+    fn source_prefixed_legacy_name_remains_selectable_when_it_is_not_an_id() {
+        let input = TemplateInput::Text {
+            content: "[source:backup]\ntype = sftp\nhost = legacy.example.test\nuser = alice\n"
+                .to_string(),
+        };
+        let env = TestVaultEnv::new();
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Duplicate,
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Duplicate,
+                selected_blocks: Some(vec!["source:backup".to_string()]),
+                expected_digest_sha256: Some(preview.digest_sha256),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(applied.applied.len(), 1);
+        let (profiles, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+        assert_eq!(
+            profiles[0].get("host").and_then(Value::as_str),
+            Some("legacy.example.test")
+        );
+    }
+
+    #[test]
+    fn secret_forms_use_selection_identity_for_colliding_display_names() {
+        let obscured = crate::rclone_import::obscure_password("SecondFormSecret!").unwrap();
+        let input = TemplateInput::Text {
+            content: format!(
+                "[https://alice:source-pass@vault.example.test]\ntype = sftp\nhost = clear.example.test\nuser = alice\npass = FirstFormSecret!\n\n\
+                 [https://bob:source-pass@vault.example.test]\ntype = sftp\nhost = obscured.example.test\nuser = bob\npass = {obscured}\n"
+            ),
+        };
+        let env = TestVaultEnv::new();
+        let initial = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Duplicate,
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        assert_eq!(initial.rows[0].block_name, initial.rows[1].block_name);
+        let forms = HashMap::from([
+            (
+                initial.rows[0].selection_id.clone(),
+                TemplateSecretForm::Clear,
+            ),
+            (
+                initial.rows[1].selection_id.clone(),
+                TemplateSecretForm::Obscured,
+            ),
+        ]);
+
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Duplicate,
+                secret_forms: forms.clone(),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        assert_eq!(preview.rows[0].secret_form, Some(TemplateSecretForm::Clear));
+        assert_eq!(
+            preview.rows[1].secret_form,
+            Some(TemplateSecretForm::Obscured)
+        );
+        assert!(!preview.rows[0].needs_secret_form_choice);
+        assert!(!preview.rows[1].needs_secret_form_choice);
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Duplicate,
+                secret_forms: forms,
+                expected_digest_sha256: Some(preview.digest_sha256),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.applied.len(), 2);
+        for (row, secret) in applied
+            .applied
+            .iter()
+            .zip(["FirstFormSecret!", "SecondFormSecret!"])
+        {
+            let stored = user_partitions::resolve_credential_for_user(
+                &env.store,
+                env.user_id,
+                &format!("server_{}", row.profile_id),
+            )
+            .unwrap();
+            assert_eq!(stored.as_deref().map(|s| s.as_str()), Some(secret));
+        }
     }
 
     #[test]

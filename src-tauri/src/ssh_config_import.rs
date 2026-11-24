@@ -3705,7 +3705,10 @@ Host roundtrip
             let fields = ["name", "host", "user name", "key file path", "jump host"];
             assert_eq!(outcome.skipped.len(), fields.len(), "{:?}", outcome.skipped);
             for (skip, (server, field)) in outcome.skipped.iter().zip(servers.iter().zip(fields)) {
-                assert_eq!(skip.name, server.name);
+                assert_eq!(
+                    skip.name,
+                    crate::bridge_shared::sanitize_warning_name(&server.name, "export profile")
+                );
                 assert!(
                     skip.reason.starts_with(&format!("its {field} ")),
                     "{}",
@@ -5517,8 +5520,8 @@ Host roundtrip
             ("dollar user", "its user name holds `${`"),
             ("dollar key", "its key file path holds `${`"),
             ("percent user", "its user name holds `%`"),
-            ("\n", "its name holds a line break"),
-            ("   ", "its name is empty"),
+            ("export profile", "its name holds a line break"),
+            ("export profile", "its name is empty"),
         ];
         assert_eq!(outcome.skipped.len(), want.len(), "{:?}", outcome.skipped);
         for (skip, (name, reason)) in outcome.skipped.iter().zip(want) {

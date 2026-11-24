@@ -191,7 +191,7 @@ source version and its SHA-256.
 | constant_time_eq | 0.4.2 | CC0-1.0 OR MIT-0 OR Apache-2.0 | [Link](https://github.com/cesarb/constant_time_eq) |
 | constant_time_eq | 0.6.1 | CC0-1.0 OR MIT-0 OR Apache-2.0 | [Link](https://codeberg.org/cesarb/constant_time_eq) |
 | convert_case | 0.10.0 | MIT | [Link](https://github.com/rutrum/convert-case) |
-| cookie | 0.18.2 | MIT OR Apache-2.0 | [Link](https://github.com/SergioBenitez/cookie-rs) |
+| cookie | 0.18.3 | MIT OR Apache-2.0 | [Link](https://github.com/SergioBenitez/cookie-rs) |
 | cordyceps | 0.3.5 | MIT | [Link](https://github.com/hawkw/mycelium) |
 | core-foundation | 0.10.1 | MIT OR Apache-2.0 | [Link](https://github.com/servo/core-foundation-rs) |
 | core-foundation | 0.9.4 | MIT OR Apache-2.0 | [Link](https://github.com/servo/core-foundation-rs) |
@@ -225,7 +225,7 @@ source version and its SHA-256.
 | ctor-proc-macro | 0.0.7 | Apache-2.0 OR MIT | [Link](https://github.com/mmastrac/rust-ctor) |
 | ctr | 0.10.1 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/block-modes) |
 | ctr | 0.9.2 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/block-modes) |
-| ctrlc | 3.5.2 | MIT/Apache-2.0 | [Link](https://github.com/Detegr/rust-ctrlc.git) |
+| ctrlc | 3.5.3 | MIT/Apache-2.0 | [Link](https://github.com/Detegr/rust-ctrlc.git) |
 | ctutils | 0.4.8 | Apache-2.0 OR MIT | [Link](https://github.com/RustCrypto/utils) |
 | curve25519-dalek | 4.1.3 | BSD-3-Clause | [Link](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek) |
 | curve25519-dalek | 5.0.0 | BSD-3-Clause | [Link](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek) |
@@ -516,7 +516,7 @@ source version and its SHA-256.
 | libredox | 0.1.23 | MIT | [Link](https://gitlab.redox-os.org/redox-os/libredox.git) |
 | libsqlite3-sys | 0.30.1 | MIT | [Link](https://github.com/rusqlite/rusqlite) |
 | libssh2-sys | 0.3.4 | MIT OR Apache-2.0 | [Link](https://github.com/alexcrichton/ssh2-rs) |
-| libunftp | 0.24.0 | Apache-2.0 | [Link](https://github.com/bolcom/libunftp) |
+| libunftp | 0.25.1 | Apache-2.0 | [Link](https://github.com/Cloudinvoke/libunftp) |
 | libz-sys | 1.1.33 | MIT OR Apache-2.0 | [Link](https://github.com/rust-lang/libz-sys) |
 | line-clipping | 0.3.8 | MIT OR Apache-2.0 | [Link](https://github.com/ratatui/line-clipping) |
 | linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | [Link](https://github.com/sunfishcode/linux-raw-sys) |
@@ -528,8 +528,8 @@ source version and its SHA-256.
 | lru | 0.18.4 | MIT | [Link](https://github.com/jeromefroe/lru-rs.git) |
 | lru | 0.7.8 | MIT | [Link](https://github.com/jeromefroe/lru-rs.git) |
 | lru-slab | 0.1.2 | MIT OR Apache-2.0 OR Zlib | [Link](https://github.com/Ralith/lru-slab) |
-| lzma-rust2 | 0.22.0 | Apache-2.0 | [Link](https://github.com/hasenbanck/lzma-rust2/) |
 | lzma-rust2 | 0.23.0 | Apache-2.0 | [Link](https://github.com/hasenbanck/lzma-rust2/) |
+| lzma-rust2 | 0.25.0 | Apache-2.0 | [Link](https://github.com/hasenbanck/lzma-rust2/) |
 | lzma-sys | 0.1.20 | MIT/Apache-2.0 | [Link](https://github.com/alexcrichton/xz2-rs) |
 | mac-addr | 0.3.0 | MIT | [Link](https://github.com/shellrow/mac-addr) |
 | mac-notification-sys | 0.6.15 | MIT/Apache-2.0 | [Link](https://github.com/h4llow3En/mac-notification-sys) |
@@ -582,13 +582,13 @@ source version and its SHA-256.
 | new_debug_unreachable | 1.0.6 | MIT | [Link](https://github.com/mbrubeck/rust-debug-unreachable) |
 | nix | 0.28.0 | MIT | [Link](https://github.com/nix-rust/nix) |
 | nix | 0.30.1 | MIT | [Link](https://github.com/nix-rust/nix) |
-| nix | 0.31.3 | MIT | [Link](https://github.com/nix-rust/nix) |
+| nix | 0.31.4 | MIT | [Link](https://github.com/nix-rust/nix) |
 | nom | 7.1.3 | MIT | [Link](https://github.com/Geal/nom) |
 | nom | 8.0.0 | MIT | [Link](https://github.com/rust-bakery/nom) |
 | noq | 1.3.0 | MIT OR Apache-2.0 | [Link](https://github.com/n0-computer/noq) |
 | noq-proto | 1.3.0 | MIT OR Apache-2.0 | [Link](https://github.com/n0-computer/noq) |
 | noq-udp | 1.3.0 | MIT OR Apache-2.0 | [Link](https://github.com/n0-computer/noq) |
-| notify | 8.2.1 | CC0-1.0 | [Link](https://github.com/notify-rs/notify.git) |
+| notify | 8.2.2 | CC0-1.0 | [Link](https://github.com/notify-rs/notify.git) |
 | notify-debouncer-full | 0.6.0 | MIT OR Apache-2.0 | [Link](https://github.com/notify-rs/notify.git) |
 | notify-rust | 4.18.0 | MIT OR Apache-2.0 | [Link](https://github.com/hoodie/notify-rust) |
 | notify-types | 2.1.0 | MIT OR Apache-2.0 | [Link](https://github.com/notify-rs/notify.git) |
@@ -785,7 +785,7 @@ source version and its SHA-256.
 | rfd | 0.16.0 | MIT | [Link](https://github.com/PolyMeilex/rfd) |
 | ring | 0.17.14 | Apache-2.0 AND ISC | [Link](https://github.com/briansmith/ring) |
 | ripemd | 0.1.3 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/hashes) |
-| rpassword | 7.5.4 | Apache-2.0 | [Link](https://github.com/conradkleinespel/rpassword) |
+| rpassword | 7.5.5 | Apache-2.0 | [Link](https://github.com/conradkleinespel/rpassword) |
 | rsa | 0.10.0 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/RSA) |
 | rsa | 0.9.10 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/RSA) |
 | rtoolbox | 0.0.6 | Apache-2.0 | [Link](https://github.com/conradkleinespel/rtoolbox) |
@@ -803,10 +803,10 @@ source version and its SHA-256.
 | rustix-linux-procfs | 0.1.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | [Link](https://github.com/sunfishcode/rustix-linux-procfs) |
 | rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | [Link](https://github.com/rustls/rustls) |
 | rustls-native-certs | 0.8.5 | Apache-2.0 OR ISC OR MIT | [Link](https://github.com/rustls/rustls-native-certs) |
-| rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 | [Link](https://github.com/rustls/pki-types) |
+| rustls-pki-types | 1.16.0 | MIT OR Apache-2.0 | [Link](https://github.com/rustls/pki-types) |
 | rustls-platform-verifier | 0.7.0 | MIT OR Apache-2.0 | [Link](https://github.com/rustls/rustls-platform-verifier) |
 | rustls-platform-verifier-android | 0.1.1 | MIT OR Apache-2.0 | [Link](https://github.com/rustls/rustls-platform-verifier) |
-| rustls-webpki | 0.103.16 | ISC | [Link](https://github.com/rustls/webpki) |
+| rustls-webpki | 0.103.17 | ISC | [Link](https://github.com/rustls/webpki) |
 | rustversion | 1.0.23 | MIT OR Apache-2.0 | [Link](https://github.com/dtolnay/rustversion) |
 | ryu | 1.0.23 | Apache-2.0 OR BSL-1.0 | [Link](https://github.com/dtolnay/ryu) |
 | ryu-js | 1.0.3 | Apache-2.0 OR BSL-1.0 | [Link](https://github.com/boa-dev/ryu-js) |
@@ -1015,7 +1015,7 @@ source version and its SHA-256.
 | tray-icon | 0.23.1 | MIT OR Apache-2.0 | [Link](https://github.com/tauri-apps/tray-icon) |
 | try-lock | 0.2.5 | MIT | [Link](https://github.com/seanmonstar/try-lock) |
 | twofish | 0.7.1 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/block-ciphers) |
-| typed-path | 0.12.3 | MIT OR Apache-2.0 | [Link](https://github.com/chipsenkbeil/typed-path) |
+| typed-path | 0.13.0 | MIT OR Apache-2.0 | [Link](https://github.com/chipsenkbeil/typed-path) |
 | typed-path | 0.9.3 | MIT OR Apache-2.0 | [Link](https://github.com/chipsenkbeil/typed-path) |
 | typeid | 1.0.3 | MIT OR Apache-2.0 | [Link](https://github.com/dtolnay/typeid) |
 | typenum | 1.20.1 | MIT OR Apache-2.0 | [Link](https://github.com/paholg/typenum) |
@@ -1175,7 +1175,7 @@ source version and its SHA-256.
 | xattr | 1.6.1 | MIT OR Apache-2.0 | [Link](https://github.com/Stebalien/xattr) |
 | xml-rs | 0.8.29 | MIT | [Link](https://github.com/kornelski/xml-rs) |
 | xmltree | 0.10.3 | MIT | [Link](https://github.com/eminence/xmltree-rs) |
-| xxhash-rust | 0.8.19 | BSL-1.0 | [Link](https://github.com/DoumanAsh/xxhash-rust) |
+| xxhash-rust | 0.8.21 | BSL-1.0 | [Link](https://github.com/DoumanAsh/xxhash-rust) |
 | xz2 | 0.1.7 | MIT/Apache-2.0 | [Link](https://github.com/alexcrichton/xz2-rs) |
 | yasna | 0.6.0 | MIT OR Apache-2.0 | [Link](https://github.com/qnighy/yasna.rs) |
 | yoke | 0.8.3 | Unicode-3.0 | [Link](https://github.com/unicode-org/icu4x) |
@@ -1193,7 +1193,7 @@ source version and its SHA-256.
 | zerotrie | 0.2.5 | Unicode-3.0 | [Link](https://github.com/unicode-org/icu4x) |
 | zerovec | 0.11.8 | Unicode-3.0 | [Link](https://github.com/unicode-org/icu4x) |
 | zerovec-derive | 0.11.6 | Unicode-3.0 | [Link](https://github.com/unicode-org/icu4x) |
-| zip | 9.0.5 | MIT | [Link](https://github.com/zip-rs/zip2) |
+| zip | 9.8.2 | MIT | [Link](https://github.com/zip-rs/zip2) |
 | zlib-rs | 0.6.7 | Zlib | [Link](https://github.com/trifectatechfoundation/zlib-rs) |
 | zmij | 1.0.23 | MIT | [Link](https://github.com/dtolnay/zmij) |
 | zopfli | 0.8.3 | Apache-2.0 | [Link](https://github.com/zopfli-rs/zopfli) |
@@ -1488,7 +1488,7 @@ SOFTWARE.
 - `portable-atomic-util@0.2.8` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
 - `raw-window-handle@0.6.2` (cargo, file: `LICENSE-APACHE.md`)
-- `rpassword@7.5.4` (cargo, file: `LICENSE-APACHE`)
+- `rpassword@7.5.5` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
 - `rtoolbox@0.0.6` (cargo, file: `LICENSE-APACHE`)
   - Copyright (c) 2015-2019 Doug Tangren (src/atty.rs)
@@ -3020,7 +3020,7 @@ limitations under the License.
   - No copyright notice is shipped in the package
 - `concurrent-queue@2.5.0` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
-- `ctrlc@3.5.2` (cargo, file: `LICENSE-MIT`)
+- `ctrlc@3.5.3` (cargo, file: `LICENSE-MIT`)
   - Copyright (c) 2015 CtrlC developers (examples/readme_example.rs)
   - Copyright (c) 2023 CtrlC developers (tests/main/harness.rs)
 - `curve25519-dalek-derive@0.1.1` (cargo, file: `LICENSE-MIT`)
@@ -3170,7 +3170,7 @@ limitations under the License.
   - No copyright notice is shipped in the package
 - `thiserror-impl@2.0.21` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
-- `typed-path@0.12.3` (cargo, file: `LICENSE-MIT`)
+- `typed-path@0.13.0` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
 - `typeid@1.0.3` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
@@ -4614,7 +4614,7 @@ DEALINGS IN THE SOFTWARE.
   - Copyright 2021 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
 - `libssh2-sys@0.3.4` (cargo, file: `LICENSE-APACHE`)
   - Copyright (C) Ted Unangst <tedu@openbsd.org> (in a source header under MIT)
-- `libunftp@0.24.0` (cargo, file: `LICENSE`)
+- `libunftp@0.25.1` (cargo, file: `LICENSE`)
 - `libz-sys@1.1.33` (cargo, file: `LICENSE-APACHE`)
 - `linux-raw-sys@0.12.1` (cargo, file: `LICENSE-APACHE`)
 - `lock_api@0.4.14` (cargo, file: `LICENSE-APACHE`)
@@ -5340,7 +5340,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
   - No copyright notice is shipped in the package
 - `thiserror-impl@2.0.21` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
-- `typed-path@0.12.3` (cargo, file: `LICENSE-APACHE`)
+- `typed-path@0.13.0` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
 - `typeid@1.0.3` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
@@ -12647,9 +12647,9 @@ DEALINGS IN THE SOFTWARE.
 - `identity-hash@0.1.0` (cargo, file: `LICENSE-APACHE`)
   - Copyright 2018-2020 Parity Technologies (UK) Ltd. (src/lib.rs)
 - `lru-slab@0.1.2` (cargo, file: `LICENSE-APACHE`)
-- `lzma-rust2@0.22.0` (cargo, file: `LICENSE`)
-  - No copyright notice is shipped in the package
 - `lzma-rust2@0.23.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
+- `lzma-rust2@0.25.0` (cargo, file: `LICENSE`)
   - No copyright notice is shipped in the package
 - `multiversion@0.9.0` (cargo, file: `LICENSE-APACHE`)
 - `multiversion-macros@0.9.0` (cargo, file: `LICENSE-APACHE`)
@@ -13534,7 +13534,7 @@ SOFTWARE.
 ### Notice Entry 131
 
 **Used by component(s):**
-- `cookie@0.18.2` (cargo, file: `LICENSE-APACHE`)
+- `cookie@0.18.3` (cargo, file: `LICENSE-APACHE`)
 
 ```text
 Apache License
@@ -13744,7 +13744,7 @@ limitations under the License.
 ### Notice Entry 132
 
 **Used by component(s):**
-- `cookie@0.18.2` (cargo, file: `LICENSE-MIT`)
+- `cookie@0.18.3` (cargo, file: `LICENSE-MIT`)
 
 ```text
 Copyright (c) 2017 Sergio Benitez
@@ -15828,7 +15828,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ### Notice Entry 158
 
 **Used by component(s):**
-- `ctrlc@3.5.2` (cargo, file: `LICENSE-APACHE`)
+- `ctrlc@3.5.3` (cargo, file: `LICENSE-APACHE`)
 
 ```text
 Apache License
@@ -19351,7 +19351,7 @@ DEALINGS IN THE SOFTWARE.
   - Copyright 2018 Ulf Adams (src/common.rs)
 - `ryu-js@1.0.3` (cargo, file: `LICENSE-BOOST`)
   - Copyright 2018 Ulf Adams (src/common.rs)
-- `xxhash-rust@0.8.19` (cargo, file: `LICENSE`)
+- `xxhash-rust@0.8.21` (cargo, file: `LICENSE`)
   - No copyright notice is shipped in the package
 
 ```text
@@ -27158,7 +27158,7 @@ in this Software without prior written authorization of the copyright holder.
 ### Notice Entry 351
 
 **Used by component(s):**
-- `libunftp@0.24.0` (cargo, file: `COPYRIGHT`)
+- `libunftp@0.25.1` (cargo, file: `COPYRIGHT`)
 
 ```text
 Copyright 2019 bol.com.
@@ -31441,7 +31441,7 @@ DEALINGS IN THE SOFTWARE.
 - `nix@0.28.0` (cargo, file: `LICENSE`)
   - Copyright 2014 The Rust Project Developers. (src/sys/signal.rs)
 - `nix@0.30.1` (cargo, file: `LICENSE`)
-- `nix@0.31.3` (cargo, file: `LICENSE`)
+- `nix@0.31.4` (cargo, file: `LICENSE`)
 
 ```text
 The MIT License (MIT)
@@ -31736,7 +31736,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ### Notice Entry 417
 
 **Used by component(s):**
-- `notify@8.2.1` (cargo, file: `LICENSE-CC0`)
+- `notify@8.2.2` (cargo, file: `LICENSE-CC0`)
   - No copyright notice is shipped in the package
 
 ```text
@@ -38132,7 +38132,7 @@ of these licenses, at your option.
 ### Notice Entry 509
 
 **Used by component(s):**
-- `rustls-pki-types@1.15.1` (cargo, file: `LICENSE-APACHE`)
+- `rustls-pki-types@1.16.0` (cargo, file: `LICENSE-APACHE`)
 
 ```text
 Apache License
@@ -38341,7 +38341,7 @@ limitations under the License.
 ### Notice Entry 510
 
 **Used by component(s):**
-- `rustls-pki-types@1.15.1` (cargo, file: `LICENSE-MIT`)
+- `rustls-pki-types@1.16.0` (cargo, file: `LICENSE-MIT`)
 
 ```text
 Copyright (c) 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
@@ -38405,7 +38405,7 @@ SOFTWARE.
 ### Notice Entry 512
 
 **Used by component(s):**
-- `rustls-webpki@0.103.16` (cargo, file: `LICENSE`)
+- `rustls-webpki@0.103.17` (cargo, file: `LICENSE`)
   - Copyright 2015-2016 Brian Smith. (src/time.rs)
   - Copyright 2015-2020 Brian Smith. (src/subject_name/dns_name.rs)
   - Copyright 2015-2021 Brian Smith. (src/end_entity.rs)
@@ -40196,7 +40196,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - `spin@0.9.9` (cargo, file: `LICENSE`)
   - Copyright 2014 The Rust Project Developers. (src/barrier.rs)
 - `tracing-core@0.1.36` (cargo, file: `src/spin/LICENSE`)
-- `zip@9.0.5` (cargo, file: `LICENSE`)
+- `zip@9.8.2` (cargo, file: `LICENSE`)
 
 ```text
 The MIT License (MIT)
@@ -46528,7 +46528,7 @@ DEALINGS IN THE SOFTWARE.
 ### Standard License: CC0-1.0
 
 Authors for the following components as listed in package manifests or reviewed attributions:
-- `notify@8.2.1` - SPDX: `CC0-1.0` (authors: Félix Saparelli <me@passcod.name>, Daniel Faust <hessijames@gmail.com>, Aron Heinecke <Ox0p54r36@t-online.de>)
+- `notify@8.2.2` - SPDX: `CC0-1.0` (authors: Félix Saparelli <me@passcod.name>, Daniel Faust <hessijames@gmail.com>, Aron Heinecke <Ox0p54r36@t-online.de>)
   - No copyright notice is shipped in the package
 
 ```text

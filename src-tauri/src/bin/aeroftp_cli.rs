@@ -13243,14 +13243,16 @@ fn resolve_password(
         return Ok(secret);
     }
 
-    // 3. Environment variable (protocol-specific, then generic)
+    // 3. Environment variable (protocol-specific, then generic). An empty
+    // value is skipped, as `LaunchTarget::env_secret_var` skips it: the next
+    // variable, then the URL password, is the secret.
     for var in scheme
         .secret_env
         .iter()
         .copied()
         .chain(["AEROFTP_PASSWORD"])
     {
-        if let Ok(pass) = std::env::var(var) {
+        if let Some(pass) = ftp_client_gui_lib::launch_url::read_nonempty_env(var) {
             return Ok(pass);
         }
     }
@@ -42033,16 +42035,9 @@ async fn cmd_versions_purge(
         return versions_unsupported(format);
     }
     let rpath = resolve_cli_remote_path(&initial_path, path);
-    let purged = match ftp_client_gui_lib::providers::refuse_a_purge_of_the_live_version(
-        provider.as_mut(),
-        &rpath,
-        version_id,
-    )
-    .await
-    {
-        Ok(()) => provider.delete_version(&rpath, version_id).await,
-        Err(e) => Err(e),
-    };
+    let purged =
+        ftp_client_gui_lib::providers::purge_version_guarded(provider.as_mut(), &rpath, version_id)
+            .await;
     let code = match purged {
         Ok(()) => {
             let msg = format!("Purged version {} of {}", version_id, rpath);
@@ -42544,8 +42539,19 @@ fn rclone_import_listing(result: &ftp_client_gui_lib::rclone_import::RcloneImpor
         out.push('\n');
     }
 
+    out
+}
+
+/// Format the human-readable warning block for `import rclone` (printed to
+/// stderr so stdout carries data only, matching `AGENTS.md`).
+fn rclone_import_warnings_listing(
+    result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
+) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
     // Imported, but not whole: e.g. a password that does not reveal left the
-    // profile without a credential.
+    // profile without a credential, or an unimported proxy/ssh setting.
     if !result.warnings.is_empty() {
         let _ = writeln!(out, "Warnings ({}):", result.warnings.len());
         for w in &result.warnings {
@@ -42716,6 +42722,10 @@ async fn cmd_import_rclone(
                 );
             } else {
                 print!("{}", rclone_import_listing(&result));
+                let warnings_text = rclone_import_warnings_listing(&result);
+                if !warnings_text.is_empty() {
+                    eprint!("{warnings_text}");
+                }
 
                 if let Some(summary) = &applied_summary {
                     println!(
@@ -43632,6 +43642,11 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         .and_then(|s| s.as_array())
         .cloned()
         .unwrap_or_default();
+    let warnings = v
+        .get("warnings")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
     let source_path = v
         .get("sourcePath")
         .and_then(|s| s.as_str())
@@ -43666,6 +43681,7 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         let envelope = serde_json::json!({
             "servers": redacted_servers,
             "skipped": skipped,
+            "warnings": warnings,
             "sourcePath": source_path,
             "totalRemotes": total_remotes,
         });
@@ -43716,6 +43732,23 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
                 println!("  {} - {} ({})", name, kind, reason);
             }
             println!();
+        }
+
+        if !warnings.is_empty() {
+            eprintln!("Warnings ({}):", warnings.len());
+            for warning in &warnings {
+                let name = warning.get("name").and_then(|x| x.as_str()).unwrap_or("?");
+                let reason = warning
+                    .get("reason")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("?");
+                eprintln!(
+                    "  {} - {}",
+                    sanitize_filename(name),
+                    sanitize_filename(reason)
+                );
+            }
+            eprintln!();
         }
 
         println!(
@@ -44388,8 +44421,8 @@ async fn cmd_export_winscp(
     };
     let selectors = parse_profile_selectors(profiles);
 
-    // WinSCP only handles FTP/FTPS/SFTP. Everything else is skipped.
-    let supported = ["ftp", "ftps", "sftp"];
+    // WinSCP handles FTP/FTPS/SFTP and S3. Everything else is skipped.
+    let supported = ["ftp", "ftps", "sftp", "s3"];
     let oauth: [&str; 0] = [];
 
     let collected = match collect_export_scaffold(
@@ -44423,6 +44456,7 @@ async fn cmd_export_winscp(
             username: p.username.clone(),
             protocol: Some(p.protocol.clone()),
             options: p.options.clone(),
+            provider_id: p.provider_id.clone(),
             initial_path: p.initial_path.clone(),
         })
         .collect();
@@ -44464,7 +44498,10 @@ async fn cmd_export_filezilla(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    use ftp_client_gui_lib::filezilla_import::{export_filezilla, FileZillaExportServer};
+    use ftp_client_gui_lib::{
+        bridge_shared::ExportReport,
+        filezilla_import::{export_filezilla, FileZillaExportServer},
+    };
 
     let store = match open_vault(cli) {
         Ok(s) => s,
@@ -44482,12 +44519,11 @@ async fn cmd_export_filezilla(
     };
     let selectors = parse_profile_selectors(profiles);
 
-    // FileZilla supports FTP/FTPS/SFTP and Storj (s3). For consistency
-    // with the GUI we restrict to the protocol set commonly tested.
-    let supported = ["ftp", "ftps", "sftp"];
+    // Keep the CLI protocol filter consistent with FileZilla and the GUI.
+    let supported = ["ftp", "ftps", "sftp", "s3"];
     let oauth: [&str; 0] = [];
 
-    let collected = match collect_export_scaffold(
+    let mut collected = match collect_export_scaffold(
         &store,
         &servers_json,
         selectors.as_deref(),
@@ -44528,21 +44564,24 @@ async fn cmd_export_filezilla(
     };
 
     match export_filezilla(&exportable, &collected.passwords, &target_path) {
-        // Nothing written, as for the other formats: the file at the
-        // destination is left as it was.
-        Ok(0) => {
-            emit_empty_export(json, &collected.skipped);
-            4
-        }
-        Ok(count) => {
-            emit_export_success(
-                json,
-                "FileZilla sitemanager.xml",
-                count,
-                &target_path,
-                &collected.skipped,
-            );
-            0
+        Ok(outcome) => {
+            let (count, refused) = outcome.into_export_parts();
+            collected.skipped.extend(refused);
+            // Nothing written, as for the other formats: the file at the
+            // destination is left as it was.
+            if count == 0 {
+                emit_empty_export(json, &collected.skipped);
+                4
+            } else {
+                emit_export_success(
+                    json,
+                    "FileZilla sitemanager.xml",
+                    count,
+                    &target_path,
+                    &collected.skipped,
+                );
+                0
+            }
         }
         Err(e) => {
             print_error(format, &format!("export failed: {}", e), 4);
@@ -47170,6 +47209,7 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
                         "hasCredential": s.credential.is_some(),
                     })).collect::<Vec<_>>(),
                     "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
                     "sourcePath": result.source_path,
                     "totalSessions": result.total_sessions,
                 });
@@ -47213,6 +47253,18 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
                         println!("  {} - FSProtocol {} ({})", s.name, s.fs_protocol, s.reason);
                     }
                     println!();
+                }
+
+                if !result.warnings.is_empty() {
+                    eprintln!("Warnings ({}):", result.warnings.len());
+                    for warning in &result.warnings {
+                        eprintln!(
+                            "  {} - {}",
+                            sanitize_filename(&warning.name),
+                            sanitize_filename(&warning.reason)
+                        );
+                    }
+                    eprintln!();
                 }
 
                 println!(
@@ -47284,6 +47336,7 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
                         "hasCredential": s.credential.is_some(),
                     })).collect::<Vec<_>>(),
                     "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
                     "sourcePath": result.source_path,
                     "totalServers": result.total_servers,
                 });
@@ -47327,6 +47380,18 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
                         println!("  {} - Protocol {} ({})", s.name, s.protocol, s.reason);
                     }
                     println!();
+                }
+
+                if !result.warnings.is_empty() {
+                    eprintln!("Warnings ({}):", result.warnings.len());
+                    for warning in &result.warnings {
+                        eprintln!(
+                            "  {} - {}",
+                            sanitize_filename(&warning.name),
+                            sanitize_filename(&warning.reason)
+                        );
+                    }
+                    eprintln!();
                 }
 
                 println!(
@@ -95393,6 +95458,10 @@ mod tests {
         refuse_hash_ranges: bool,
         /// Keeps file versions: each version call answers, none are listed.
         versions: bool,
+        /// The credentials may not list the versions.
+        deny_version_listing: bool,
+        /// Versions returned by `list_versions` when listing is allowed.
+        listed_versions: Vec<FileVersion>,
         /// Completes an upload instead of stalling.
         finish_upload: bool,
         /// The remote paths `stat`, an upload and the version calls were
@@ -95561,7 +95630,10 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(("list_versions", path.to_string()));
-            Ok(Vec::new())
+            if self.deny_version_listing {
+                return Err(ProviderError::PermissionDenied("listing".to_string()));
+            }
+            Ok(self.listed_versions.clone())
         }
         async fn download_version(
             &mut self,
@@ -96001,6 +96073,103 @@ mod tests {
         let code = against_stalling(provider, command);
         let calls = calls.lock().unwrap().clone();
         (code, calls)
+    }
+
+    /// A purge whose versions these credentials may not list is refused, as
+    /// the live version cannot be told: no version is deleted, and the exit
+    /// code says permission.
+    #[test]
+    fn a_purge_whose_listing_is_denied_deletes_no_version() {
+        let provider = StallingProvider {
+            versions: true,
+            deny_version_listing: true,
+            ..StallingProvider::default()
+        };
+        let calls = Arc::clone(&provider.version_calls);
+        let code = against_stalling(provider, |_| async {
+            cmd_versions_purge(
+                "memory://",
+                "/f.bin",
+                "v1",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(code, 3);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [("list_versions", "/f.bin".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_purge_of_a_listed_live_version_is_refused_while_noncurrent_proceeds() {
+        let versions = vec![
+            FileVersion {
+                id: "v2".to_string(),
+                modified: None,
+                size: 10,
+                modified_by: None,
+                deleted: false,
+            },
+            FileVersion {
+                id: "v1".to_string(),
+                modified: None,
+                size: 5,
+                modified_by: None,
+                deleted: false,
+            },
+        ];
+        let live_provider = StallingProvider {
+            versions: true,
+            listed_versions: versions.clone(),
+            ..StallingProvider::default()
+        };
+        let live_calls = Arc::clone(&live_provider.version_calls);
+        let refused_code = against_stalling(live_provider, |_| async {
+            cmd_versions_purge(
+                "memory://",
+                "/f.bin",
+                "v2",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_ne!(refused_code, 0);
+        assert_eq!(
+            *live_calls.lock().unwrap(),
+            [("list_versions", "/f.bin".to_string())]
+        );
+
+        let old_provider = StallingProvider {
+            versions: true,
+            listed_versions: versions,
+            ..StallingProvider::default()
+        };
+        let old_calls = Arc::clone(&old_provider.version_calls);
+        let ok_code = against_stalling(old_provider, |_| async {
+            cmd_versions_purge(
+                "memory://",
+                "/f.bin",
+                "v1",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(ok_code, 0);
+        assert_eq!(
+            *old_calls.lock().unwrap(),
+            [
+                ("list_versions", "/f.bin".to_string()),
+                ("delete_version", "/f.bin".to_string()),
+            ]
+        );
     }
 
     /// `get` of `/f.bin` into a local file that already holds "keep me", with
@@ -97466,9 +97635,18 @@ mod tests {
         assert_eq!(result.warnings.len(), 1);
 
         let listing = rclone_import_listing(&result);
+        let warnings_listing = rclone_import_warnings_listing(&result);
         assert!(
             !listing.chars().any(|c| c == '\x1b' || c == '\x07'),
             "a control sequence reaches the terminal: {listing:?}"
+        );
+        assert!(
+            !warnings_listing.chars().any(|c| c == '\x1b' || c == '\x07'),
+            "a control sequence reaches stderr warnings: {warnings_listing:?}"
+        );
+        assert!(
+            !listing.contains("Warnings ("),
+            "warnings must be written to stderr, not stdout: {listing:?}"
         );
         for kept in [
             "okcleared",
@@ -97476,9 +97654,14 @@ mod tests {
             "ixblink",
             "Importable (2)",
             "Skipped (1)",
-            "Warnings (1)",
         ] {
             assert!(listing.contains(kept), "'{kept}' missing: {listing:?}");
+        }
+        for kept in ["Warnings (1)", "ixblink"] {
+            assert!(
+                warnings_listing.contains(kept),
+                "'{kept}' missing from warnings: {warnings_listing:?}"
+            );
         }
     }
 

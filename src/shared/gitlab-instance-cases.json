@@ -1,0 +1,125 @@
+{
+    "_readme": "One table for the two readers of a GitLab server field: instance_authority / parse_host_field (src-tauri/src/providers/gitlab/mod.rs), which decides where the access token goes, and gitlabInstanceOf (src/utils/gitlabWeb.ts), which the connection form shows before connect. instance is the host[:port] the token is sent to, or null when the field is refused. project is the project path the backend reads (null when refused). A first segment with a dot, a colon or a bracket, or localhost, is an instance; any other is a project owner on gitlab.com. A username with a dot (john.doe/repo) reads as an instance: that is why the form names it.",
+    "cases": [
+        {
+            "server": "localhost:8080/group/project",
+            "instance": "localhost:8080",
+            "project": "group/project"
+        },
+        {
+            "server": "LOCALHOST/team/svc",
+            "instance": "localhost",
+            "project": "team/svc"
+        },
+        {
+            "server": "gitlab:8443/group/project",
+            "instance": "gitlab:8443",
+            "project": "group/project"
+        },
+        {
+            "server": "127.0.0.1:8080/group/project",
+            "instance": "127.0.0.1:8080",
+            "project": "group/project"
+        },
+        {
+            "server": "10.0.0.5/group/sub/project",
+            "instance": "10.0.0.5",
+            "project": "group/sub/project"
+        },
+        {
+            "server": "[::1]:8443/group/project",
+            "instance": "[::1]:8443",
+            "project": "group/project"
+        },
+        {
+            "server": "https://[::1]:8443/group/project",
+            "instance": "[::1]:8443",
+            "project": "group/project"
+        },
+        {
+            "server": "https://git.example.com:8443/group/project",
+            "instance": "git.example.com:8443",
+            "project": "group/project"
+        },
+        {
+            "server": "HTTPS://git.example.com:8443/group/project",
+            "instance": "git.example.com:8443",
+            "project": "group/project"
+        },
+        {
+            "server": "HtTp://LOCALHOST:8080/team/svc",
+            "instance": "localhost:8080",
+            "project": "team/svc"
+        },
+        {
+            "server": "git.example.com/group/project",
+            "instance": "git.example.com",
+            "project": "group/project"
+        },
+        {
+            "server": "gitlab.com:443/group/project",
+            "instance": "gitlab.com",
+            "project": "group/project"
+        },
+        {
+            "server": "owner/repo",
+            "instance": "gitlab.com",
+            "project": "owner/repo"
+        },
+        {
+            "server": "gitlab/group/project",
+            "instance": "gitlab.com",
+            "project": "gitlab/group/project"
+        },
+        {
+            "server": "john.doe/repo",
+            "instance": "john.doe",
+            "project": "repo"
+        },
+        {
+            "server": "::1/group/project",
+            "instance": null,
+            "project": null
+        },
+        {
+            "server": "[::1/group/project",
+            "instance": null,
+            "project": null
+        },
+        {
+            "server": "gitlab:99999/group/project",
+            "instance": null,
+            "project": null
+        },
+        {
+            "server": "user@git.example.com/group/project",
+            "instance": null,
+            "project": null
+        },
+        {
+            "server": "git.example.com?x/group/project",
+            "instance": null,
+            "project": null
+        },
+        {
+            "server": "git.example.com#x/group/project",
+            "instance": null,
+            "project": null
+        },
+        {
+            "server": "git.example.com\\x/group/project",
+            "instance": null,
+            "project": null
+        },
+        {
+            "server": ":8443/group/project",
+            "instance": null,
+            "project": null
+        },
+        {
+            "server": "",
+            "instance": null,
+            "project": null
+        }
+    ]
+}

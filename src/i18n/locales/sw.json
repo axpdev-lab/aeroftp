@@ -5961,7 +5961,8 @@
             "mrTitle": "Kichwa cha MR",
             "mrBody": "Maelezo (hiari)",
             "sourceCode": "Msimbo chanzo",
-            "downloadAssetTitle": "Pakua {name}"
+            "downloadAssetTitle": "Pakua {name}",
+            "tokenGoesTo": "Tokeni itatumwa kwa {instance}"
         },
         "mcp": {
             "title": "MCP Server",

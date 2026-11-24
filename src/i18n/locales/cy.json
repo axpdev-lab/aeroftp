@@ -5980,7 +5980,8 @@
             "mrTitle": "Teitl MR",
             "mrBody": "Disgrifiad (dewisol)",
             "sourceCode": "Cod ffynhonnell",
-            "downloadAssetTitle": "Llwytho {name} i lawr"
+            "downloadAssetTitle": "Llwytho {name} i lawr",
+            "tokenGoesTo": "Bydd y tocyn yn cael ei anfon i {instance}"
         },
         "mcp": {
             "title": "MCP Server",

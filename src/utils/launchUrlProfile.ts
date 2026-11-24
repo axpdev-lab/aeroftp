@@ -5,6 +5,53 @@ import { connectionProtocol } from '../providers/connectionManifest';
 import { resolveUsernameTemplate } from './cryptScope';
 import type { ConnectionParams, OpenRequest, ServerProfile } from '../types';
 
+/** A bare `host:port` from the connect form. A URL, a path, and an
+ *  unbracketed IPv6 address stay whole: their colons are not a port. */
+export function splitInlineHostPort(
+  server: string | undefined,
+): { host: string; port: number } | null {
+  if (!server || server.includes('://') || server.includes('/')) return null;
+  const portOf = (possiblePort: string): number | null => {
+    if (!/^[0-9]+$/.test(possiblePort)) return null;
+    const parsed = Number(possiblePort);
+    if (parsed < 1 || parsed > 65535 || String(parsed) !== possiblePort) return null;
+    return parsed;
+  };
+  if (server.startsWith('[')) {
+    const end = server.indexOf(']');
+    if (end <= 1 || server.charAt(end + 1) !== ':') return null;
+    if (server.indexOf(':', end + 2) !== -1) return null;
+    const port = portOf(server.slice(end + 2));
+    if (port === null) return null;
+    return { host: server.slice(0, end + 1), port };
+  }
+  const colon = server.indexOf(':');
+  if (colon <= 0 || colon !== server.lastIndexOf(':')) return null;
+  const port = portOf(server.slice(colon + 1));
+  if (port === null) return null;
+  return { host: server.slice(0, colon), port };
+}
+
+/** A server string safe for a debug log: no user, query, or fragment. */
+export function redactServerForLog(server: string | undefined): string | undefined {
+  if (!server) return server;
+  if (server.includes('://')) {
+    try {
+      const parsed = new URL(server);
+      return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+    } catch {
+      return '<redacted-url>';
+    }
+  }
+  const withoutUser = server.includes('@') ? server.slice(server.lastIndexOf('@') + 1) : server;
+  const query = withoutUser.indexOf('?');
+  const hash = withoutUser.indexOf('#');
+  let end = withoutUser.length;
+  if (query >= 0) end = Math.min(end, query);
+  if (hash >= 0) end = Math.min(end, hash);
+  return withoutUser.slice(0, end);
+}
+
 export type SignInProfileMatch =
   | { kind: 'found'; profile: ServerProfile }
   | { kind: 'missing' }

@@ -5961,7 +5961,8 @@
             "mrTitle": "MR virsraksts",
             "mrBody": "Apraksts (neobligāts)",
             "sourceCode": "Pirmkods",
-            "downloadAssetTitle": "Lejupielādēt {name}"
+            "downloadAssetTitle": "Lejupielādēt {name}",
+            "tokenGoesTo": "Token tiks nosūtīts uz {instance}"
         },
         "mcp": {
             "title": "MCP Server",

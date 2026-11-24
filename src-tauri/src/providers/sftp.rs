@@ -3044,6 +3044,9 @@ impl StorageProvider for SftpProvider {
 
                 self.home_dir = home;
 
+                // SFTP names are separated only by `/`. A backslash is a
+                // filename character, including in a relative start folder.
+                // Ordinary `.` and `..` navigation stays in `resolve_remote_path`.
                 self.current_dir =
                     resolve_start_dir(&self.home_dir, self.config.initial_path.as_deref());
 
@@ -7068,6 +7071,16 @@ mod tests {
         assert_eq!(super::resolve_start_dir(home, Some("/")), "/");
         assert_eq!(super::resolve_start_dir(home, Some("")), "/home/u");
         assert_eq!(super::resolve_start_dir(home, None), "/home/u");
+        // A backslash is part of the name. Neither an absolute POSIX path
+        // nor one under the login folder is a parent step.
+        assert_eq!(
+            super::resolve_start_dir(home, Some("/home/u/foo\\..\\outside")),
+            "/home/u/foo\\..\\outside"
+        );
+        assert_eq!(
+            super::resolve_start_dir(home, Some("~/foo\\..\\outside")),
+            "/home/u/foo\\..\\outside"
+        );
     }
 
     #[test]

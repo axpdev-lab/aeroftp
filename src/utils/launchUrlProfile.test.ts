@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ConnectionParams, OpenRequest, ServerProfile } from '../types';
-import { launchFolderToOpen, launchStartFolder, matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './launchUrlProfile';
+import { launchFolderToOpen, launchStartFolder, matchSignInProfile, openSessionMatchesLaunch, redactServerForLog, savedProfileMatchesLaunch, splitInlineHostPort } from './launchUrlProfile';
 
 const profile = (id: string, name: string, protocol: string, username = ''): ServerProfile =>
   ({ id, name, protocol, username, host: '', port: 443 }) as ServerProfile;
@@ -16,6 +16,30 @@ const saved = [
   profile('c', 'Only Drive', 'googledrive'),
   profile('d', 'Work', 'sftp', 'work'),
 ];
+
+describe('splitInlineHostPort', () => {
+  it('splits a bare host and port and leaves everything else whole', () => {
+    expect(splitInlineHostPort('example.com:2222')).toEqual({ host: 'example.com', port: 2222 });
+    expect(splitInlineHostPort('example.com')).toBeNull();
+    expect(splitInlineHostPort('example.com:65536')).toBeNull();
+    expect(splitInlineHostPort('example.com:0')).toBeNull();
+    expect(splitInlineHostPort('example.com:022')).toBeNull();
+    expect(splitInlineHostPort('example.com:abc')).toBeNull();
+    expect(splitInlineHostPort('2001:db8::1234')).toBeNull();
+    expect(splitInlineHostPort('https://host:8443/dav:1234')).toBeNull();
+    expect(splitInlineHostPort('[2001:db8::1]:2222')).toEqual({ host: '[2001:db8::1]', port: 2222 });
+  });
+});
+
+describe('redactServerForLog', () => {
+  it('drops userinfo, query and fragment, and leaves a bare host', () => {
+    const tokenUrl = redactServerForLog('https://host/dav?token=secret');
+    expect(tokenUrl).toBe('https://host/dav');
+    expect(tokenUrl).not.toContain('secret');
+    expect(redactServerForLog('https://alice:pw@host:8443/dav?k=v#frag')).toBe('https://host:8443/dav');
+    expect(redactServerForLog('example.com')).toBe('example.com');
+  });
+});
 
 describe('matchSignInProfile', () => {
   it('opens the profile the link names, by name or account, any case', () => {
@@ -152,6 +176,20 @@ describe('launchFolderToOpen', () => {
     // none (open_request.rs) and leaves the tab where it is.
     expect(remote).toMatch(/if \(!await switchSession\(existingSession\.id\)\) return;\s*const folder = launchFolderToOpen\(req\.initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, targetProtocol, existingSession\.id\);/);
     expect(remote).toContain('await connectToFtp(params, { initialRemotePath: launchStartFolder(req.initialPath, matchedProfile) });');
+    const connectStart = app.indexOf('const connectToFtpImpl = async');
+    const normalizeAt = app.indexOf('effectiveParams = normalizeProviderConnectionParams', connectStart);
+    const connectGate = app.slice(connectStart, normalizeAt);
+    // IntroHub form tabs pass server "example.com:2222" through overrideParams.
+    // The split stays off the Quick Connect form. A launch URL already has a
+    // separate host and port, so the helper leaves it unchanged.
+    expect(connectGate).toContain('splitInlineHostPort(effectiveParams.server)');
+    expect(connectGate).toContain('if (!overrideParams)');
+    expect(connectGate).toContain('setConnectionParams(prev => ({ ...prev, server: inlineTarget.host, port: inlineTarget.port }))');
+    const connectLog = app.slice(normalizeAt, app.indexOf("logger.debug('[connectToFtp] protocol:'", normalizeAt));
+    expect(connectLog).toContain('protocol: effectiveParams.protocol');
+    expect(connectLog).toContain('server: redactServerForLog(effectiveParams.server)');
+    expect(connectLog).toContain('port: effectiveParams.port');
+    expect(connectLog).not.toContain('logger.debug(\'[connectToFtp] effectiveParams:\', effectiveParams)');
     expect(remote).toMatch(/const match = all\.find\(s => savedProfileMatchesLaunch\(s, req\)\);\s*matchedProfile = match;/);
     expect(remote).not.toMatch(/req\.initialPath \|\| '\/'/);
     expect(saved + remote).not.toMatch(/!== '\/'/);

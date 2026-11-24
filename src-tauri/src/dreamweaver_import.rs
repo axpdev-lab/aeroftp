@@ -224,10 +224,25 @@ fn map_remote_info(ri: &str) -> MapOutcome {
     if host.trim().is_empty() {
         return MapOutcome::Skipped(access, "missing host".to_string());
     }
+    let parsed_host = (|| {
+        if protocol == "webdav" {
+            let clean = crate::bridge_shared::endpoint_without_secrets(&host)?;
+            let parts = crate::bridge_shared::split_endpoint(&clean)?;
+            let (_, inline_port) = crate::bridge_shared::split_host_port(parts.host_port)?;
+            Some((clean, inline_port))
+        } else {
+            let clean = crate::bridge_shared::try_hostname_field(&host)?;
+            crate::bridge_shared::split_host_port(&clean)
+        }
+    })();
+    let Some((host, inline_port)) = parsed_host else {
+        return MapOutcome::Skipped(access, "invalid or ambiguous host".to_string());
+    };
 
     let port = ri_attr(ri, &["port"])
         .and_then(|p| p.trim().parse::<u32>().ok())
         .filter(|p| *p > 0)
+        .or_else(|| inline_port.map(u32::from))
         .unwrap_or(default_port);
 
     let username = ri_attr(ri, &["user", "login"]).unwrap_or_default();
@@ -252,8 +267,7 @@ fn map_remote_info(ri: &str) -> MapOutcome {
         .filter(|d| !d.is_empty() && d != "/");
 
     let public_url_base = ri_attr(ri, &["webUrl", "URLPrefix", "httpaddress"])
-        .map(|u| pct_decode(u.trim()))
-        .filter(|u| !u.is_empty());
+        .and_then(|u| crate::bridge_shared::endpoint_url_without_secrets(&pct_decode(u.trim())));
 
     MapOutcome::Mapped(MappedProfile {
         protocol: protocol.to_string(),
@@ -298,8 +312,16 @@ pub struct DreamweaverSkippedRemote {
 pub struct DreamweaverImportResult {
     pub servers: Vec<ServerProfileExport>,
     pub skipped: Vec<DreamweaverSkippedRemote>,
+    pub warnings: Vec<DreamweaverImportWarning>,
     pub source_path: String,
     pub total_remotes: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DreamweaverImportWarning {
+    pub name: String,
+    pub reason: String,
 }
 
 /// Maximum number of `<site>` blocks to parse (DoS guard on crafted files).
@@ -324,6 +346,7 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
     let total_remotes = sites.len().min(MAX_SITES);
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
+    let mut warnings = Vec::new();
 
     for site in sites.into_iter().take(MAX_SITES) {
         // Real `.ste` has no `<site name>`: the site name lives URL-encoded
@@ -337,6 +360,7 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
             .or_else(|| xml_attr(&site, "name"))
             .or_else(|| xml_attr(&site, "siteName"))
             .filter(|n| !n.trim().is_empty())
+            .map(|n| crate::bridge_shared::sanitize_warning_name(&n, "Dreamweaver site"))
             .unwrap_or_else(|| "Dreamweaver site".to_string());
 
         let Some(ri) = first_tag(&site, "remoteinfo").or_else(|| first_tag(&site, "remoteInfo"))
@@ -351,6 +375,29 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
 
         match map_remote_info(&ri) {
             MapOutcome::Mapped(m) => {
+                let warn_name =
+                    crate::bridge_shared::sanitize_warning_name(&name, "Dreamweaver site");
+                if matches!(m.protocol.as_str(), "ftp" | "ftps")
+                    && ri_attr(&ri, &["usepasv", "usePasv"]).is_some_and(|value| {
+                        value.trim().eq_ignore_ascii_case("false") || value.trim() == "0"
+                    })
+                {
+                    warnings.push(DreamweaverImportWarning {
+                        name: warn_name.clone(),
+                        reason: "Dreamweaver requires active FTP for this site; AeroFTP supports passive FTP only".to_string(),
+                    });
+                }
+                // Adobe Dreamweaver exposes "Use Proxy" / `usefirewall="TRUE"` in
+                // Server More Options for both FTP/FTPS and SFTP (`accesstype="ftp"`
+                // with `useSFTP="TRUE"`).
+                if matches!(m.protocol.as_str(), "ftp" | "ftps" | "sftp")
+                    && ri_flag(&ri, &["usefirewall", "useFirewall"])
+                {
+                    warnings.push(DreamweaverImportWarning {
+                        name: warn_name,
+                        reason: "Dreamweaver firewall/proxy settings are not imported; AeroFTP will connect directly".to_string(),
+                    });
+                }
                 let id = format!(
                     "dw-{}-{}",
                     name.to_lowercase().replace(' ', "-"),
@@ -376,8 +423,11 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
                                 .as_deref()
                                 .and_then(|ai| ri_attr(ai, &["urlprefix", "urlPrefix"]))
                         })
-                        .map(|u| pct_decode(u.trim()))
-                        .filter(|u| !u.is_empty())
+                        .and_then(|u| {
+                            crate::bridge_shared::endpoint_url_without_secrets(&pct_decode(
+                                u.trim(),
+                            ))
+                        })
                 });
 
                 let has_cred = m.password.is_some();
@@ -401,7 +451,11 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
                 });
             }
             MapOutcome::Skipped(kind, reason) => {
-                skipped.push(DreamweaverSkippedRemote { name, kind, reason });
+                skipped.push(DreamweaverSkippedRemote {
+                    name,
+                    kind: crate::bridge_shared::sanitize_warning_name(&kind, "unknown"),
+                    reason,
+                });
             }
         }
     }
@@ -409,6 +463,7 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
     Ok(DreamweaverImportResult {
         servers,
         skipped,
+        warnings,
         source_path: path.display().to_string(),
         total_remotes,
     })
@@ -505,7 +560,7 @@ pub fn export_dreamweaver(
             format!(
                 "a Dreamweaver .ste holds one site and it went to \"{}\": \
                  export this profile on its own",
-                server.name
+                crate::bridge_shared::sanitize_warning_name(&server.name, "Dreamweaver site")
             ),
         );
     }
@@ -648,6 +703,100 @@ mod tests {
         ));
         std::fs::write(&p, body).unwrap();
         p
+    }
+
+    #[test]
+    fn active_ftp_and_firewall_settings_import_with_explicit_warnings() {
+        let xml = real_ste(Some("Demo@Pass2024")).replace(
+            "usefirewall=\"FALSE\" usepasv=\"TRUE\"",
+            "usefirewall=\"TRUE\" usepasv=\"FALSE\"",
+        );
+        let path = write_tmp(&xml);
+        let result = import_dreamweaver(&path).expect("parse active/firewall .ste");
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(result.servers.len(), 1);
+        assert!(result.skipped.is_empty());
+        assert_eq!(result.warnings.len(), 2);
+        assert!(result.warnings[0].reason.contains("active FTP"));
+        assert!(result.warnings[1].reason.contains("firewall/proxy"));
+        assert!(result.warnings[1].reason.contains("connect directly"));
+    }
+
+    #[test]
+    fn url_encoded_sitename_credentials_redacted_in_warnings_and_sftp_firewall_warns() {
+        let user = "dwuser";
+        let pw = "dwTopSecretPw";
+        let tok = "dwSecretTok";
+        let encoded_url =
+            format!("ftp%3A%2F%2F{user}%3A{pw}%40ftp.demo.example.com%3Ftoken%3D{tok}");
+        let xml = real_ste(Some("Demo@Pass2024"))
+            .replace("%5BA%5D%20demo.example.com", &encoded_url)
+            .replace(
+                "usefirewall=\"FALSE\" usepasv=\"TRUE\"",
+                "usefirewall=\"TRUE\" usepasv=\"FALSE\"",
+            );
+        let path = write_tmp(&xml);
+        let result = import_dreamweaver(&path).expect("parse encoded-url .ste");
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(result.warnings.len(), 2);
+        assert_eq!(result.warnings[0].name, "ftp.demo.example.com");
+        assert_eq!(result.warnings[1].name, "ftp.demo.example.com");
+        assert_eq!(result.servers[0].name, "ftp.demo.example.com");
+        let serialized =
+            serde_json::to_string(&(&result.servers, &result.skipped, &result.warnings)).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked into Dreamweaver warning: {serialized}"
+            );
+        }
+
+        let host_url = format!("ftp://{user}:{pw}@ftp.demo.example.com?token={tok}");
+        let public_url = format!("https://{user}:{pw}@www.demo.example.com/?token={tok}");
+        let no_login_xml = real_ste(None)
+            .replace("%5BA%5D%20demo.example.com", &encoded_url)
+            .replace(
+                "host=\"ftp.demo.example.com\"",
+                &format!("host=\"{host_url}\""),
+            )
+            .replace("https://www.demo.example.com/", &public_url);
+        let no_login_path = write_tmp(&no_login_xml);
+        let no_login = import_dreamweaver(&no_login_path).expect("parse .ste without pw");
+        std::fs::remove_file(&no_login_path).ok();
+        assert_eq!(no_login.skipped.len(), 1);
+        assert_eq!(no_login.skipped[0].reason, "ste exported without login");
+        assert_eq!(no_login.skipped[0].name, "ftp.demo.example.com");
+        assert_eq!(no_login.servers[0].name, "ftp.demo.example.com");
+        assert_eq!(no_login.servers[0].host, "ftp.demo.example.com");
+        assert_eq!(
+            no_login.servers[0].public_url_base.as_deref(),
+            Some("https://www.demo.example.com/")
+        );
+        let no_login_json =
+            serde_json::to_string(&(&no_login.servers, &no_login.skipped, &no_login.warnings))
+                .unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !no_login_json.contains(secret),
+                "{secret} leaked without pw: {no_login_json}"
+            );
+        }
+
+        // SFTP (`accesstype="ftp" useSFTP="TRUE"`) with `usefirewall="TRUE"` warns on firewall
+        // without emitting a false active-FTP warning.
+        let sftp_xml = real_ste(Some("Demo@Pass2024")).replace(
+            "usefirewall=\"FALSE\" usepasv=\"TRUE\" useSFTP=\"FALSE\"",
+            "usefirewall=\"TRUE\" usepasv=\"FALSE\" useSFTP=\"TRUE\"",
+        );
+        let sftp_path = write_tmp(&sftp_xml);
+        let sftp_res = import_dreamweaver(&sftp_path).expect("parse sftp firewall .ste");
+        std::fs::remove_file(&sftp_path).ok();
+        assert_eq!(sftp_res.servers[0].protocol.as_deref(), Some("sftp"));
+        assert_eq!(sftp_res.warnings.len(), 1);
+        assert!(sftp_res.warnings[0].reason.contains("firewall/proxy"));
+        assert_eq!(sftp_res.warnings[0].name, "[A] demo.example.com");
     }
 
     #[test]
@@ -817,6 +966,37 @@ mod tests {
         assert!(!xml.contains('Ã'), "no mojibake in {xml}");
         assert_eq!(back.servers[0].name, name);
         assert_eq!(back.servers[0].initial_path.as_deref(), Some(root));
+    }
+
+    #[test]
+    fn webdav_export_import_preserves_base_url_port_and_separate_remote_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WebDav.ste");
+        let servers = vec![DreamweaverExportServer {
+            id: "dw-webdav".to_string(),
+            name: "WebDAV".to_string(),
+            host: "https://dav.example.test:8443/dav/alice".to_string(),
+            port: 8443,
+            username: "alice".to_string(),
+            protocol: Some("webdav".to_string()),
+            options: None,
+            provider_id: Some("custom-webdav".to_string()),
+            initial_path: Some("/distinct-root".to_string()),
+        }];
+
+        let outcome = export_dreamweaver(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(outcome.exported, 1);
+        let back = import_dreamweaver(&path).unwrap();
+        assert_eq!(back.servers.len(), 1);
+        assert_eq!(
+            back.servers[0].host,
+            "https://dav.example.test:8443/dav/alice"
+        );
+        assert_eq!(back.servers[0].port, 8443);
+        assert_eq!(
+            back.servers[0].initial_path.as_deref(),
+            Some("/distinct-root")
+        );
     }
 
     #[test]

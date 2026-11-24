@@ -5961,7 +5961,8 @@
             "mrTitle": "MR शीर्षक",
             "mrBody": "विवरण (वैकल्पिक)",
             "sourceCode": "स्रोत कोड",
-            "downloadAssetTitle": "{name} डाउनलोड करें"
+            "downloadAssetTitle": "{name} डाउनलोड करें",
+            "tokenGoesTo": "टोकन {instance} को भेजा जाएगा"
         },
         "mcp": {
             "title": "MCP Server",

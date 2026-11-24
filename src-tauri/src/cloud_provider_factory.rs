@@ -3968,6 +3968,32 @@ mod tests {
         }
     }
 
+    /// A relative start whose `..` is isolated by a backslash is refused
+    /// before `CWD`. The login folder was not reported, so the argument is
+    /// relative and `\` is a separator. A forward-slash `..` in the same
+    /// situation stays a profile root and is covered above.
+    #[tokio::test]
+    async fn a_relative_start_with_a_backslash_parent_is_refused() {
+        let port = scripted_login_ftp(&["/home/u/docs"], false).await;
+        let mut provider = crate::providers::FtpProvider::new(crate::providers::FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: crate::providers::FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: Some("foo\\..\\outside".to_string()),
+            trust_pasv_address: false,
+        });
+        let err = provider.connect().await.expect_err("backslash parent");
+        match err {
+            crate::providers::ProviderError::InvalidPath(message) => {
+                assert!(message.contains("backslash"), "{message}");
+            }
+            other => panic!("expected InvalidPath, got {other:?}"),
+        }
+    }
+
     /// The endpoint names where a connection goes, not how it logs in: a
     /// changed password or key passphrase is the same endpoint, a changed
     /// host, port, user, starting folder or option is another one.

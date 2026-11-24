@@ -1152,8 +1152,10 @@ pub async fn refuse_a_restore_that_changes_nothing_when_listed<P: StorageProvide
 /// the file itself, and deleting it is a deletion, not a purge of history
 /// (the providers whose top row is `current` refuse it by that id already;
 /// S3 and B2 name it by a native id). A delete marker on top stays
-/// purgeable: that undeletes the file. The listing is read fresh; a listing
-/// denied (S3, B2) decides nothing, any other failure refuses the purge.
+/// purgeable: that undeletes the file. The listing is read fresh, and a
+/// purge goes on only when it shows the version is not the live one: a
+/// listing denied (S3, B2 keys with delete but no list rights) cannot tell,
+/// so it refuses the purge, as any other failure does.
 pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
@@ -1161,7 +1163,13 @@ pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
 ) -> Result<(), ProviderError> {
     let versions = match provider.list_versions(path).await {
         Ok(versions) => versions,
-        Err(ProviderError::PermissionDenied(_)) => return Ok(()),
+        Err(ProviderError::PermissionDenied(detail)) => {
+            return Err(ProviderError::PermissionDenied(format!(
+                "The versions of {path} cannot be listed with these credentials, so AeroFTP \
+                 cannot tell the live version and nothing was purged: purge it with a key \
+                 that may list versions ({detail})"
+            )))
+        }
         Err(e @ (ProviderError::NotFound(_) | ProviderError::NotConnected)) => return Err(e),
         Err(e) => {
             return Err(ProviderError::TransferFailed(format!(
@@ -1178,6 +1186,17 @@ pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
         }
         _ => Ok(()),
     }
+}
+
+/// Guard a version purge against deleting the live version (or doing so blind
+/// when the version listing is denied) and then execute `delete_version`.
+pub async fn purge_version_guarded<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<(), ProviderError> {
+    refuse_a_purge_of_the_live_version(provider, path, version_id).await?;
+    provider.delete_version(path, version_id).await
 }
 
 /// The error of a restore whose version listing failed: a file gone or
@@ -1913,17 +1932,6 @@ pub async fn response_bytes_with_limit(
         http_send_error(e, |e| ProviderError::TransferFailed(e.to_string()))
     })
     .await
-}
-
-/// [`response_bytes_with_limit`] for the window of a ranged read: a body the
-/// connection dropped halfway is a [`ProviderError::NetworkError`]
-/// ([`multi_thread::range_read_error`]), so the window is resumed from what it
-/// wrote instead of failing the download.
-pub(crate) async fn range_window_with_limit(
-    resp: reqwest::Response,
-    limit: u64,
-) -> Result<Vec<u8>, ProviderError> {
-    body_bytes_with_limit(resp, limit, multi_thread::range_read_error).await
 }
 
 /// The window of a ranged read (`offset`, `len` bytes, `len > 0`, its end
@@ -2883,6 +2891,24 @@ pub struct MultipartHandle {
     pub upload_id: String,
     /// Destination remote path or key the handle is bound to.
     pub remote_path: String,
+}
+
+/// Phrase emitted when a persisted multipart handle is unbound or stale (e.g.
+/// a legacy Nextcloud `webdav-chunked-v2` handle without destination binding, or
+/// a handle whose profile root moved) and the caller must drop any stored
+/// checkpoint before restarting the upload.
+pub(crate) const MULTIPART_RESTART_UPLOAD_HINT: &str = "start the upload again";
+
+/// Whether a multipart transfer error means the persisted handle itself cannot
+/// be resumed, so any durable checkpoint holding it must be dropped rather than
+/// kept for resume.
+pub(crate) fn is_unresumable_multipart_handle_error(err: &ProviderError) -> bool {
+    match err {
+        ProviderError::Other(msg) | ProviderError::PermissionDenied(msg) => {
+            msg.contains(MULTIPART_RESTART_UPLOAD_HINT)
+        }
+        _ => false,
+    }
 }
 
 impl std::fmt::Debug for MultipartHandle {
@@ -7459,11 +7485,15 @@ mod non_recursive_delete_tests {
             .await
             .is_err());
 
+        // A listing denied cannot tell the live version: no purge.
         let mut denied = Scripted::new(file, no_child);
         denied.versions = || Err(ProviderError::PermissionDenied("listing".into()));
-        refuse_a_purge_of_the_live_version(&mut denied, "/f", "v3")
-            .await
-            .unwrap();
+        let unknown = refuse_a_purge_of_the_live_version(&mut denied, "/f", "v3").await;
+        assert!(
+            matches!(&unknown, Err(ProviderError::PermissionDenied(m)) if m.contains("cannot tell the live version")),
+            "{unknown:?}"
+        );
+        assert_eq!(denied.calls, ["list_versions"]);
 
         let mut cut = Scripted::new(file, no_child);
         cut.versions = || Err(ProviderError::ConnectionLost("reset".into()));
@@ -8778,9 +8808,8 @@ mod http_timeout_class_tests {
         /// Requests whose error goes through `range_read_error` and then to
         /// the caller as it is (`?`).
         requests: Vec<usize>,
-        /// Body reads whose error does the same, and capped body reads made
-        /// with `range_window_with_limit`, whose error goes to the caller as
-        /// it is.
+        /// Body reads whose error does the same, and windows read with
+        /// `ranged_read_window`, whose error goes to the caller as it is.
         bodies: Vec<usize>,
         /// Every other read: a mapper that files a dropped connection as a
         /// hard failure (before `range_read_error` or after it), the
@@ -8809,7 +8838,6 @@ mod http_timeout_class_tests {
         .expect("regex");
         // Spelled in two pieces so this test is not one of its own matches.
         let whole = concat!("response_bytes", "_with_limit(");
-        let window = concat!("range_window", "_with_limit(");
         // The shared window reader maps its own body (`range_read_error`):
         // its result has to reach the caller, by `?` or as the value of
         // the block it ends.
@@ -8834,17 +8862,6 @@ mod http_timeout_class_tests {
                 let end = end + wait.end();
                 reaches_caller(end) || block_value.is_match(&body[end..])
             });
-            if kept {
-                reads.bodies.push(at);
-            } else {
-                reads.plain.push(at);
-            }
-        }
-        for (at, _) in body.match_indices(window) {
-            let end = past_close(bytes, at + window.len() - 1);
-            let kept = awaited
-                .find(&body[end..])
-                .is_some_and(|wait| reaches_caller(end + wait.end()));
             if kept {
                 reads.bodies.push(at);
             } else {
@@ -8916,8 +8933,8 @@ mod http_timeout_class_tests {
                      ProviderError::TransferFailed(e.to_string())
                  }})),
              }};
-             let body = super::{}resp, MAX).await?;",
-            concat!("range_window", "_with_limit(")
+             let body = super::{}resp, offset, len, \"x\", path).await?;",
+            concat!("ranged_read", "_window(")
         );
         assert_eq!(counts(&ranged_reads(&by_hand)), (0, 1, 1));
         let hard = format!(
@@ -8931,15 +8948,15 @@ mod http_timeout_class_tests {
         let status = format!("let text = resp{TEXT}.await.unwrap_or_default();");
         assert_eq!(ranged_reads(&status), RangedReads::default());
         let capped_again = format!(
-            "let bytes = super::{}resp, MAX)
+            "let bytes = super::{}resp, offset, len, \"x\", path)
                  .await
                  .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;",
-            concat!("range_window", "_with_limit(")
+            concat!("ranged_read", "_window(")
         );
         assert_eq!(counts(&ranged_reads(&capped_again)), (0, 0, 1));
         let capped_kept = format!(
-            "let bytes = super::{}resp, MAX).await.map(|b| b.len())?;",
-            concat!("range_window", "_with_limit(")
+            "let bytes = super::{}resp, offset, len, \"x\", path).await.map(|b| b.len())?;",
+            concat!("ranged_read", "_window(")
         );
         assert_eq!(counts(&ranged_reads(&capped_kept)), (0, 1, 0));
         let mapped_again = format!(
@@ -8951,7 +8968,7 @@ mod http_timeout_class_tests {
 
     /// The class behind `range_read_error`: inside the `read_range` of every
     /// provider, a request or a body read is mapped with `range_read_error`,
-    /// and a capped body is read with `range_window_with_limit`, so a window
+    /// and a window is read with `ranged_read_window`, so a window
     /// the connection drops is resumed from its mark instead of failing the
     /// download. B2 and Koofr filed a request with no answer as
     /// `ConnectionFailed` / `TransferFailed`, and every HTTP provider filed a
@@ -8998,7 +9015,7 @@ mod http_timeout_class_tests {
             plain.is_empty(),
             "a ranged read that files a dropped connection as a hard failure, or that the scan \
              cannot follow (map it with `multi_thread::range_read_error`, read a capped body \
-             with `range_window_with_limit`): {plain:?}"
+             with `ranged_read_window`): {plain:?}"
         );
         // The scan has to see each read it is about: a request moved into a
         // helper it does not read would pass on nothing. WebDAV, S3 and Azure
@@ -9021,6 +9038,73 @@ mod http_timeout_class_tests {
             assert!(
                 seen.contains(&(file.to_string(), kind)),
                 "no classified {kind} seen in the read_range of {file}: {seen:?}"
+            );
+        }
+    }
+
+    /// A ranged read never reads its whole answer: a server that ignores the
+    /// range sends the whole object, and a `read_range` that read it whole
+    /// before cutting the window out (Azure, Cloudinary and ImageKit did, up
+    /// to the in-memory cap) buffered the object for a small probe. Every
+    /// HTTP `read_range` reads through `ranged_read_window`; S3 reads its
+    /// window in chunks and refuses the first byte past it.
+    #[test]
+    fn no_ranged_read_reads_its_whole_answer() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        // Spelled in pieces so this test is not one of its own matches.
+        let signature = concat!("async fn ", "read_range(");
+        // The text of an error status, read for its message, is not the
+        // window and is left out.
+        let whole = [
+            concat!(".bytes", "()"),
+            concat!("bytes", "_stream("),
+            concat!("response_bytes", "_with_limit("),
+        ];
+        let chunked = concat!(".chunk", "()");
+        let mut found = Vec::new();
+        let mut shared = std::collections::BTreeSet::new();
+        for file in &files {
+            let relative = file
+                .strip_prefix(&root)
+                .expect("under providers")
+                .to_string_lossy()
+                .replace('\\', "/");
+            let source = std::fs::read_to_string(file).expect("read source");
+            for (at, _) in source.match_indices(signature) {
+                let open = at + source[at..].find('{').expect("a body");
+                let body = &source[open..past_close_brace(source.as_bytes(), open)];
+                let line = source[..at].matches('\n').count() + 1;
+                for read in whole {
+                    if body.contains(read) {
+                        found.push(format!("{relative}:{line} {read}"));
+                    }
+                }
+                if body.contains(chunked) && relative != "s3.rs" {
+                    found.push(format!("{relative}:{line} {chunked}"));
+                }
+                if body.contains(concat!("ranged_read", "_window(")) {
+                    shared.insert(relative.clone());
+                }
+            }
+        }
+        assert!(
+            found.is_empty(),
+            "a read_range that reads more than its window (read it with `ranged_read_window`): {found:?}"
+        );
+        for file in [
+            "azure.rs",
+            "b2.rs",
+            "cloudinary.rs",
+            "imagekit.rs",
+            "koofr.rs",
+            "uploadcare.rs",
+            "webdav.rs",
+        ] {
+            assert!(
+                shared.contains(file),
+                "the read_range of {file} does not read through ranged_read_window: {shared:?}"
             );
         }
     }

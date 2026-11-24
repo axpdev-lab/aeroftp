@@ -5980,7 +5980,8 @@
             "mrTitle": "Títol MR",
             "mrBody": "Descripció (opcional)",
             "sourceCode": "Codi font",
-            "downloadAssetTitle": "Baixa {name}"
+            "downloadAssetTitle": "Baixa {name}",
+            "tokenGoesTo": "El token s'enviarà a {instance}"
         },
         "mcp": {
             "title": "MCP Server",

@@ -5961,7 +5961,8 @@
             "mrTitle": "MR タイトル",
             "mrBody": "説明 (任意)",
             "sourceCode": "ソースコード",
-            "downloadAssetTitle": "{name} をダウンロード"
+            "downloadAssetTitle": "{name} をダウンロード",
+            "tokenGoesTo": "トークンは {instance} に送信されます"
         },
         "mcp": {
             "title": "MCP Server",

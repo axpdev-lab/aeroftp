@@ -5961,7 +5961,8 @@
             "mrTitle": "Заглавие на MR",
             "mrBody": "Описание (по избор)",
             "sourceCode": "Изходен код",
-            "downloadAssetTitle": "Изтегляне на {name}"
+            "downloadAssetTitle": "Изтегляне на {name}",
+            "tokenGoesTo": "Токенът ще бъде изпратен до {instance}"
         },
         "mcp": {
             "title": "MCP Server",

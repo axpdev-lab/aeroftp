@@ -474,6 +474,14 @@ fn names_a_path(raw: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// A variable that is set to a real secret. An empty value is not one:
+/// the CLI and the GUI both skip it and read the next variable, then the
+/// URL password. A set-but-empty `FTP_PASSWORD` must not hide
+/// `AEROFTP_PASSWORD` or the password written in the link.
+pub fn read_nonempty_env(var: &str) -> Option<String> {
+    std::env::var(var).ok().filter(|value| !value.is_empty())
+}
+
 impl LaunchTarget {
     pub fn token(&self) -> &'static str {
         self.scheme.token
@@ -494,7 +502,7 @@ impl LaunchTarget {
             .iter()
             .copied()
             .chain(["AEROFTP_PASSWORD"])
-            .find(|var| std::env::var(var).is_ok_and(|value| !value.is_empty()))
+            .find(|var| read_nonempty_env(var).is_some())
     }
 
     /// The port the connection is given: none for an S3 link that names its
@@ -667,8 +675,10 @@ pub fn github_repository(target: &LaunchTarget) -> Result<(String, Option<String
 /// `?branch=`): `gitlab://gitlab.com/group[/subgroup]/project[@branch]`. The
 /// whole path is the project, so the URL opens it at its root. A port stays
 /// in the host (`git.example.com:8443/group/project`), the only place the
-/// backend reads one, and a host without a dot is refused: the backend would
-/// read it as a project owner on gitlab.com and send the token there.
+/// backend reads one. The host must be one the backend reads as an instance
+/// (a dot, `localhost`, a port or an IP address): a bare name is refused,
+/// because the backend would read it as a project owner on gitlab.com and
+/// send the token there.
 pub fn gitlab_project(target: &LaunchTarget) -> Result<(String, Option<String>), String> {
     const SHAPE: &str =
         "GitLab URL must be gitlab://host/group/project or gitlab://host/group/project@branch";
@@ -685,18 +695,22 @@ pub fn gitlab_project(target: &LaunchTarget) -> Result<(String, Option<String>),
     if target.host.is_empty() || !project.contains('/') {
         return Err(SHAPE.to_string());
     }
-    if !target.host.contains('.') {
-        return Err(format!(
-            "GitLab URL host '{}' must be the instance's full name (gitlab.com, git.example.com): \
-             a name without a dot would be read as a project on gitlab.com",
-            target.host
-        ));
-    }
-    let branch = repository_branch(target, branch)?;
     let host = match target.port {
         Some(port) => format!("{}:{port}", target.host),
         None => target.host.clone(),
     };
+    if !matches!(
+        crate::providers::gitlab::instance_authority(&host),
+        Ok(Some(_))
+    ) {
+        return Err(format!(
+            "GitLab URL host '{}' must name the instance (gitlab.com, git.example.com, localhost, \
+             10.0.0.5, [::1], or a name with its port such as gitlab:8443): a bare name would be \
+             read as a project on gitlab.com",
+            target.host
+        ));
+    }
+    let branch = repository_branch(target, branch)?;
     Ok((format!("{host}/{project}"), branch))
 }
 
@@ -1257,8 +1271,39 @@ mod tests {
             api_base("gitlab://gitlab.com/group/project").unwrap(),
             ("https://gitlab.com/api/v4".into(), "group/project".into())
         );
-        assert!(api_base("gitlab://gitlab/group/project").is_err());
-        assert!(api_base("gitlab://gitlab:8443/group/project").is_err());
+        // A self-hosted instance named by a short name with its port, by
+        // localhost or by an IP address is that instance, port kept.
+        for (raw, api) in [
+            (
+                "gitlab://gitlab:8443/group/project",
+                "https://gitlab:8443/api/v4",
+            ),
+            (
+                "gitlab://localhost:8080/group/project",
+                "https://localhost:8080/api/v4",
+            ),
+            (
+                "gitlab://localhost/group/project",
+                "https://localhost/api/v4",
+            ),
+            (
+                "gitlab://127.0.0.1:8080/group/project",
+                "https://127.0.0.1:8080/api/v4",
+            ),
+            (
+                "gitlab://[::1]:8443/group/project",
+                "https://[::1]:8443/api/v4",
+            ),
+        ] {
+            assert_eq!(
+                api_base(raw).unwrap(),
+                (api.into(), "group/project".into()),
+                "{raw}"
+            );
+        }
+        // A bare name is a project owner to the backend: refused, never gitlab.com.
+        let err = api_base("gitlab://gitlab/group/project").unwrap_err();
+        assert!(err.contains("must name the instance"), "{err}");
         // An encoded delimiter never comes back into the host once decoded.
         for raw in [
             "gitlab://gitlab%2Fother.example/group/project",
@@ -1583,9 +1628,17 @@ mod tests {
         assert_eq!(target.env_secret().as_deref(), Some("specific"));
         std::env::set_var("IMMICH_API_KEY", "");
         assert_eq!(target.env_secret().as_deref(), Some("generic"));
+        assert_eq!(read_nonempty_env("IMMICH_API_KEY"), None);
         std::env::remove_var("IMMICH_API_KEY");
         std::env::remove_var("AEROFTP_PASSWORD");
         assert_eq!(target.env_secret(), None);
+        let cli = include_str!("bin/aeroftp_cli.rs");
+        let start = cli.find("fn resolve_password(").expect("resolve_password");
+        let window = &cli[start..start + 1800];
+        assert!(
+            window.contains("read_nonempty_env"),
+            "the CLI password chain skips an empty variable, as env_secret_var does"
+        );
 
         let s3 = parse("s3://h/?bucket=b").unwrap();
         std::env::set_var("AWS_ACCESS_KEY_ID", "AKENV");

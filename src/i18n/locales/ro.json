@@ -5961,7 +5961,8 @@
             "mrTitle": "Titlul MR",
             "mrBody": "Descriere (opțional)",
             "sourceCode": "Cod sursă",
-            "downloadAssetTitle": "Descărcați {name}"
+            "downloadAssetTitle": "Descărcați {name}",
+            "tokenGoesTo": "Tokenul va fi trimis către {instance}"
         },
         "mcp": {
             "title": "MCP Server",
