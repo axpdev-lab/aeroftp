@@ -1083,7 +1083,8 @@ fn apply_eval_with_slots<S: SecretSlots>(
             }
         };
 
-        if let Err(e) = user_partitions::mirror_active_profiles_to_legacy_blob(store, &stored_list)
+        if let Err(e) =
+            user_partitions::mirror_active_profiles_to_legacy_blob(store, Some(user), &stored_list)
         {
             tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
         }

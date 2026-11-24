@@ -2117,7 +2117,7 @@ fn save_partition_list(
     store: &crate::credential_store::CredentialStore,
     db: &Path,
     profiles: &[serde_json::Value],
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<(Vec<serde_json::Value>, i64), String> {
     let mut conn = crate::user_partitions::open_restored_db(db)
         .map_err(|e| format!("open {}: {e}", db.display()))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
@@ -2125,8 +2125,10 @@ fn save_partition_list(
     let saved = crate::user_partitions::replace_active_server_profiles_under_lock(
         &mut conn, &root_key, profiles,
     );
+    let owner =
+        crate::user_partitions::active_user_id(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string());
     root_key.zeroize();
-    saved
+    Ok((saved?, owner?))
 }
 
 /// Make the legacy blob the active account's list
@@ -2505,12 +2507,18 @@ fn apply_profile_decisions(
         // let the next load put back the restored list and drop the decisions.
         // The blob takes the list as stored: no two profiles of one name,
         // with or without a partition (`util::profile_name`).
-        let stored = match db.as_deref() {
-            Some(db) => save_partition_list(store, db, &outcome.profiles)
-                .map_err(|e| format!("save the chosen server list: {e}"))?,
-            None => crate::util::profile_name::unique_profile_names(&[], &outcome.profiles).0,
+        let (stored, owner) = match db.as_deref() {
+            Some(db) => {
+                let (stored, owner) = save_partition_list(store, db, &outcome.profiles)
+                    .map_err(|e| format!("save the chosen server list: {e}"))?;
+                (stored, Some(owner))
+            }
+            None => (
+                crate::util::profile_name::unique_profile_names(&[], &outcome.profiles).0,
+                inputs.receiver.map(|receiver| receiver.user_id),
+            ),
         };
-        crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, &stored)?;
+        crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, owner, &stored)?;
         Ok(())
     })();
 

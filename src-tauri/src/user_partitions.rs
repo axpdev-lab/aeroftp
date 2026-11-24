@@ -35,6 +35,11 @@ const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
 /// Vault account of the single-user profile list that predates partitions.
 /// Still read by several subsystems, so it mirrors the active user.
 const LEGACY_PROFILES_BLOB: &str = "config_server_profiles";
+/// Vault account naming the user whose list [`LEGACY_PROFILES_BLOB`] holds,
+/// written with the blob under [`ProfileListLock`]. A read binds the list to
+/// an account only when this owner is the active one; without it nobody is
+/// bound.
+const LEGACY_PROFILES_OWNER: &str = "config_server_profiles_owner";
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
 const LEGACY_OWNER_KEY: &str = "legacy_credential_owner_id";
@@ -10657,22 +10662,42 @@ pub fn cli_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
 /// as the CLI, so no other partition's profile names reach the shared blob.
 ///
 /// Writes only when the list differs (compared as JSON values, so key order in
-/// the serialized form does not cause a rewrite). Returns whether it wrote.
+/// the serialized form does not cause a rewrite). `owner` is the account the
+/// list belongs to: it is written to [`LEGACY_PROFILES_OWNER`] in the same
+/// step, after the blob, so a crash between the two leaves the older owner,
+/// which refuses the bind rather than proving a wrong one; `None` removes the
+/// key, since without an account there is no owner to prove. Returns whether
+/// it wrote.
 pub fn mirror_active_profiles_to_legacy_blob(
     store: &CredentialStore,
+    owner: Option<i64>,
     profiles: &[Value],
 ) -> Result<bool, String> {
     let current = get_optional_store_entry(store, LEGACY_PROFILES_BLOB)?
         .and_then(|raw| serde_json::from_str::<Vec<Value>>(&raw).ok());
-    if current.as_deref() == Some(profiles) {
-        return Ok(false);
+    let owner_current = get_optional_store_entry(store, LEGACY_PROFILES_OWNER)?
+        .and_then(|raw| raw.trim().parse::<i64>().ok());
+    let mut wrote = false;
+    if current.as_deref() != Some(profiles) {
+        let serialized =
+            serde_json::to_string(profiles).map_err(|e| format!("Serialize profiles: {e}"))?;
+        store
+            .store(LEGACY_PROFILES_BLOB, &serialized)
+            .map_err(|e| format!("Write {LEGACY_PROFILES_BLOB}: {e}"))?;
+        wrote = true;
     }
-    let serialized =
-        serde_json::to_string(profiles).map_err(|e| format!("Serialize profiles: {e}"))?;
-    store
-        .store(LEGACY_PROFILES_BLOB, &serialized)
-        .map_err(|e| format!("Write {LEGACY_PROFILES_BLOB}: {e}"))?;
-    Ok(true)
+    if owner_current != owner {
+        match owner {
+            Some(owner) => store
+                .store(LEGACY_PROFILES_OWNER, &owner.to_string())
+                .map_err(|e| format!("Write {LEGACY_PROFILES_OWNER}: {e}"))?,
+            None => {
+                let _ = store.delete(LEGACY_PROFILES_OWNER);
+            }
+        }
+        wrote = true;
+    }
+    Ok(wrote)
 }
 
 /// Read the active user's profiles from the partition database at `db_path`
@@ -10691,7 +10716,16 @@ pub fn refresh_legacy_profiles_blob_from_db(
     if !db_path.is_file() {
         return Ok(false);
     }
-    mirror_active_profiles_to_legacy_blob(store, &read_active_profiles_from_db(store, db_path)?)
+    let conn = Connection::open_with_flags(
+        db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let owner = active_user_id(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let profiles = list_server_profiles_for(&conn, &root_key, owner);
+    root_key.zeroize();
+    mirror_active_profiles_to_legacy_blob(store, Some(owner), &profiles?)
 }
 
 /// The active user's profiles in the partition database at `db_path`, opened
@@ -10793,7 +10827,7 @@ pub fn mirror_latest_profiles_to_legacy_blob(store: &CredentialStore, user_id: i
         }
         let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
         let list = list_server_profiles_for(&conn, &root_key, user_id)?;
-        mirror_active_profiles_to_legacy_blob(store, &list).map(|_| ())
+        mirror_active_profiles_to_legacy_blob(store, Some(user_id), &list).map(|_| ())
     })();
     if let Err(e) = mirrored {
         tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
@@ -10830,7 +10864,7 @@ fn mirror_after_load(
             return Ok(false);
         }
         let list = list_server_profiles_for(conn, root_key, user_id)?;
-        mirror_active_profiles_to_legacy_blob(store, &list)
+        mirror_active_profiles_to_legacy_blob(store, Some(user_id), &list)
     });
     if let Err(e) = mirrored {
         tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
@@ -12060,10 +12094,75 @@ pub(crate) fn adopt_legacy_blob_under_lock(
         return Ok(None);
     };
     let stored = replace_server_profiles_under_lock(conn, root_key, user_id, &list)?;
-    if let Err(e) = mirror_active_profiles_to_legacy_blob(store, &stored) {
+    if let Err(e) = mirror_active_profiles_to_legacy_blob(store, Some(user_id), &stored) {
         tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
     }
     Ok(Some(stored))
+}
+
+/// The active account of the partitions database at `path`, read without
+/// migrating or creating it. `Ok(None)` when the file is absent or holds no
+/// active account; `Err` when it exists but cannot be read, which a caller
+/// must not mistake for "no account".
+fn active_user_id_readonly(path: &std::path::Path) -> Result<Option<i64>, String> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let conn = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("Open user partitions DB: {e}"))?;
+    active_user_id(&conn)
+}
+
+/// What [`user_partitions_read_legacy_server_profiles`] answers: the legacy
+/// blob, its recorded owner and the active account, all read under
+/// [`ProfileListLock`] so a mirror cannot swap them apart. `profiles` is
+/// `None` when the blob holds no list.
+#[derive(serde::Serialize)]
+pub struct LegacyServerProfilesRead {
+    pub profiles: Option<Vec<Value>>,
+    pub active_user_id: Option<i64>,
+    pub owner_user_id: Option<i64>,
+    /// The database exists but its active account could not be read: neither
+    /// "no account" nor a known one, so the caller keeps the owner unknown.
+    pub accounts_unknown: bool,
+}
+
+/// Read the legacy `config_server_profiles` blob together with its owner and
+/// the active account, under [`ProfileListLock`]: the proof a read-modify-write
+/// binds the list to. Without an active account the list is unbound; with one,
+/// the owner must be that same account or the caller refuses. The two status
+/// calls this replaces could pass an A, B, A switch; here the triple is read
+/// in one locked step.
+#[tauri::command]
+pub async fn user_partitions_read_legacy_server_profiles(
+    app: AppHandle,
+) -> Result<LegacyServerProfilesRead, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let path = db_path(&app)?;
+    let lock = ProfileListLock::acquire_for_path(&path)?;
+    if !lock.is_exclusive() {
+        return Err(NO_FILE_LOCKS.to_string());
+    }
+    let raw = get_optional_store_entry(&store, LEGACY_PROFILES_BLOB)?;
+    let profiles = raw
+        .map(|raw| serde_json::from_str::<Vec<Value>>(&raw))
+        .transpose()
+        .map_err(|e| format!("Invalid saved profiles: {e}"))?;
+    let owner_raw = get_optional_store_entry(&store, LEGACY_PROFILES_OWNER)?;
+    let owner_user_id = owner_raw.and_then(|raw| raw.trim().parse::<i64>().ok());
+    let (active_user_id, accounts_unknown) = match active_user_id_readonly(&path) {
+        Ok(active) => (active, false),
+        Err(_) => (None, true),
+    };
+    Ok(LegacyServerProfilesRead {
+        profiles,
+        active_user_id,
+        owner_user_id,
+        accounts_unknown,
+    })
 }
 
 /// Keep `profiles` in the legacy store, for a frontend whose partition could not
@@ -12105,6 +12204,17 @@ pub async fn user_partitions_store_legacy_server_profiles(
     store
         .store(LEGACY_PROFILES_BLOB, &serialized)
         .map_err(|e| format!("Store server profiles in vault: {e}"))?;
+    // The blob names its account in LEGACY_PROFILES_OWNER: with the active
+    // account readable the list is its mirror, without proof the key goes so
+    // no stale owner binds the list later.
+    match active_user_id_readonly(&db_path(&app)?) {
+        Ok(Some(owner)) => store
+            .store(LEGACY_PROFILES_OWNER, &owner.to_string())
+            .map_err(|e| format!("Store {LEGACY_PROFILES_OWNER}: {e}"))?,
+        _ => {
+            let _ = store.delete(LEGACY_PROFILES_OWNER);
+        }
+    }
     Ok(stored)
 }
 
@@ -13165,10 +13275,11 @@ mod tests {
             .unwrap();
 
         let current = vec![json!({ "id": "srv_drive", "name": "Drive 2TB" })];
-        assert!(mirror_active_profiles_to_legacy_blob(&store, &current).unwrap());
+        assert!(mirror_active_profiles_to_legacy_blob(&store, Some(7), &current).unwrap());
         let stored: Vec<Value> =
             serde_json::from_str(&store.get(LEGACY_PROFILES_BLOB).unwrap()).unwrap();
         assert_eq!(stored, current);
+        assert_eq!(store.get(LEGACY_PROFILES_OWNER).unwrap(), "7");
 
         store
             .store(
@@ -13176,7 +13287,14 @@ mod tests {
                 r#"[{"name":"Drive 2TB","id":"srv_drive"}]"#,
             )
             .unwrap();
-        assert!(!mirror_active_profiles_to_legacy_blob(&store, &current).unwrap());
+        assert!(!mirror_active_profiles_to_legacy_blob(&store, Some(7), &current).unwrap());
+        // A different owner rewrites the tag even when the list stands.
+        assert!(mirror_active_profiles_to_legacy_blob(&store, Some(9), &current).unwrap());
+        assert_eq!(store.get(LEGACY_PROFILES_OWNER).unwrap(), "9");
+        assert!(mirror_active_profiles_to_legacy_blob(&store, None, &current).unwrap());
+        assert!(get_optional_store_entry(&store, LEGACY_PROFILES_OWNER)
+            .unwrap()
+            .is_none());
     }
 
     /// A Move drops the source secret only after the copy reached somewhere.

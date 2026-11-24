@@ -26294,7 +26294,9 @@ fn import_server_profiles_blocking(
         };
         // The blob mirrors the active account. The partition write succeeded, so
         // a mirror failure is a warning.
-        if let Err(e) = user_partitions::mirror_active_profiles_to_legacy_blob(&store, &list) {
+        if let Err(e) =
+            user_partitions::mirror_active_profiles_to_legacy_blob(&store, Some(user), &list)
+        {
             tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
         }
         let shared = restore_shared_import_secrets(
@@ -26378,7 +26380,9 @@ pub fn store_imported_profiles<T>(
                 continue;
             }
         };
-        if let Err(e) = user_partitions::mirror_active_profiles_to_legacy_blob(store, &stored) {
+        if let Err(e) =
+            user_partitions::mirror_active_profiles_to_legacy_blob(store, Some(user), &stored)
+        {
             tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
         }
         return Ok((result, sent, stored));
@@ -29479,6 +29483,7 @@ pub fn run() {
             user_partitions::user_partitions_load_active_server_profiles_scoped,
             user_partitions::user_partitions_save_active_server_profiles,
             user_partitions::user_partitions_store_legacy_server_profiles,
+            user_partitions::user_partitions_read_legacy_server_profiles,
             user_partitions::user_partitions_relocate_server_profile,
             user_partitions::user_partitions_add_user,
             user_partitions::user_partitions_copy_user,

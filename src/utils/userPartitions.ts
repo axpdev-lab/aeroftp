@@ -89,6 +89,18 @@ export const saveActiveServerProfiles = (profiles: ServerProfile[], expectedUser
 export const storeLegacyServerProfiles = (profiles: ServerProfile[], expectedList?: ServerProfile[]): Promise<ServerProfile[]> =>
     invoke<ServerProfile[]>('user_partitions_store_legacy_server_profiles', { profiles, expectedList });
 
+/** The legacy blob, its recorded owner and the active account, read together under the list lock. */
+export interface LegacyServerProfilesRead {
+    profiles: ServerProfile[] | null;
+    activeUserId?: number | null;
+    ownerUserId?: number | null;
+    /** The partitions database exists but its active account could not be read. */
+    accountsUnknown?: boolean;
+}
+
+export const readLegacyServerProfilesBound = (): Promise<LegacyServerProfilesRead> =>
+    invoke<LegacyServerProfilesRead>('user_partitions_read_legacy_server_profiles');
+
 export const addUser = (
     name: string,
     avatarEmoji?: string | null,

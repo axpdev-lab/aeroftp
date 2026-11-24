@@ -5,10 +5,9 @@ import type { ServerProfile } from '../types';
 import { secureGet, secureStore } from './secureStorage';
 import {
     accountChangeGeneration,
-    getUnlockStatus,
-    listUsers,
     loadActiveServerProfiles,
     loadActiveServerProfilesScoped,
+    readLegacyServerProfilesBound,
     saveActiveServerProfiles,
     storeLegacyServerProfiles,
 } from './userPartitions';
@@ -178,40 +177,25 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
         return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
     } catch (error) {
         if (!canUseLegacyProfileFallback(error)) throw error;
-        // The legacy store has no account, but the secrets a removed or
-        // duplicated profile's purge and copy touch live under the account
-        // active while the list is read. The status is captured before AND
-        // after the legacy load: a switch in between refuses the whole
-        // read-modify-write with ACCOUNT_CHANGED instead of binding them to
-        // the account that became active. This check does not depend on
-        // the partition opening.
-        const statusBefore = await getUnlockStatus().catch(() => null);
-        const legacy = await loadLegacySavedServerProfiles();
+        // The legacy store has no account of its own: the blob carries the id
+        // of the account whose list it mirrors, written with it under the
+        // list lock. One command reads the blob, that owner and the active
+        // account together, so a switch the two status calls used to miss
+        // (A, then B, then A again during the load) cannot bind the list to
+        // the wrong account. Without an active account the list stays
+        // unbound; with one, the owner must be that same account.
+        const locked = await readLegacyServerProfilesBound();
+        const legacy = locked.profiles ?? await loadLegacySavedServerProfiles();
         if (legacy.length === 0) throw error;
-        const statusAfter = await getUnlockStatus().catch(() => null);
-        const activeBefore = statusBefore?.activeUserId ?? undefined;
-        const activeAfter = statusAfter?.activeUserId ?? undefined;
-        if (statusBefore !== null && statusAfter !== null && activeBefore !== activeAfter) {
-            throw new Error('ACCOUNT_CHANGED: the active account changed while the profiles were read; nothing was saved');
-        }
-        // When the status call failed on either side the active-account
-        // fallback is safe only when no accounts exist at all (the purge
-        // then resolves no account and reads the vault). With accounts
-        // present, or when even the list cannot be read, the owner stays
-        // unknown and no account is bound to the read.
-        let ownerUnknown = false;
-        let boundUserId: number | undefined;
-        if (statusBefore === null || statusAfter === null) {
-            const accounts = await listUsers().catch(() => null);
-            ownerUnknown = accounts === null || accounts.length > 0;
-        } else {
-            boundUserId = activeAfter;
+        const active = locked.activeUserId ?? undefined;
+        if (active !== undefined && locked.ownerUserId !== active) {
+            throw new Error('ACCOUNT_CHANGED: the active account is not the owner of these profiles; nothing was saved');
         }
         return {
             profiles: legacy,
-            userId: boundUserId,
-            activeUserId: boundUserId,
-            ownerUnknown,
+            userId: active,
+            activeUserId: active,
+            ownerUnknown: locked.accountsUnknown === true,
             revision: LEGACY_STORE_REVISION + JSON.stringify(legacy),
         };
     }
