@@ -55,11 +55,24 @@ fn discovery_test_record(bound: i64) {
 }
 
 /// Arm the `discover_team` fixture: the next discovery calls move the
-/// active account to `active_user` and log the bound account of each.
+/// active account to `active_user` and log the bound account of each. The
+/// returned guard disarms the fixture on drop, so a panicking assert cannot
+/// leave it armed for the next test on the same thread.
 #[cfg(test)]
-pub(crate) fn arm_discovery_test_fixture(active_user: i64) {
+pub(crate) fn arm_discovery_test_fixture(active_user: i64) -> DiscoveryTestFixtureGuard {
     DISCOVERY_TEST_FIXTURE.with(|c| c.set(Some(DiscoveryTestFixture { active_user })));
     DISCOVERY_TEST_LOG.with(|l| l.borrow_mut().clear());
+    DiscoveryTestFixtureGuard
+}
+
+#[cfg(test)]
+pub(crate) struct DiscoveryTestFixtureGuard;
+
+#[cfg(test)]
+impl Drop for DiscoveryTestFixtureGuard {
+    fn drop(&mut self) {
+        DISCOVERY_TEST_FIXTURE.with(|c| c.set(None));
+    }
 }
 
 /// The accounts the armed `discover_team` calls were bound to, in order.
@@ -12083,7 +12096,7 @@ mod tests {
                 .unwrap();
         crate::user_partitions::cli_set_active_user(&store, active.id).unwrap();
 
-        arm_discovery_test_fixture(active.id);
+        let fixture = arm_discovery_test_fixture(active.id);
         let _ = ZohoWorkdriveProvider::rclone_root_folder_id_for_export(
             "zoho-profile",
             "cid",
@@ -12093,6 +12106,8 @@ mod tests {
         )
         .await;
         assert_eq!(discovery_test_log(), vec![captured.id]);
+        drop(fixture);
+        assert!(discovery_test_fixture().is_none());
 
         crate::credential_store::CredentialStore::clear_cache();
         match previous_xdg {

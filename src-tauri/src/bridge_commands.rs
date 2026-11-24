@@ -40,10 +40,22 @@ thread_local! {
 }
 
 /// Arm the crypt-export fixture: vault reads switch the active account to
-/// `user_id` first. `None` disarms it.
+/// `user_id` first. The returned guard disarms it on drop, so a panicking
+/// assert cannot leave it armed for the next test on the same thread.
 #[cfg(test)]
-pub(crate) fn arm_crypt_export_active_switch(user_id: Option<i64>) {
-    CRYPT_EXPORT_ACTIVE_SWITCH.with(|c| c.set(user_id));
+pub(crate) fn arm_crypt_export_active_switch(user_id: i64) -> CryptExportSwitchGuard {
+    CRYPT_EXPORT_ACTIVE_SWITCH.with(|c| c.set(Some(user_id)));
+    CryptExportSwitchGuard
+}
+
+#[cfg(test)]
+pub(crate) struct CryptExportSwitchGuard;
+
+#[cfg(test)]
+impl Drop for CryptExportSwitchGuard {
+    fn drop(&mut self) {
+        CRYPT_EXPORT_ACTIVE_SWITCH.with(|c| c.set(None));
+    }
 }
 
 fn known(source: &str) -> Result<(), String> {
@@ -3466,7 +3478,7 @@ mod tests {
                 )
                 .unwrap();
             }
-            arm_crypt_export_active_switch(Some(active));
+            let fixture = arm_crypt_export_active_switch(active);
             let overlay = json!({
                 "enabled": true,
                 "kind": "rclone-crypt",
@@ -3481,7 +3493,7 @@ mod tests {
                 Some(&overlay),
                 Some(captured),
             );
-            arm_crypt_export_active_switch(None);
+            drop(fixture);
             let opts = options.unwrap();
             assert_eq!(opts["rcloneCryptPassword"], json!("pw-of-A"));
             assert_eq!(opts["rcloneCryptPassword2"], json!("salt-of-A"));
