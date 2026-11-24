@@ -3321,6 +3321,7 @@ mod tests {
                     false,
                     &path.to_string_lossy(),
                     None,
+                    Some(crate::user_partitions::LEGACY_ONLY_ACCOUNT),
                     |_| None,
                 )
                 .await
