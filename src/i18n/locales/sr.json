@@ -5959,7 +5959,8 @@
             "mrTitle": "MR наслов",
             "mrBody": "Опис (опционо)",
             "sourceCode": "Изворни код",
-            "downloadAssetTitle": "Преузми {name}"
+            "downloadAssetTitle": "Преузми {name}",
+            "tokenGoesTo": "Токен ће бити послат на {instance}"
         },
         "mcp": {
             "title": "MCP сервер",

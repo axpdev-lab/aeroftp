@@ -35,6 +35,10 @@ pub(crate) struct ProbeFake {
     /// `delete` first records `prepare <path>` and takes a permit of this,
     /// as a backend that looks the file up before it removes it.
     pub delete_gate: Option<std::sync::Arc<tokio::sync::Semaphore>>,
+    /// Error returned by `list_versions` when set (e.g. `PermissionDenied`).
+    pub list_versions_error: Option<fn() -> ProviderError>,
+    /// Version rows returned by `list_versions` when `list_versions_error` is `None`.
+    pub versions: Vec<super::FileVersion>,
 }
 
 impl ProbeFake {
@@ -52,6 +56,8 @@ impl ProbeFake {
             child_gate: None,
             shared_writes: None,
             delete_gate: None,
+            list_versions_error: None,
+            versions: Vec::new(),
         }
     }
 
@@ -230,5 +236,22 @@ impl StorageProvider for ProbeFake {
     }
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         Ok("probe-fake".to_string())
+    }
+    async fn list_versions(
+        &mut self,
+        _path: &str,
+    ) -> Result<Vec<super::FileVersion>, ProviderError> {
+        if let Some(error) = self.list_versions_error {
+            return Err(error());
+        }
+        Ok(self.versions.clone())
+    }
+    async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        let entry = format!("delete_version {path} {version_id}");
+        if let Some(shared) = &self.shared_writes {
+            shared.lock().unwrap().push(entry.clone());
+        }
+        self.writes.push(entry);
+        Ok(())
     }
 }

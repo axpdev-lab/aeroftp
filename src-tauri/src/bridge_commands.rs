@@ -3007,6 +3007,33 @@ mod tests {
                 let bytes = std::fs::read(file).unwrap_or_default();
                 written.push_str(&String::from_utf8_lossy(&bytes).replace('\0', ""));
             }
+            if matches!(*source, "mc" | "s3cmd" | "kopia") {
+                assert!(out["skipped"].as_array().unwrap().iter().any(|skip| {
+                    skip["name"] == "filled"
+                        && skip["reason"].as_str().is_some_and(|reason| {
+                            reason.contains("initial directory") || reason.contains("initial path")
+                        })
+                }));
+                assert!(
+                    written.is_empty(),
+                    "{source} wrote an unrepresentable start folder"
+                );
+                assert!(!path.exists(), "{source} created a destination on refusal");
+                std::fs::write(&path, b"existing destination").unwrap();
+                let refused = export_bridge_profiles(
+                    source,
+                    &servers,
+                    false,
+                    &path.to_string_lossy(),
+                    None,
+                    |_| None,
+                )
+                .await
+                .unwrap();
+                assert_eq!(refused["exported"], 0, "{source}: {refused}");
+                assert_eq!(std::fs::read(&path).unwrap(), b"existing destination");
+                continue;
+            }
             assert!(!written.is_empty(), "{source}: nothing written");
             assert!(
                 !written.contains("{username}"),

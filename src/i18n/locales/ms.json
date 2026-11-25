@@ -5959,7 +5959,8 @@
             "mrTitle": "Tajuk MR",
             "mrBody": "Penerangan (pilihan)",
             "sourceCode": "Kod sumber",
-            "downloadAssetTitle": "Muat turun {name}"
+            "downloadAssetTitle": "Muat turun {name}",
+            "tokenGoesTo": "Token akan dihantar ke {instance}"
         },
         "mcp": {
             "title": "MCP Server",

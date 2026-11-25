@@ -5978,7 +5978,8 @@
             "mrTitle": "MR titill",
             "mrBody": "Lýsing (valfrjálst)",
             "sourceCode": "Frumkóði",
-            "downloadAssetTitle": "Sækja {name}"
+            "downloadAssetTitle": "Sækja {name}",
+            "tokenGoesTo": "Tókinn verður sendur til {instance}"
         },
         "mcp": {
             "title": "MCP Server",

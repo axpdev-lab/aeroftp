@@ -64,12 +64,13 @@ describe('ConfigurationTemplatePanel', () => {
         vi.mocked(invoke).mockImplementation(async (cmd, args) => {
             if (cmd === 'preview_configuration_template') {
                 const payload = args as { options: { secretForms?: Record<string, string>; existing: string } };
-                const chosenForm = payload.options.secretForms?.alpha ?? null;
+                const chosenForm = payload.options.secretForms?.['source-alpha'] ?? null;
                 return {
                     rows: [
                         {
                             fileIndex: 0,
                             blockName: 'alpha',
+                            selectionId: 'source-alpha',
                             targetName: 'alpha',
                             startLine: 1,
                             protocol: 'sftp',
@@ -203,7 +204,7 @@ describe('ConfigurationTemplatePanel', () => {
         expect(vi.mocked(invoke)).toHaveBeenLastCalledWith(
             'preview_configuration_template',
             expect.objectContaining({
-                options: expect.objectContaining({ secretForms: { alpha: 'clear' } }),
+                options: expect.objectContaining({ secretForms: { 'source-alpha': 'clear' } }),
             }),
         );
         expect(submitBtn.disabled).toBe(false);
@@ -218,8 +219,8 @@ describe('ConfigurationTemplatePanel', () => {
             'import_configuration_template',
             expect.objectContaining({
                 options: expect.objectContaining({
-                    secretForms: { alpha: 'clear' },
-                    selectedBlocks: ['alpha'],
+                    secretForms: { 'source-alpha': 'clear' },
+                    selectedBlocks: ['source-alpha'],
                     expectedDigestSha256: 'abc123',
                     expectedPlanDigestSha256: 'plan-sha-1',
                     expectedUserId: 7,
@@ -751,15 +752,16 @@ describe('ConfigurationTemplatePanel', () => {
 });
 
 describe('ConfigurationTemplatePanel review state across previews', () => {
-    type Block = { name: string; relaxed?: boolean; secret?: boolean };
+    type Block = { name: string; selectionId?: string; relaxed?: boolean; secret?: boolean };
     /** A preview report of `blocks`, in that order; `forms` are the chosen
      *  secret forms. */
     const report = (blocks: Block[], forms: Record<string, string> = {}) => ({
         rows: blocks.map((block, fileIndex) => ({
-            fileIndex, blockName: block.name, targetName: block.name, startLine: 1 + fileIndex * 4,
+            fileIndex, blockName: block.name, selectionId: block.selectionId, targetName: block.name, startLine: 1 + fileIndex * 4,
             protocol: 'webdav', providerId: null, host: `${block.name}.example.com`, port: 443, username: 'u',
             hasCredential: false, hasSecretInput: !!block.secret, looksObscured: false,
-            secretForm: forms[block.name] ?? null, needsSecretFormChoice: !!block.secret && !forms[block.name],
+            secretForm: forms[block.selectionId ?? block.name] ?? null,
+            needsSecretFormChoice: !!block.secret && !forms[block.selectionId ?? block.name],
             existingMatchId: null, existingMatchName: null, action: 'add', duplicateInTemplate: false,
             secretDisposition: 'none', secretNote: '',
         })),
@@ -818,6 +820,36 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
         expect(host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!.disabled).toBe(true);
     });
 
+    it('keeps different secret forms on rows with the same display name', async () => {
+        vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+            if (cmd === 'preview_configuration_template') {
+                const forms = (args as { options: { secretForms?: Record<string, string> } }).options.secretForms ?? {};
+                return report([
+                    { name: 'vault', selectionId: 'source-a', secret: true },
+                    { name: 'vault', selectionId: 'source-b', secret: true },
+                ], forms);
+            }
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        await renderPanel();
+        await type('[a]\n[b]\n');
+
+        const choices = host.querySelectorAll<HTMLElement>('[data-testid="template-secret-choice-vault"]');
+        expect(choices).toHaveLength(2);
+        const first = choices[0].querySelectorAll<HTMLInputElement>('input[type="radio"]');
+        const second = choices[1].querySelectorAll<HTMLInputElement>('input[type="radio"]');
+        await act(async () => { first[0].click(); });
+        await flush();
+        await act(async () => { second[1].click(); });
+        await flush();
+
+        expect(vi.mocked(invoke)).toHaveBeenLastCalledWith('preview_configuration_template', expect.objectContaining({
+            options: expect.objectContaining({
+                secretForms: { 'source-a': 'clear', 'source-b': 'obscured' },
+            }),
+        }));
+    });
+
     it("keeps a consent on alpha's option when the blocks are reordered, and never moves it to beta", async () => {
         let order: Block[] = [{ name: 'alpha', relaxed: true }, { name: 'beta', relaxed: true }];
         vi.mocked(invoke).mockImplementation(async (cmd) => {
@@ -867,6 +899,31 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
             host.querySelector(`[role="checkbox"][aria-label="settings.templateSelectProfile:${name}"]`));
         expect(names.every(Boolean)).toBe(true);
         expect(names[0]).not.toBe(names[1]);
+    });
+
+    it('submits only the selected row ID when display names collide', async () => {
+        vi.mocked(invoke).mockImplementation(async (cmd) => {
+            if (cmd === 'preview_configuration_template') {
+                return report([
+                    { name: 'vault', selectionId: 'source-a' },
+                    { name: 'vault', selectionId: 'source-b' },
+                ]);
+            }
+            if (cmd === 'import_configuration_template') return importResult;
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        await renderPanel();
+        await type('[a]\n[b]\n');
+        await act(async () => { buttonWithText('settings.templateSelectNone').click(); });
+        const rows = host.querySelectorAll<HTMLInputElement>('[role="checkbox"]');
+        expect(rows).toHaveLength(2);
+        await act(async () => { rows[1].click(); });
+        await act(async () => {
+            host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!.click();
+        });
+        await flush();
+
+        expect(lastImportOptions()!.options.selectedBlocks).toEqual(['source-b']);
     });
 
     it('does not close the panel when the source changes before the first import resolves, and imports the new source', async () => {

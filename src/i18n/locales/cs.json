@@ -5959,7 +5959,8 @@
             "mrTitle": "Titul MR",
             "mrBody": "Popis (volitelné)",
             "sourceCode": "Zdrojový kód",
-            "downloadAssetTitle": "Stáhnout {name}"
+            "downloadAssetTitle": "Stáhnout {name}",
+            "tokenGoesTo": "Token bude odeslán na {instance}"
         },
         "mcp": {
             "title": "MCP Server",

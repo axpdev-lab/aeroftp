@@ -5959,7 +5959,8 @@
             "mrTitle": "MR-titel",
             "mrBody": "Beschrijving (optioneel)",
             "sourceCode": "Broncode",
-            "downloadAssetTitle": "{name} downloaden"
+            "downloadAssetTitle": "{name} downloaden",
+            "tokenGoesTo": "De token wordt verzonden naar {instance}"
         },
         "mcp": {
             "title": "MCP Server",

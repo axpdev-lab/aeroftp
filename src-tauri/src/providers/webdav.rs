@@ -2926,6 +2926,31 @@ impl WebDavProvider {
     /// `/remote.php/dav/files/<userid>/`. `final_path` must be `resolve_root`
     /// applied already (i.e. start with `/remote.php/dav/files/<userid>/`
     /// when the server uses the well-known root).
+    /// The handle of an upload this connection began for this destination:
+    /// one of another user, or one whose destination URL is not the one this
+    /// connection would assemble it at (the profile's root changed since the
+    /// upload began), is refused before any write.
+    fn nextcloud_handle_here(
+        &self,
+        handle: &MultipartHandle,
+    ) -> Result<NextcloudMultipartHandle, ProviderError> {
+        let payload = NextcloudMultipartHandle::of_this_user(
+            &handle.upload_id,
+            self.nextcloud_userid().as_deref(),
+        )?;
+        let here = self
+            .nextcloud_chunked_destination_url(&handle.remote_path)
+            .map(|url| NextcloudMultipartHandle::destination_digest(&url));
+        if here.as_deref() != Some(payload.destination.as_str()) {
+            return Err(ProviderError::PermissionDenied(
+                "This upload was begun for another destination (the profile's folder \
+                 changed since), so nothing was written: start the upload again"
+                    .to_string(),
+            ));
+        }
+        Ok(payload)
+    }
+
     fn nextcloud_chunked_destination_url(&self, final_path: &str) -> Option<String> {
         let base = self.nextcloud_chunked_base_url()?;
         let rooted = self.resolve_root(final_path);
@@ -5146,7 +5171,9 @@ const NEXTCLOUD_CHUNK_INDEX_WIDTH: usize = 20;
 ///
 /// The handle is opaque to the trait, but giving it a stable prefix lets
 /// the unit tests assert that the wire format never silently changes.
-const NEXTCLOUD_HANDLE_PREFIX: &str = "webdav-chunked-v2";
+const NEXTCLOUD_HANDLE_PREFIX: &str = "webdav-chunked-v3";
+/// The prefix of a handle written before it carried its destination.
+const NEXTCLOUD_HANDLE_PREFIX_WITHOUT_DESTINATION: &str = "webdav-chunked-v2";
 
 /// Format a chunk filename for the Nextcloud uploads folder.
 ///
@@ -5193,13 +5220,17 @@ fn extract_nextcloud_userid(path: &str) -> Option<String> {
 /// the user id (so a user changing connection between begin and
 /// complete cannot silently target the wrong inbox), and the total file
 /// size (the server validates `OC-Total-Length` on every PUT and on the
-/// final MOVE). `|` is safe as a separator because the transfer id is a
-/// UUID and the Nextcloud user id charset never includes it.
+/// final MOVE), and the SHA-256 of the destination URL the final MOVE is
+/// sent to (so a profile whose root changed between begin and complete
+/// cannot assemble the file in another folder). `|` is safe as a separator
+/// because the transfer id is a UUID, the Nextcloud user id charset never
+/// includes it, and the digest is hex.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct NextcloudMultipartHandle {
     transfer_id: String,
     user_id: String,
     total_size: u64,
+    destination: String,
 }
 
 impl NextcloudMultipartHandle {
@@ -5220,16 +5251,34 @@ impl NextcloudMultipartHandle {
         Ok(payload)
     }
 
+    /// What a handle stores of the URL its upload is assembled at: a digest,
+    /// so the handle never carries the remote path.
+    fn destination_digest(destination_url: &str) -> String {
+        use sha2::{Digest, Sha256};
+        hex::encode(Sha256::digest(destination_url.as_bytes()))
+    }
+
     fn encode(&self) -> String {
         format!(
-            "{}|{}|{}|{}",
-            NEXTCLOUD_HANDLE_PREFIX, self.transfer_id, self.user_id, self.total_size
+            "{}|{}|{}|{}|{}",
+            NEXTCLOUD_HANDLE_PREFIX,
+            self.transfer_id,
+            self.user_id,
+            self.total_size,
+            self.destination
         )
     }
 
     fn decode(raw: &str) -> Result<Self, ProviderError> {
         let mut parts = raw.split('|');
         let prefix = parts.next().unwrap_or_default();
+        if prefix == NEXTCLOUD_HANDLE_PREFIX_WITHOUT_DESTINATION {
+            return Err(ProviderError::Other(
+                "This upload was begun by an earlier AeroFTP version that did not record \
+                 where it is assembled, so nothing was written: start the upload again"
+                    .to_string(),
+            ));
+        }
         if prefix != NEXTCLOUD_HANDLE_PREFIX {
             return Err(ProviderError::Other(
                 "Invalid Nextcloud multipart handle: bad prefix".to_string(),
@@ -5242,9 +5291,11 @@ impl NextcloudMultipartHandle {
             .unwrap_or_default()
             .parse::<u64>()
             .map_err(|e| ProviderError::Other(format!("Invalid handle total_size: {e}")))?;
-        if transfer_id.is_empty() || user_id.is_empty() {
+        let destination = parts.next().unwrap_or_default().to_string();
+        if transfer_id.is_empty() || user_id.is_empty() || destination.is_empty() {
             return Err(ProviderError::Other(
-                "Invalid Nextcloud multipart handle: empty transfer_id / user_id".to_string(),
+                "Invalid Nextcloud multipart handle: empty transfer_id / user_id / destination"
+                    .to_string(),
             ));
         }
         if parts.next().is_some() {
@@ -5256,6 +5307,7 @@ impl NextcloudMultipartHandle {
             transfer_id,
             user_id,
             total_size,
+            destination,
         })
     }
 }
@@ -7232,10 +7284,19 @@ impl StorageProvider for WebDavProvider {
             total_size
         );
 
+        let destination = self
+            .nextcloud_chunked_destination_url(&final_path)
+            .map(|url| NextcloudMultipartHandle::destination_digest(&url))
+            .ok_or_else(|| {
+                ProviderError::Other(
+                    "Failed to build Nextcloud destination URL for the upload".to_string(),
+                )
+            })?;
         let handle_payload = NextcloudMultipartHandle {
             transfer_id,
             user_id,
             total_size,
+            destination,
         };
         Ok(MultipartHandle {
             upload_id: handle_payload.encode(),
@@ -7279,10 +7340,7 @@ impl StorageProvider for WebDavProvider {
             ));
         }
 
-        let payload = NextcloudMultipartHandle::of_this_user(
-            &handle.upload_id,
-            self.nextcloud_userid().as_deref(),
-        )?;
+        let payload = self.nextcloud_handle_here(handle)?;
         let chunk_url = self
             .nextcloud_chunked_chunk_url(&payload.transfer_id, part_number)
             .ok_or_else(|| {
@@ -7333,10 +7391,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let payload = NextcloudMultipartHandle::of_this_user(
-            &handle.upload_id,
-            self.nextcloud_userid().as_deref(),
-        )?;
+        let payload = self.nextcloud_handle_here(&handle)?;
         let assemble_url = self
             .nextcloud_chunked_assemble_url(&payload.transfer_id)
             .ok_or_else(|| {
@@ -7406,12 +7461,10 @@ impl StorageProvider for WebDavProvider {
         // graph runner only calls abort when one of the upload_part nodes
         // already failed; surfacing a second error from the cleanup path
         // would mask the real upload failure.
-        // A handle of another user names chunks this user cannot see:
+        // A handle of another user names chunks this user cannot see, and
+        // one of another destination is not this connection's upload:
         // nothing to clean up from here.
-        let payload = match NextcloudMultipartHandle::of_this_user(
-            &handle.upload_id,
-            self.nextcloud_userid().as_deref(),
-        ) {
+        let payload = match self.nextcloud_handle_here(&handle) {
             Ok(p) => p,
             Err(_) => return Ok(()),
         };
@@ -12521,11 +12574,16 @@ exit 1
         let mut p = WebDavProvider::new(cfg).expect("provider");
         p.server_root = Some("/remote.php/dav/files/alice/".to_string());
         p.connected = true;
+        let destination = NextcloudMultipartHandle::destination_digest(
+            &p.nextcloud_chunked_destination_url("/f.bin")
+                .expect("destination URL"),
+        );
         let handle_of = |user: &str| MultipartHandle {
             upload_id: NextcloudMultipartHandle {
                 transfer_id: "tx-1".to_string(),
                 user_id: user.to_string(),
                 total_size: 3,
+                destination: destination.clone(),
             }
             .encode(),
             remote_path: "/f.bin".to_string(),
@@ -12558,6 +12616,77 @@ exit 1
             *seen.lock().unwrap(),
             ["DELETE /remote.php/dav/uploads/alice/tx-1/"]
         );
+    }
+
+    /// A handle is bound to the URL its upload is assembled at: once the
+    /// profile's folder changed, the same user's part, assembly and abort
+    /// send nothing, and an old handle without a destination is refused
+    /// before any request; back on the folder it began in, the part goes.
+    #[tokio::test]
+    async fn a_chunked_upload_handle_of_another_folder_writes_nothing() {
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let log = Arc::clone(&log);
+                async move {
+                    log.lock()
+                        .unwrap()
+                        .push(format!("{} {}", req.method(), req.uri().path()));
+                    axum::http::StatusCode::CREATED
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut cfg = test_config(&format!("http://{addr}"));
+        cfg.provider_id = Some("nextcloud".to_string());
+        let mut p = WebDavProvider::new(cfg).expect("provider");
+        p.server_root = Some("/remote.php/dav/files/alice/".to_string());
+        p.connected = true;
+        let handle = p
+            .begin_multipart_upload("/f.bin", 3, None, None)
+            .await
+            .expect("begin");
+        seen.lock().unwrap().clear();
+
+        p.server_root = Some("/remote.php/dav/files/alice/elsewhere/".to_string());
+        let part = p.upload_part(&handle, 1, b"abc".to_vec()).await;
+        assert!(
+            matches!(&part, Err(ProviderError::PermissionDenied(m)) if m.contains("another destination")),
+            "{part:?}"
+        );
+        let done = p
+            .complete_multipart_upload(handle.clone(), Vec::new())
+            .await;
+        assert!(
+            matches!(&done, Err(ProviderError::PermissionDenied(m)) if m.contains("start the upload again")),
+            "{done:?}"
+        );
+        p.abort_multipart_upload(handle.clone())
+            .await
+            .expect("best effort");
+        let old = MultipartHandle {
+            upload_id: "webdav-chunked-v2|tx-1|alice|3".to_string(),
+            remote_path: handle.remote_path.clone(),
+        };
+        let part = p.upload_part(&old, 1, b"abc".to_vec()).await;
+        assert!(
+            matches!(&part, Err(ProviderError::Other(m)) if m.contains("start the upload again")),
+            "{part:?}"
+        );
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+
+        p.server_root = Some("/remote.php/dav/files/alice/".to_string());
+        p.upload_part(&handle, 1, b"abc".to_vec())
+            .await
+            .expect("part");
+        assert_eq!(seen.lock().unwrap().len(), 1, "{:?}", seen.lock().unwrap());
     }
 
     #[test]
@@ -12609,22 +12738,33 @@ exit 1
             transfer_id: "tx-7c9d3b04-d5a8-4d0e-a8a1-9b21fd9d4e7c".to_string(),
             user_id: "alice".to_string(),
             total_size: 209_715_200,
+            destination: "ab12".to_string(),
         };
         let encoded = original.encode();
-        assert!(encoded.starts_with("webdav-chunked-v2|"));
+        assert!(encoded.starts_with("webdav-chunked-v3|"));
         let decoded = NextcloudMultipartHandle::decode(&encoded).expect("decode");
         assert_eq!(decoded, original);
 
         // Wrong prefix
-        assert!(NextcloudMultipartHandle::decode("garbage|tx|alice|10").is_err());
+        assert!(NextcloudMultipartHandle::decode("garbage|tx|alice|10|ab").is_err());
         // Missing total_size
-        assert!(NextcloudMultipartHandle::decode("webdav-chunked-v2|tx|alice").is_err());
+        assert!(NextcloudMultipartHandle::decode("webdav-chunked-v3|tx|alice").is_err());
         // Empty transfer_id
-        assert!(NextcloudMultipartHandle::decode("webdav-chunked-v2||alice|10").is_err());
+        assert!(NextcloudMultipartHandle::decode("webdav-chunked-v3||alice|10|ab").is_err());
+        // Missing destination
+        assert!(NextcloudMultipartHandle::decode("webdav-chunked-v3|tx|alice|10").is_err());
         // Trailing garbage
-        assert!(NextcloudMultipartHandle::decode("webdav-chunked-v2|tx|alice|10|extra").is_err());
+        assert!(
+            NextcloudMultipartHandle::decode("webdav-chunked-v3|tx|alice|10|ab|extra").is_err()
+        );
         // Non-numeric total_size
-        assert!(NextcloudMultipartHandle::decode("webdav-chunked-v2|tx|alice|big").is_err());
+        assert!(NextcloudMultipartHandle::decode("webdav-chunked-v3|tx|alice|big|ab").is_err());
+        // A handle written before it carried its destination
+        let old = NextcloudMultipartHandle::decode("webdav-chunked-v2|tx|alice|10");
+        assert!(
+            matches!(&old, Err(ProviderError::Other(m)) if m.contains("start the upload again")),
+            "{old:?}"
+        );
     }
 
     /// Provider methods fail fast on the connection check before any
@@ -12652,6 +12792,7 @@ exit 1
                 transfer_id: "tx".to_string(),
                 user_id: "alice".to_string(),
                 total_size: 1,
+                destination: "ab12".to_string(),
             }
             .encode(),
             remote_path: "/x.bin".to_string(),

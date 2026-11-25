@@ -838,6 +838,7 @@ pub async fn execute_single_file_dag_with(
     // out into N `UploadPart` nodes. When the transfer core is a single
     // `UploadFile` or `DownloadFile`, the context stays `None` and every
     // `UploadPart`/`CommitTemp` branch short-circuits to the legacy no-op.
+    let mut resumed_checkpoint = false;
     let (multipart_state, durable_checkpoint): (
         Option<Arc<MultipartFileState>>,
         Option<Arc<StdMutex<DurableMultipartCheckpoint>>>,
@@ -940,6 +941,7 @@ pub async fn execute_single_file_dag_with(
                     .map_err(|failure| ProviderError::TransferFailed(failure.message))?;
             }
         }
+        resumed_checkpoint = opened.resumed;
         (Some(state), Some(checkpoint))
     } else {
         (None, None)
@@ -1525,16 +1527,27 @@ pub async fn execute_single_file_dag_with(
             // missing parts. Legacy in-memory multipart state keeps the old best-effort
             // abort behavior. Expired durable records are scavenged conservatively by
             // a later connected run, which can abort the matching provider session.
+            let failure = first_error
+                .lock()
+                .expect("first-error slot poisoned")
+                .take();
             if outcome.is_err() {
                 if let Some(checkpoint) = durable_checkpoint.as_ref() {
                     // A transfer that will not be resumed aborts its session instead,
                     // and drops the record only once the provider confirmed the abort:
                     // a record left behind is still found and retried by the
                     // scavenger, a record dropped too early would orphan the parts.
+                    // A resumed checkpoint whose persisted handle itself is rejected as
+                    // unbound/stale cannot ever succeed on another retry, so drop it
+                    // after preserving the rejection so restarting opens a fresh one.
+                    let unresumable_handle = resumed_checkpoint
+                        && failure
+                            .as_ref()
+                            .is_some_and(crate::providers::is_unresumable_multipart_handle_error);
                     let aborted = on_failure == MultipartFailure::Abort
                         && abort_open_session(multipart_state.as_deref(), &provider).await;
                     let mut checkpoint = checkpoint.lock().expect("checkpoint mutex poisoned");
-                    if aborted {
+                    if aborted || unresumable_handle {
                         checkpoint.remove();
                     } else {
                         checkpoint.mark_failed();
@@ -1551,11 +1564,10 @@ pub async fn execute_single_file_dag_with(
 
             match outcome {
                 Ok(_summary) => Ok(()),
-                Err(dag_err) => Err(first_error
-                    .lock()
-                    .expect("first-error slot poisoned")
-                    .take()
-                    .unwrap_or_else(|| ProviderError::TransferFailed(dag_err.to_string()))),
+                Err(dag_err) => {
+                    Err(failure
+                        .unwrap_or_else(|| ProviderError::TransferFailed(dag_err.to_string())))
+                }
             }
         })
         .await

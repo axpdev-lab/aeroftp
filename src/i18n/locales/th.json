@@ -5959,7 +5959,8 @@
             "mrTitle": "หัวข้อ MR",
             "mrBody": "คำอธิบาย (ไม่บังคับ)",
             "sourceCode": "ซอร์สโค้ด",
-            "downloadAssetTitle": "ดาวน์โหลด {name}"
+            "downloadAssetTitle": "ดาวน์โหลด {name}",
+            "tokenGoesTo": "โทเคนจะถูกส่งไปยัง {instance}"
         },
         "mcp": {
             "title": "MCP Server",

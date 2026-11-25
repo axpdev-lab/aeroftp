@@ -220,17 +220,271 @@ pub(crate) fn nextcloud_preset_for_host(host: &str) -> Option<&'static str> {
 
 // ============ URL / host helpers ============
 
-/// Strip scheme and path from an endpoint, keeping `host[:port]`.
-pub(crate) fn endpoint_host(endpoint: &str) -> String {
-    endpoint
+/// The parts of an endpoint an importer may keep: scheme, `host[:port]` and
+/// path. Userinfo, query and fragment are dropped.
+pub(crate) struct EndpointParts<'a> {
+    pub scheme: Option<&'a str>,
+    pub host_port: &'a str,
+    pub path: &'a str,
+}
+
+fn is_valid_tcp_port(port: &str) -> bool {
+    !port.is_empty()
+        && port.bytes().all(|b| b.is_ascii_digit())
+        && port.parse::<u16>().is_ok_and(|p| p > 0)
+}
+
+fn has_non_empty_hostname(host_port: &str) -> bool {
+    if host_port.is_empty() {
+        return false;
+    }
+    if let Some(after_open) = host_port.strip_prefix('[') {
+        let Some((inside, after_close)) = after_open.split_once(']') else {
+            return false;
+        };
+        if inside.trim().is_empty() {
+            return false;
+        }
+        return after_close.is_empty()
+            || after_close.strip_prefix(':').is_some_and(is_valid_tcp_port);
+    }
+    if host_port.starts_with(':') {
+        return false;
+    }
+    if let Some((host, port)) = host_port.rsplit_once(':') {
+        return !host.trim().is_empty() && is_valid_tcp_port(port);
+    }
+    true
+}
+
+pub(crate) fn is_ipv6_host_literal(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    let inner = trimmed
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(trimmed);
+    let (address, scope) = inner
+        .split_once('%')
+        .map_or((inner, None), |(address, scope)| (address, Some(scope)));
+    !address.is_empty()
+        && scope.is_none_or(|scope| {
+            !scope.is_empty()
+                && scope
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~'))
+        })
+        && address.parse::<std::net::Ipv6Addr>().is_ok()
+}
+
+pub(crate) fn split_host_port(raw: &str) -> Option<(String, Option<u16>)> {
+    let trimmed = raw.trim();
+    if is_ipv6_host_literal(trimmed) {
+        let host = if trimmed.starts_with('[') {
+            trimmed.to_string()
+        } else {
+            format!("[{trimmed}]")
+        };
+        return Some((host, None));
+    }
+    if let Some(after_open) = trimmed.strip_prefix('[') {
+        let (inside, after_close) = after_open.split_once(']')?;
+        if !is_ipv6_host_literal(inside) {
+            return None;
+        }
+        if after_close.is_empty() {
+            return Some((format!("[{inside}]"), None));
+        }
+        let port = after_close.strip_prefix(':')?;
+        return is_valid_tcp_port(port).then(|| (format!("[{inside}]"), port.parse::<u16>().ok()));
+    }
+    if trimmed.is_empty() || trimmed.starts_with(':') {
+        return None;
+    }
+    if let Some((host, port)) = trimmed.rsplit_once(':') {
+        if host.is_empty() || !is_valid_tcp_port(port) {
+            return None;
+        }
+        return Some((host.to_string(), port.parse::<u16>().ok()));
+    }
+    Some((raw.to_string(), None))
+}
+
+pub(crate) fn try_hostname_field(raw: &str) -> Option<String> {
+    if is_ipv6_host_literal(raw) {
+        return split_host_port(raw).map(|(host, _)| host);
+    }
+    let parts = split_endpoint(raw)?;
+    let after_scheme = raw
+        .trim()
         .split_once("://")
-        .map(|(_, r)| r)
-        .unwrap_or(endpoint)
-        .split('/')
+        .map_or(raw.trim(), |(_, rest)| rest);
+    let authority = after_scheme
+        .split(['/', '?', '#'])
         .next()
-        .unwrap_or(endpoint)
-        .trim_end_matches('/')
-        .to_string()
+        .unwrap_or(after_scheme);
+    if parts.path.contains('@') && !authority.contains('@') {
+        return None;
+    }
+    Some(parts.host_port.to_string())
+}
+
+/// Split an endpoint into scheme, `host[:port]` and path, without userinfo,
+/// query or fragment.
+///
+/// Recognizes `scheme://` only at the start of the input (RFC 3986 scheme
+/// characters before any `/`, `?`, `#`, or `@`) so a `://` inside a query
+/// parameter is never misread as the host. Returns `None` when the extracted
+/// hostname is empty (e.g. `https:///bucket`, `https://:9000`) or when an `@`
+/// after the authority is ambiguous with userinfo containing an unencoded `/`,
+/// `?`, or `#`. A valid `host[:port]` authority without `@` (when a scheme is
+/// present, or a bare host without `:`) still permits RFC 3986 `@` inside path
+/// segments (e.g. `https://dav.example.test/users/alice@example.test/files`,
+/// `https://objects.example.test:9000/team@east`).
+pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
+    let trimmed = endpoint.trim();
+    let (scheme, after_scheme) = match trimmed.split_once("://") {
+        Some((candidate, rest))
+            if !candidate.is_empty()
+                && candidate.as_bytes()[0].is_ascii_alphabetic()
+                && candidate
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.')) =>
+        {
+            (Some(candidate), rest)
+        }
+        _ => (None, trimmed),
+    };
+    let authority_end = after_scheme
+        .find(['/', '?', '#'])
+        .unwrap_or(after_scheme.len());
+    let (authority, rest) = after_scheme.split_at(authority_end);
+    let (path, tail) = match rest.find(['?', '#']) {
+        Some(idx) => rest.split_at(idx),
+        None => (rest, ""),
+    };
+    if tail.contains('@')
+        || (path.contains('@')
+            && (authority.contains('@')
+                || (authority.contains(':')
+                    && (scheme.is_none() || !has_non_empty_hostname(authority)))))
+    {
+        return None;
+    }
+    let host_port = authority
+        .rsplit_once('@')
+        .map(|(_, h)| h)
+        .unwrap_or(authority)
+        .trim();
+    if !has_non_empty_hostname(host_port) {
+        return None;
+    }
+    Some(EndpointParts {
+        scheme,
+        host_port,
+        path,
+    })
+}
+
+/// Safe display label derived from a host/URL field when a profile or bookmark
+/// has no explicit name. Strips scheme, userinfo, path, query, and fragment,
+/// returning `fallback` if the host is empty or ambiguous.
+pub(crate) fn safe_host_label(raw: &str, fallback: &str) -> String {
+    try_hostname_field(raw)
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn token_may_carry_connection_string_secrets(tok: &str) -> bool {
+    tok.split_once(',')
+        .map(|(_, parameters)| (',', parameters))
+        .or_else(|| tok.split_once(';').map(|(_, parameters)| (';', parameters)))
+        .is_some_and(|(delimiter, parameters)| {
+            parameters.split(delimiter).any(|parameter| {
+                parameter
+                    .split_once('=')
+                    .is_some_and(|(key, _)| !key.trim().is_empty())
+            })
+        })
+}
+
+fn token_may_carry_url_secrets(tok: &str) -> bool {
+    if tok.contains("://") {
+        return true;
+    }
+    if let Some((before_at, _)) = tok.rsplit_once('@') {
+        if before_at.contains(':') {
+            return true;
+        }
+    }
+    if let Some((_, query)) = tok.split_once('?') {
+        if query.contains('=') || query.contains("://") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Sanitize a site/session/remote name before placing it in a serialized
+/// profile, `*ImportWarning` or skip entry. Ordinary human names (e.g.
+/// `"Production"`, `"My NAS"`, `"Ops (alice@corp.example)"`,
+/// `"s3cmd s3.example.com:9000"`) are preserved unchanged. Single-token
+/// URL/credential/query names strip userinfo and query parameters via
+/// [`safe_host_label`]. Connection-string labels and names containing
+/// whitespace together with secret markers are replaced as a whole with
+/// `fallback`, so no parameter value or trailing password fragment survives.
+pub(crate) fn sanitize_warning_name(raw: &str, fallback: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return fallback.to_string();
+    }
+    let may_carry_secrets = |token: &str| {
+        token_may_carry_url_secrets(token) || token_may_carry_connection_string_secrets(token)
+    };
+    if !trimmed.contains(char::is_whitespace) {
+        if token_may_carry_connection_string_secrets(trimmed) {
+            return fallback.to_string();
+        }
+        if token_may_carry_url_secrets(trimmed) || trimmed.contains('?') || trimmed.contains('#') {
+            return safe_host_label(trimmed, fallback);
+        }
+        return trimmed.to_string();
+    }
+    if may_carry_secrets(trimmed) || trimmed.split_whitespace().any(may_carry_secrets) {
+        return fallback.to_string();
+    }
+    trimmed.to_string()
+}
+
+/// `host[:port]` of an endpoint, without scheme, userinfo, path, query or
+/// fragment; `None` as for [`split_endpoint`].
+pub(crate) fn try_endpoint_host(endpoint: &str) -> Option<String> {
+    split_endpoint(endpoint).map(|parts| parts.host_port.to_string())
+}
+
+/// Strip scheme, userinfo, path, query, and fragment from an endpoint, keeping
+/// `host[:port]`. Returns an empty string when [`try_endpoint_host`] refuses
+/// an ambiguous `@` after the authority.
+pub(crate) fn endpoint_host(endpoint: &str) -> String {
+    try_endpoint_host(endpoint).unwrap_or_default()
+}
+
+/// An endpoint as a profile may store it, with its optional scheme and path
+/// but without userinfo, query or fragment. `None` as for [`split_endpoint`].
+pub(crate) fn endpoint_without_secrets(endpoint: &str) -> Option<String> {
+    let parts = split_endpoint(endpoint)?;
+    Some(match parts.scheme {
+        Some(scheme) => format!("{scheme}://{}{}", parts.host_port, parts.path),
+        None => format!("{}{}", parts.host_port, parts.path),
+    })
+}
+
+/// An endpoint URL as a profile may store it: `scheme://host[:port]/path`,
+/// without userinfo, query or fragment. `None` without a scheme, or as for
+/// [`split_endpoint`].
+pub(crate) fn endpoint_url_without_secrets(endpoint: &str) -> Option<String> {
+    let parts = split_endpoint(endpoint)?;
+    let scheme = parts.scheme?;
+    Some(format!("{scheme}://{}{}", parts.host_port, parts.path))
 }
 
 /// Default TCP port for a protocol token.
@@ -329,6 +583,66 @@ pub fn ensure_import_file_size_ok(path: &Path) -> Result<(), String> {
         Ok(m) if m.len() > MAX_IMPORT_FILE_BYTES => Err("File too large (max 10 MB)".to_string()),
         _ => Ok(()),
     }
+}
+
+/// Open `path` for reading only if it is a regular file, without blocking on a
+/// FIFO. A FIFO blocks `open(2)` until a writer appears, before any check on
+/// the opened handle could refuse it; `O_NONBLOCK` makes the open return at
+/// once and does not change reads from a regular file.
+pub(crate) fn open_regular_file(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    Ok(file)
+}
+
+/// Read at most `max_bytes` UTF-8 bytes from `reader`, refusing oversized input
+/// without reading past `max_bytes + 1` bytes.
+pub(crate) fn read_bounded_utf8<R: std::io::Read>(
+    reader: R,
+    max_bytes: u64,
+) -> Result<String, String> {
+    use std::io::Read;
+
+    let mut bytes = Vec::new();
+    reader
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("read: {e}"))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(format!(
+            "File too large (max {} MB)",
+            max_bytes.div_ceil(1024 * 1024)
+        ));
+    }
+    String::from_utf8(bytes).map_err(|e| format!("invalid UTF-8: {e}"))
+}
+
+/// Read a regular UTF-8 import file through one handle, enforcing `max_bytes`
+/// during the read: a check on the path before the read (the callers'
+/// `ensure_import_file_size_ok`) cannot see a file that grows or is swapped
+/// afterwards.
+pub(crate) fn read_bounded_utf8_file(path: &Path, max_bytes: u64) -> Result<String, String> {
+    let file = open_regular_file(path).map_err(|e| format!("open: {e}"))?;
+    let metadata = file.metadata().map_err(|e| format!("metadata: {e}"))?;
+    if metadata.len() > max_bytes {
+        return Err(format!(
+            "File too large (max {} MB)",
+            max_bytes.div_ceil(1024 * 1024)
+        ));
+    }
+    read_bounded_utf8(file, max_bytes)
 }
 
 // ============ INI parser (aws, s3cmd, ...) ============
@@ -1185,7 +1499,7 @@ pub struct BridgeExportOutcome {
 impl BridgeExportOutcome {
     pub fn skip(&mut self, name: &str, reason: impl Into<String>) {
         self.skipped.push(BridgeExportSkip {
-            name: name.to_string(),
+            name: sanitize_warning_name(name, "export profile"),
             reason: reason.into(),
         });
     }
@@ -1330,6 +1644,52 @@ mod tests {
         let big = dir.path().join("big.conf");
         std::fs::write(&big, vec![b'x'; (MAX_IMPORT_FILE_BYTES + 1) as usize]).unwrap();
         assert!(ensure_import_file_size_ok(&big).is_err());
+    }
+
+    /// Every importer that reads its own file reads it through the bounded,
+    /// non-blocking reader: a FIFO is refused at once instead of blocking the
+    /// import in `open(2)` (or, with a writer, being read past the cap).
+    #[cfg(unix)]
+    #[test]
+    fn importers_refuse_a_fifo_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        type Import = fn(&Path) -> bool;
+        let importers: [(&str, Import); 5] = [
+            ("s3cmd", |p| crate::s3cmd_import::import_s3cmd(p).is_err()),
+            ("mc", |p| crate::mc_import::import_mc(p).is_err()),
+            ("winscp", |p| {
+                crate::winscp_import::import_winscp(p).is_err()
+            }),
+            ("rclone", |p| {
+                crate::rclone_import::import_rclone(p).is_err()
+            }),
+            ("filezilla", |p| {
+                crate::filezilla_import::import_filezilla(p).is_err()
+            }),
+        ];
+        for (name, import) in importers {
+            let fifo = dir.path().join(format!("{name}.fifo"));
+            assert!(std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success());
+            let (done, finished) = std::sync::mpsc::channel();
+            let probe = fifo.clone();
+            std::thread::spawn(move || {
+                let _ = done.send(import(&probe));
+            });
+            let outcome = finished.recv_timeout(std::time::Duration::from_secs(5));
+            if outcome.is_err() {
+                // Release the reader still blocked in open(2) so the thread ends.
+                use std::os::unix::fs::OpenOptionsExt;
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(&fifo);
+            }
+            assert_eq!(outcome, Ok(true), "{name}: a FIFO import must fail at once");
+        }
     }
 
     #[test]
@@ -1762,5 +2122,213 @@ mod tests {
         let mut names = ExportEntryNames::exact(Vec::<String>::new());
         assert_eq!(names.claim("x"), "x");
         assert_eq!(names.claim("x"), "x-2");
+    }
+
+    #[test]
+    fn endpoint_host_strips_userinfo_query_and_fragment() {
+        let user = "alice";
+        let secret = "p@ssSecret";
+        let token = "tokSecret";
+        let with_creds =
+            format!("https://{user}:{secret}@s3.example.com:9000/bucket?token={token}#frag");
+        assert_eq!(endpoint_host(&with_creds), "s3.example.com:9000");
+
+        let bare_query = format!("{user}:{secret}@s3.example.com?token={token}");
+        assert_eq!(endpoint_host(&bare_query), "s3.example.com");
+
+        assert_eq!(endpoint_host("s3.example.com#section"), "s3.example.com");
+        assert_eq!(endpoint_host("[::1]:9000/path"), "[::1]:9000");
+        assert_eq!(endpoint_host("s3.amazonaws.com"), "s3.amazonaws.com");
+    }
+
+    #[test]
+    fn hostname_fields_reject_password_fragments_and_normalize_ipv6() {
+        let malformed = "https://alice:1234/part@objects.example.test";
+        assert_eq!(try_hostname_field(malformed), None);
+        assert_eq!(safe_host_label(malformed, "unnamed"), "unnamed");
+        assert_eq!(
+            endpoint_without_secrets("https://objects.example.test:9000/team@east").as_deref(),
+            Some("https://objects.example.test:9000/team@east")
+        );
+        assert_eq!(
+            split_host_port("2001:db8::abcd"),
+            Some(("[2001:db8::abcd]".to_string(), None))
+        );
+        assert_eq!(
+            split_host_port("[fe80::1%eth0]"),
+            Some(("[fe80::1%eth0]".to_string(), None))
+        );
+        assert_eq!(
+            try_hostname_field("fe80::1%eth0").as_deref(),
+            Some("[fe80::1%eth0]")
+        );
+        let secret_scope = "fe80::1%eth0?token=SCOPED_IPV6_SECRET";
+        assert_eq!(try_hostname_field(secret_scope), None);
+        assert_eq!(
+            sanitize_warning_name(secret_scope, "scoped host"),
+            "scoped host"
+        );
+        assert_eq!(
+            split_host_port("nas.example.test:2222"),
+            Some(("nas.example.test".to_string(), Some(2222)))
+        );
+    }
+
+    #[test]
+    fn export_skip_names_are_sanitized_before_serialization() {
+        let mut outcome = BridgeExportOutcome::default();
+        outcome.skip(
+            "ftp://alice:pw@files.example.test?token=EXPORT_NAME_SECRET",
+            "refused",
+        );
+        assert_eq!(outcome.skipped[0].name, "files.example.test");
+        let serialized = format!("{outcome:?}");
+        for secret in ["alice", "pw", "EXPORT_NAME_SECRET"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
+    }
+
+    #[test]
+    fn semicolon_connection_strings_are_redacted_before_display() {
+        let secret = "SYNTHETIC_AZURE_ACCOUNT_KEY";
+        let name = format!(
+            "DefaultEndpointsProtocol=https;AccountName=lab;AccountKey={secret};EndpointSuffix=core.windows.net"
+        );
+        assert_eq!(
+            sanitize_warning_name(&name, "Cyberduck bookmark"),
+            "Cyberduck bookmark"
+        );
+        assert_eq!(
+            sanitize_warning_name("Team; East", "fallback"),
+            "Team; East"
+        );
+    }
+
+    #[test]
+    fn an_at_sign_after_the_host_part_is_refused_instead_of_guessed() {
+        let user = "alice";
+        let pw_slash = "pa/ssSecret";
+        let pw_query = "pa?ssSecret";
+        let pw_hash = "pa#ssSecret";
+        let pw_plain = "pwSecret";
+        let tok = "tok";
+        for endpoint in [
+            format!("https://{user}:{pw_slash}@s3.example.com"),
+            format!("https://{user}:{pw_query}@s3.example.com"),
+            format!("https://{user}:{pw_hash}@s3.example.com"),
+            format!("{user}:12/34@s3.example.com:9000"),
+            format!("https://{user}:{pw_plain}@s3.example.com/path@x"),
+        ] {
+            assert_eq!(try_endpoint_host(&endpoint), None, "{endpoint}");
+            assert_eq!(endpoint_host(&endpoint), "", "{endpoint}");
+            assert_eq!(endpoint_url_without_secrets(&endpoint), None, "{endpoint}");
+        }
+        let with_secrets = format!(
+            "https://{user}:{pw_plain}@minio.example.com:9000/s3?X-Amz-Security-Token={tok}#f"
+        );
+        assert_eq!(
+            endpoint_url_without_secrets(&with_secrets).as_deref(),
+            Some("https://minio.example.com:9000/s3")
+        );
+        assert_eq!(endpoint_url_without_secrets("minio.example.com"), None);
+
+        // Empty authority, port-only, and invalid-port endpoints must be rejected.
+        for empty_auth in [
+            "https:///bucket",
+            "https://:9000",
+            ":9000",
+            "[]:9000",
+            "https://objects.example.test:70000",
+            "https://objects.example.test:0",
+            "https://objects.example.test:abc",
+            "https://[::1]:70000",
+            "https://[::1]:0",
+            "http://",
+            "/bucket",
+            "?k=v",
+            "",
+        ] {
+            assert_eq!(try_endpoint_host(empty_auth), None, "{empty_auth}");
+            assert_eq!(
+                endpoint_url_without_secrets(empty_auth),
+                None,
+                "{empty_auth}"
+            );
+        }
+
+        // RFC 3986 permits `@` in a path segment when the authority is a valid
+        // host or host:port without userinfo.
+        let path_at = "https://dav.example.test/users/alice@example.test/files";
+        assert_eq!(
+            try_endpoint_host(path_at).as_deref(),
+            Some("dav.example.test")
+        );
+        assert_eq!(
+            endpoint_url_without_secrets(path_at).as_deref(),
+            Some(path_at)
+        );
+        let path_at_with_port = "https://objects.example.test:9000/team@east";
+        assert_eq!(
+            try_endpoint_host(path_at_with_port).as_deref(),
+            Some("objects.example.test:9000")
+        );
+        assert_eq!(
+            endpoint_url_without_secrets(path_at_with_port).as_deref(),
+            Some(path_at_with_port)
+        );
+        let ipv6_path_at = "https://[::1]:9000/team@east";
+        assert_eq!(
+            try_endpoint_host(ipv6_path_at).as_deref(),
+            Some("[::1]:9000")
+        );
+        assert_eq!(
+            endpoint_url_without_secrets(ipv6_path_at).as_deref(),
+            Some(ipv6_path_at)
+        );
+        assert_eq!(
+            try_endpoint_host("https://[::1]:9000/s3").as_deref(),
+            Some("[::1]:9000")
+        );
+
+        // A `://` inside a query parameter must not be treated as the scheme separator.
+        let query_scheme = "s3.example.test?token=https://SECRET_TOK";
+        assert_eq!(
+            try_endpoint_host(query_scheme).as_deref(),
+            Some("s3.example.test")
+        );
+        assert_eq!(safe_host_label(query_scheme, "unnamed"), "s3.example.test");
+        let amb = format!("https://{user}:{pw_slash}@s3.example.com");
+        assert_eq!(safe_host_label(&amb, "unnamed"), "unnamed");
+
+        // sanitize_warning_name keeps ordinary names intact and strips URL secrets.
+        assert_eq!(sanitize_warning_name("My NAS", "site"), "My NAS");
+        assert_eq!(
+            sanitize_warning_name("Ops (alice@corp.example)", "site"),
+            "Ops (alice@corp.example)"
+        );
+        let url_name = format!("ftp://{user}:{pw_plain}@ftp.example.com?token={tok}");
+        assert_eq!(sanitize_warning_name(&url_name, "site"), "ftp.example.com");
+        let space_pw = format!("ftp://{user}:my {pw_plain}@ftp.example.com");
+        assert_eq!(sanitize_warning_name(&space_pw, "site"), "site");
+        let bare_space_pw = format!("{user}:my {pw_plain}@ftp.example.com");
+        assert_eq!(sanitize_warning_name(&bare_space_pw, "site"), "site");
+        let embedded = format!("Prod https://{user}:{pw_plain}@s3.example.com?t={tok}");
+        assert_eq!(sanitize_warning_name(&embedded, "site"), "site");
+        assert_eq!(sanitize_warning_name(&amb, "site"), "site");
+        assert_eq!(
+            sanitize_warning_name(
+                "store,secret_access_key=CONNECTION_STRING_SECRET:bucket",
+                "rclone remote"
+            ),
+            "rclone remote"
+        );
+        assert_eq!(
+            sanitize_warning_name("Team store,region=eu-west-1", "site"),
+            "site"
+        );
+        assert_eq!(
+            endpoint_without_secrets("objects.example.test/base?token=SECRET#fragment").as_deref(),
+            Some("objects.example.test/base")
+        );
     }
 }
