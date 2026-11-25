@@ -15710,6 +15710,9 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
 
     #[test]
     fn a_key_file_path_is_expanded_as_rclone_expands_it() {
+        // Compares relative-path resolution against current_dir(): take the
+        // shared env lock like every other working-directory-reading test.
+        let _env = crate::test_env::lock();
         let dir = Path::new("/etc/rclone");
         let path = std::env::var("PATH").unwrap_or_default();
         assert_eq!(

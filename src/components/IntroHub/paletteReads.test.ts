@@ -49,4 +49,42 @@ describe('PaletteReadGuard', () => {
         const fresh = guard.begin();
         expect(guard.isCurrent(fresh)).toBe(true);
     });
+
+    it('discards a stale palette read when the account switches mid-read (same profile id in both accounts)', () => {
+        // Two accounts that share the same profile id, like a duplicated lab
+        // server saved under both.
+        const listsByAccount: Record<number, { profiles: { id: string; name: string }[]; userId: number }> = {
+            1: { profiles: [{ id: 'srv-shared', name: 'alice-lab' }], userId: 1 },
+            2: { profiles: [{ id: 'srv-shared', name: 'bob-lab' }], userId: 2 },
+        };
+        let activeAccount = 1;
+        const loadSavedServerProfilesWithAccount = () =>
+            Promise.resolve(listsByAccount[activeAccount]);
+
+        // The reloadPalette commit pattern: begin, await the read, commit only
+        // if the token is still current.
+        const guard = new PaletteReadGuard();
+        let committed: { profiles: unknown; accountId: number | null } | null = null;
+        const reload = async () => {
+            const token = guard.begin();
+            const read = await loadSavedServerProfilesWithAccount();
+            if (!guard.isCurrent(token)) return; // stale: never reaches the export dialog
+            committed = { profiles: read.profiles, accountId: read.userId ?? null };
+        };
+
+        // A read starts under account 1, the account switches to 2 mid-flight,
+        // and only then the stale read resolves.
+        const pendingRead = reload();
+        activeAccount = 2;
+        state.accountChanges += 2; // the switch started and settled
+        return pendingRead.then(async () => {
+            expect(committed).toBeNull();
+            // The re-read after the switch commits the NEW account's list+id.
+            await reload();
+            expect(committed).toEqual({
+                profiles: [{ id: 'srv-shared', name: 'bob-lab' }],
+                accountId: 2,
+            });
+        });
+    });
 });

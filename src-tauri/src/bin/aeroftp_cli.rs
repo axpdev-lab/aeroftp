@@ -14337,8 +14337,10 @@ fn load_active_user_profiles_with_account(
             // rclone-crypt secrets that `import rclone --apply` used to leave in
             // a profile's options move to the vault and a binding, once; the list
             // is re-read, merged and written in one transaction, and only when a
-            // move applied.
-            let uid = scoped_credential_user_id(cli, store);
+            // move applied. The moves go under the account captured with this
+            // list, not under a re-resolved active account: a switch mid-load
+            // must not write one account's secrets into another's partition.
+            let uid = Some(account);
             let notes = ftp_client_gui_lib::bridge_commands::migrate_legacy_rclone_crypt_on_load(
                 &mut profiles,
                 |key, secret| dual_store_server_cred_checked(store, uid, key, secret),
@@ -44063,17 +44065,20 @@ async fn cmd_export_rclone(
             return 5;
         }
     };
-    // One account per export run: every vault read below (the profile list, the
-    // password, the token, api-key, session and crypt injections) goes through
-    // this captured id, so a switch mid-export cannot mix accounts.
-    let export_user = scoped_credential_user_id(cli, &store);
-    let servers_json = match read_vault_profiles_for(cli, &store, export_user) {
-        Ok(v) => v,
+    // One account per export run: capture the account WITH the profile list
+    // (proven provenance, legacy fallback included) so every vault read below
+    // (the password, the token, api-key, session and crypt injections) goes
+    // through that same captured id and a switch mid-export cannot mix
+    // accounts. An account lookup error no longer degrades to a shared-vault
+    // secret read.
+    let (profiles_list, export_user) = match load_active_user_profiles_with_account(cli, &store) {
+        Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
             return 4;
         }
     };
+    let servers_json = serde_json::Value::Array(profiles_list);
     let selectors = parse_profile_selectors(profiles);
 
     // Single source of truth shared with the GUI bridge: the credential
@@ -47083,36 +47088,6 @@ fn emit_export_success(
 #[allow(dead_code)]
 fn _scaffold_secret_is_used(p: &ProfileExportScaffold) -> &str {
     &p.secret
-}
-
-/// Read the GUI-managed server profile list from the active user partition
-/// (same source as `aeroftp-cli profiles list`). The vault MUST already be
-/// unlocked. Falls back to the legacy `config_server_profiles` blob on
-/// partition unavailability so downgrades are not bricked.
-fn read_vault_profiles(
-    cli: &Cli,
-    store: &ftp_client_gui_lib::credential_store::CredentialStore,
-) -> Result<serde_json::Value, String> {
-    let profiles = load_active_user_profiles(cli, store)?;
-    Ok(serde_json::Value::Array(profiles))
-}
-
-/// Read the profile list under a captured account id, so a `users switch`
-/// between the capture and this read cannot mix accounts. `None` keeps the
-/// active/legacy resolution of [`read_vault_profiles`].
-fn read_vault_profiles_for(
-    cli: &Cli,
-    store: &ftp_client_gui_lib::credential_store::CredentialStore,
-    user: Option<i64>,
-) -> Result<serde_json::Value, String> {
-    match user {
-        Some(uid) => {
-            let profiles =
-                ftp_client_gui_lib::user_partitions::cli_list_server_profiles_for_user(store, uid)?;
-            Ok(serde_json::Value::Array(profiles))
-        }
-        None => read_vault_profiles(cli, store),
-    }
 }
 
 async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
@@ -88461,23 +88436,24 @@ mod tests {
         );
     }
 
-    /// The profile-list read behind the rclone export is bound to the captured
-    /// account id: a `users switch` between the capture and the read cannot mix
-    /// accounts (`read_vault_profiles_for` passes the captured id through to
-    /// the account-scoped list read).
+    /// The profile-list read behind the exports captures the account it read
+    /// under: an explicit `--user` keeps that account's list even after the
+    /// active account is switched, and the captured id is what the secret
+    /// reads are bound to.
     #[test]
-    fn read_vault_profiles_for_returns_the_captured_accounts_list_across_a_switch() {
-        const CHILD: &str = "AEROFTP_CLI_TEST_READ_VAULT_PROFILES_FOR_CHILD";
+    fn the_profile_list_read_captures_its_account_across_a_switch() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_LIST_CAPTURES_ACCOUNT_CHILD";
         if std::env::var(CHILD).is_ok() {
             assert_child_data_root_is_private();
             on_big_stack(|| {
                 use ftp_client_gui_lib::user_partitions as up;
-                let cli = test_cli();
+                let mut cli = test_cli();
                 let store = open_vault(&cli).expect("open CLI test vault");
-                let first = up::cli_get_active_user(&store)
+                let first_meta = up::cli_get_active_user(&store)
                     .unwrap()
-                    .expect("first account")
-                    .id;
+                    .expect("first account");
+                let first = first_meta.id;
+                let first_name = first_meta.name;
                 let second = up::cli_create_user(&store, "Second", None, None, None)
                     .unwrap()
                     .id;
@@ -88501,29 +88477,33 @@ mod tests {
                 .unwrap();
                 up::cli_set_active_user(&store, first).unwrap();
 
-                // Capture the account the export is scoped to, then switch the
-                // active account before the list read.
-                let export_user = scoped_credential_user_id(&cli, &store);
-                assert_eq!(export_user, Some(first));
+                // `--user <first>`, then switch the active account before the
+                // list read: the captured account still wins.
+                cli.user = Some(first_name);
                 up::cli_set_active_user(&store, second).unwrap();
-                let read = read_vault_profiles_for(&cli, &store, export_user).unwrap();
-                let arr = read.as_array().unwrap();
+                let (profiles, account) =
+                    load_active_user_profiles_with_account(&cli, &store).unwrap();
+                assert_eq!(account, Some(first));
+                let arr = profiles.as_slice();
                 assert_eq!(arr.len(), 1);
                 assert_eq!(
                     arr[0]["id"], "srv-first",
-                    "the captured account's list must be returned even after the active account switched"
+                    "the --user account's list must be returned even after the active account switched"
                 );
 
-                // Control: None keeps the active-account resolution.
-                let read2 = read_vault_profiles_for(&cli, &store, None).unwrap();
-                assert_eq!(read2.as_array().unwrap()[0]["id"], "srv-second");
+                // Control: no --user keeps the active-account resolution.
+                cli.user = None;
+                let (profiles2, account2) =
+                    load_active_user_profiles_with_account(&cli, &store).unwrap();
+                assert_eq!(account2, Some(second));
+                assert_eq!(profiles2[0]["id"], "srv-second");
             });
             return;
         }
         let root = crate::isolated_cli::root();
         assert_child_finishes_in(
             root.path(),
-            "tests::read_vault_profiles_for_returns_the_captured_accounts_list_across_a_switch",
+            "tests::the_profile_list_read_captures_its_account_across_a_switch",
             &[
                 (CHILD, "1"),
                 ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
@@ -88675,6 +88655,86 @@ mod tests {
         assert_child_finishes_in(
             root.path(),
             "tests::export_reads_password_and_session_token_under_the_captured_account",
+            &[
+                (CHILD, "1"),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
+            ],
+        );
+    }
+
+    /// The rclone-crypt migration inside the profile-list load writes under the
+    /// account captured with the list, not under a re-resolved active account:
+    /// with `--user Bob` while Alice is active (and even after switching the
+    /// active account to Alice before the load), the legacy inline crypt secret
+    /// lands in Bob's partition, never in Alice's, and Bob's profile loses the
+    /// inline secret.
+    #[test]
+    fn the_crypt_migration_writes_under_the_captured_account_across_a_switch() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_CRYPT_MIGRATION_CAPTURED_CHILD";
+        if std::env::var(CHILD).is_ok() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                use ftp_client_gui_lib::user_partitions as up;
+                let mut cli = test_cli();
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let alice_meta = up::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("alice account");
+                let alice = alice_meta.id;
+                let bob = up::cli_create_user(&store, "Bob", None, None, None)
+                    .unwrap()
+                    .id;
+                // Bob's profile carries a legacy inline rclone-crypt password.
+                let legacy = serde_json::json!({"id":"srv-crypt","name":"crypt-lab","protocol":"ftp",
+                    "host":"ftp.example.invalid","port":21,"username":"u",
+                    "options":{"rcloneCryptEnabled":true,"rcloneCryptPassword":"LegacyCryptPw!"}});
+                up::cli_replace_server_profiles_for_user(&store, bob, &[legacy]).unwrap();
+                up::cli_set_active_user(&store, alice).unwrap();
+
+                // `--user Bob`, and the active account is Alice for the whole load.
+                cli.user = Some("Bob".to_string());
+                let (profiles, account) =
+                    load_active_user_profiles_with_account(&cli, &store).unwrap();
+                assert_eq!(account, Some(bob), "the captured account is the --user one");
+
+                let key = "aerocrypt_overlay_pw_srv-crypt";
+                // Owner-aware reads: a non-legacy-owner account reads its own
+                // partition exclusively, so these prove where the migrated
+                // secret landed: the captured account's partition only.
+                let carol = up::cli_create_user(&store, "Carol", None, None, None)
+                    .unwrap()
+                    .id;
+                let bob_pw = up::resolve_credential_for_user_owner_aware(&store, bob, key)
+                    .unwrap()
+                    .expect(
+                        "the migrated crypt secret must be in the captured account's partition",
+                    );
+                assert_eq!(bob_pw.as_str(), "LegacyCryptPw!");
+                assert!(
+                    up::resolve_credential_for_user_owner_aware(&store, carol, key)
+                        .unwrap()
+                        .is_none(),
+                    "another account's partition must not receive the migrated secret"
+                );
+                let profile = &profiles[0];
+                assert!(
+                    profile
+                        .get("aeroCryptOverlay")
+                        .map(|b| !b.is_null())
+                        .unwrap_or(false),
+                    "the profile got its overlay binding: {profile}"
+                );
+                assert!(
+                    profile.pointer("/options/rcloneCryptPassword").is_none(),
+                    "the inline secret left the options: {profile}"
+                );
+            });
+            return;
+        }
+        let root = crate::isolated_cli::root();
+        assert_child_finishes_in(
+            root.path(),
+            "tests::the_crypt_migration_writes_under_the_captured_account_across_a_switch",
             &[
                 (CHILD, "1"),
                 ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
