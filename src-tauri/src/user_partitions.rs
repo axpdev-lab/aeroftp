@@ -7074,6 +7074,34 @@ pub(crate) fn unblock_vault_secret_after_store(
     Ok(())
 }
 
+/// The recorded digest of `key`'s `vault_blocked_secret:` record, for a
+/// caller snapshotting block state before writes that may lift it: a
+/// rollback puts the record back byte for byte. `None` when no record
+/// exists or the key cannot hold one.
+pub(crate) fn blocked_vault_secret_digest(key: &str) -> Result<Option<String>, String> {
+    if private_token_type(key).is_none() || !cli_db_path()?.exists() {
+        return Ok(None);
+    }
+    let conn = open_or_init_cli()?;
+    blocked_vault_secret(&conn, key)
+}
+
+/// Put `key`'s `vault_blocked_secret:` record back exactly as `digest`
+/// recorded it, unless a record is already there: a rollback restores the
+/// block a forward write lifted and never replaces a newer one.
+pub(crate) fn restore_vault_secret_block(key: &str, digest: &str) -> Result<(), String> {
+    if private_token_type(key).is_none() || !cli_db_path()?.exists() {
+        return Ok(());
+    }
+    let conn = open_or_init_cli()?;
+    conn.execute(
+        "INSERT OR IGNORE INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
+        params![blocked_vault_secret_key(key), digest, now_ms()],
+    )
+    .map_err(|e| format!("Restore vault secret block: {e}"))?;
+    Ok(())
+}
+
 /// Whether a vault write made for `user_id`'s account is the legacy owner's
 /// own, the only write that lifts a `vault_blocked_secret:` record:
 /// `None` (no account, the pre-partition vault), `LEGACY_ONLY_ACCOUNT` and

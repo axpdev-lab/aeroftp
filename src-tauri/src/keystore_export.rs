@@ -1999,6 +1999,7 @@ fn profile_plan_inputs(
     let mut local_secrets = HashMap::new();
     let mut backup_secrets = HashMap::new();
     let mut local_vault = HashMap::new();
+    let mut blocked_vault = HashMap::new();
     let mut receiver_rows = HashMap::new();
     let receiver_is_here = receiver.is_some() && receiver == here;
     let mut local_signed_in = HashSet::new();
@@ -2046,6 +2047,18 @@ fn profile_plan_inputs(
     'keys: for key in candidate_keys {
         let private = crate::user_partitions::private_token_type(&key).is_some();
         if private {
+            match crate::user_partitions::blocked_vault_secret_digest(&key) {
+                Ok(Some(digest)) => {
+                    blocked_vault.insert(key.clone(), digest);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    failure = Some(KeystoreExportError::Encryption(format!(
+                        "Read the vault secret block: {e}"
+                    )));
+                    break 'keys;
+                }
+            }
             match store.get(&key) {
                 Ok(v) => local_vault.insert(key.clone(), Some(Zeroizing::new(v))),
                 Err(crate::credential_store::CredentialError::NotFound(_)) => {
@@ -2225,6 +2238,7 @@ fn profile_plan_inputs(
         receiver,
         targets_restored_partition: restores_partition,
         local_vault,
+        blocked_vault,
         vault_foreign_private,
         legacy_owner_reads_vault,
         receiver_rows,
@@ -2285,6 +2299,10 @@ struct ProfileStepSnapshot {
     /// private tokens) that the vault section replaced, as they were, and
     /// the value it wrote.
     vault: Vec<(String, Option<Zeroizing<String>>, Zeroizing<String>)>,
+    /// The `vault_blocked_secret:` digest each touched private token key had
+    /// before the import, as the plan read it: the writes that ran lifted
+    /// the record, so the rollback puts it back beside the vault value.
+    blocked_vault: Vec<(String, String)>,
     list: Vec<serde_json::Value>,
     blob: Option<String>,
 }
@@ -2380,6 +2398,13 @@ fn restore_profile_step(
             Ok(true) => {}
             Ok(false) => kept.push(format!("{key} (vault)")),
             Err(e) => failures.push(format!("{key} (vault): {e}")),
+        }
+    }
+    // The vault writes above lifted each captured `vault_blocked_secret:`
+    // record; put it back beside the value it hid, never over a newer one.
+    for (key, digest) in &snapshot.blocked_vault {
+        if let Err(e) = crate::user_partitions::restore_vault_secret_block(key, digest) {
+            failures.push(format!("{key} (block): {e}"));
         }
     }
     // Into the partition the app loads now, which may be the backup's.
@@ -2767,10 +2792,20 @@ fn apply_profile_decisions(
             })
             .collect()
     };
+    let blocked_vault = touched
+        .iter()
+        .filter_map(|key| {
+            inputs
+                .blocked_vault
+                .get(key)
+                .map(|digest| (key.clone(), digest.clone()))
+        })
+        .collect();
     let snapshot = ProfileStepSnapshot {
         receiver: inputs.receiver,
         secrets,
         vault,
+        blocked_vault,
         list: inputs.local.clone(),
         blob: blob_before_import,
     };
@@ -9062,6 +9097,53 @@ mod tests {
             row_in(&store, &cfg, owner.user_id, key).as_deref(),
             Some("row-token"),
             "the row's own value"
+        );
+    }
+
+    /// NAS 4694063261: a failed profile step's rollback restores the vault
+    /// value and the `vault_blocked_secret:` record the writes lifted, so
+    /// the foreign token the record hid stays unreadable. Red if the
+    /// rollback puts the value back without the block.
+    #[test]
+    fn a_rollback_restores_the_vault_secret_block() {
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let key = "oauth_dropbox_srv_drive";
+        let (_root, cfg) =
+            blocked_partition(&store, dir.path(), &[dropbox("srv_drive", "Drive")], key);
+        store.store(key, "local-token").unwrap();
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[dropbox("srv_drive", "Drive B")]).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "backup-token".to_string());
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        before_profile_decisions(move |_| fail_secret_write(key, WriteStage::AfterVault));
+
+        let result = import_deciding(
+            &store,
+            &cfg,
+            &backup,
+            VAULT_ONLY,
+            &[decide(
+                "srv_drive",
+                keystore_profile_plan::ProfileDecision::Reject,
+            )],
+        );
+        let error = result
+            .profile_decisions_error
+            .expect("the profile step did not fail");
+        assert!(error.contains("put back"), "{error}");
+        assert_eq!(store.get(key).unwrap(), "local-token");
+        assert!(
+            crate::user_partitions::vault_secret_is_blocked(key).unwrap(),
+            "the rollback put the block record back"
         );
     }
 

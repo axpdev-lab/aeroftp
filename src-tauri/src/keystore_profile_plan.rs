@@ -182,6 +182,11 @@ pub struct PlanInputs {
     /// the import wrote anything: what a failed step puts back in the vault
     /// when the receiver's writes leave it alone.
     pub local_vault: HashMap<String, Option<Zeroizing<String>>>,
+    /// The recorded digest of each private token key's `vault_blocked_secret:`
+    /// record as the plan found it, before the import wrote anything: a
+    /// failed step's rollback puts the record back beside the vault value it
+    /// hid, since the writes that ran lifted it.
+    pub blocked_vault: HashMap<String, String>,
     /// Private token keys whose local vault value belongs to a different
     /// account identity than the receiver, which "Skip existing" leaves in
     /// the vault: once the backup's partition is published its owner has no
@@ -787,6 +792,7 @@ mod tests {
             receiver: None,
             targets_restored_partition: false,
             local_vault: HashMap::new(),
+            blocked_vault: HashMap::new(),
             vault_foreign_private: Vec::new(),
             legacy_owner_reads_vault: false,
             receiver_rows: HashMap::new(),
