@@ -88555,9 +88555,18 @@ mod tests {
                 // One profile id in both partitions, different secrets each.
                 let profile = serde_json::json!({"id":"srv-shared","name":"shared-s3","protocol":"s3",
                     "host":"s3.example.invalid","port":443,"username":"u","options":{}});
-                up::cli_replace_server_profiles_for_user(&store, alice, &[profile.clone()])
-                    .unwrap();
-                up::cli_replace_server_profiles_for_user(&store, bob, &[profile.clone()]).unwrap();
+                up::cli_replace_server_profiles_for_user(
+                    &store,
+                    alice,
+                    std::slice::from_ref(&profile),
+                )
+                .unwrap();
+                up::cli_replace_server_profiles_for_user(
+                    &store,
+                    bob,
+                    std::slice::from_ref(&profile),
+                )
+                .unwrap();
                 // Strict partition writes (no shared vault copy), so each read
                 // can only come from the named account's partition.
                 up::store_credential_for_user(
