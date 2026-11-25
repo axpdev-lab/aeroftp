@@ -4026,6 +4026,10 @@ mod cli_sequence_tests {
     /// per-file lane; they now reach the native bulk in their absolute form.
     #[tokio::test]
     async fn bulk_upload_accepts_relative_sources_as_absolute_paths() {
+        // Reads the process CWD: take the shared env lock like every other
+        // working-directory-reading test, so a test that changes the CWD
+        // cannot race this read.
+        let _env = crate::test_env::lock();
         let dir = tempfile::tempdir().unwrap();
         let shim = link_shim(dir.path());
         let items = bulk_upload_items(dir.path(), 3);

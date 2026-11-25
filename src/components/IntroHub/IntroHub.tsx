@@ -15,6 +15,7 @@ import { ExportImportDialog } from '../ExportImportDialog';
 import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { newFormTabOptions } from './newFormTabOptions';
+import { PaletteReadGuard } from './paletteReads';
 import { useTranslation } from '../../i18n';
 import { loadSavedServerProfilesWithAccount } from '../../utils/serverProfileStore';
 import { accountChangeGeneration } from '../../utils/userPartitions';
@@ -171,21 +172,22 @@ export function IntroHub(props: IntroHubProps) {
     // The account paletteServers was read under, captured in that read; the
     // export dialog sends it so the backend refuses the export on a switch.
     const [paletteAccountId, setPaletteAccountId] = useState<number | null>(null);
-    // Monotonic read generation: only the LATEST account-scoped read may commit
-    // its pair, so an older completion (e.g. one that answered after an account
-    // switch) is discarded and a stale list can never reach the export.
-    const paletteReadGenerationRef = useRef(0);
+    // Read guard: only the LATEST account-scoped read may commit its pair, and
+    // only when the account did not change while it was in flight, so a stale
+    // completion (e.g. one that answered after an account switch) is discarded
+    // and a stale list can never reach the export.
+    const paletteReadsRef = useRef(new PaletteReadGuard());
     // Load paletteServers and paletteAccountId TOGETHER from one account-scoped
     // read and store them as one coherent snapshot; clear both on error.
     const reloadPalette = useCallback(async (): Promise<void> => {
-        const generation = ++paletteReadGenerationRef.current;
+        const token = paletteReadsRef.current.begin();
         try {
             const read = await loadSavedServerProfilesWithAccount();
-            if (generation !== paletteReadGenerationRef.current) return;
+            if (!paletteReadsRef.current.isCurrent(token)) return;
             setPaletteServers(read.profiles);
             setPaletteAccountId(read.userId ?? null);
         } catch {
-            if (generation !== paletteReadGenerationRef.current) return;
+            if (!paletteReadsRef.current.isCurrent(token)) return;
             setPaletteServers([]);
             setPaletteAccountId(null);
         }
@@ -547,6 +549,10 @@ export function IntroHub(props: IntroHubProps) {
                         // The dialog closes itself (onClose) after its result.
                         const accountBefore = accountChangeGeneration();
                         const updated = await appendImportedProfiles(newServers, expectedUserId, removeKeys);
+                        // The import is a write to the profile list: any palette
+                        // read still in flight started before it and must not
+                        // commit over the imported list.
+                        paletteReadsRef.current.invalidate();
                         // A switch meanwhile brings its own re-read: this list is the previous account's.
                         // List and account update together, in one update; an unknown
                         // account (undefined) retains the current id.
