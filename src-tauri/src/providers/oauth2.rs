@@ -1480,14 +1480,24 @@ impl OAuth2Manager {
         json: &str,
     ) -> Result<(), ProviderError> {
         if profile_id.is_empty() {
-            return store
+            let result = store
                 .store(account, json)
                 .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)));
+            if result.is_ok() && crate::user_partitions::vault_write_is_owner(user) {
+                crate::user_partitions::unblock_vault_secret_after_store(store, account, json)
+                    .map_err(ProviderError::Other)?;
+            }
+            return result;
         }
-        crate::user_partitions::store_vault_then_mirror(store, account, json, || {
+        let result = crate::user_partitions::store_vault_then_mirror(store, account, json, || {
             Self::mirror_tokens(store, user, account, json).map_err(|e| e.to_string())
         })
-        .map_err(ProviderError::Other)
+        .map_err(ProviderError::Other);
+        if result.is_ok() && crate::user_partitions::vault_write_is_owner(user) {
+            crate::user_partitions::unblock_vault_secret_after_store(store, account, json)
+                .map_err(ProviderError::Other)?;
+        }
+        result
     }
     pub async fn begin_headless(
         &self,

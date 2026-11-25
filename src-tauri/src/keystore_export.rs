@@ -1635,6 +1635,16 @@ fn write_profile_secret_slots_if(
             },
         },
     }
+    // A private token's vault copy is the legacy owner's: this write reached
+    // it only for that owner (a non-owner's went to its partition row
+    // above), so it lifts the block like any owner write. A declined swap
+    // (`vault_done` false) wrote nothing and lifts nothing.
+    if vault_done {
+        if let Some(v) = vault_value {
+            crate::user_partitions::unblock_vault_secret_after_store(store, key, v)
+                .map_err(SecretWriteError::after_vault)?;
+        }
+    }
     let (Some(db), Some(receiver)) = (db, receiver) else {
         return Ok((vault_done, true));
     };

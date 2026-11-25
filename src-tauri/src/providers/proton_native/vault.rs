@@ -844,6 +844,8 @@ pub fn store_session(
         }
         indexed(&store, user, &key);
     }
+    crate::user_partitions::unblock_vault_secret_after_store(&store, &key, json.as_str())
+        .map_err(ProviderError::Other)?;
     Ok(())
 }
 

@@ -4660,6 +4660,9 @@ pub(crate) fn replace_owner_aware_if_unchanged(
                 return Err(COPY_NOT_FOLLOWED.to_string());
             }
         }
+        if written {
+            unblock_vault_secret_after_store(store, credential_id, replacement)?;
+        }
         return Ok(written);
     }
     init_or_migrate_cli(store)?;
@@ -4670,7 +4673,11 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         // (`resolve_active_credential_owner_aware`).
         None => active_user_id(&conn)?,
     }) else {
-        return vault_checked();
+        let written = vault_checked()?;
+        if written {
+            unblock_vault_secret_after_store(store, credential_id, replacement)?;
+        }
+        return Ok(written);
     };
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
     let root_secret = user_crypto::secret_key_from_bytes(&root_key);
@@ -4715,6 +4722,9 @@ pub(crate) fn replace_owner_aware_if_unchanged(
             let written = vault()?;
             tx.commit()
                 .map_err(|e| format!("Commit conditional credential write: {e}"))?;
+            if written {
+                unblock_vault_secret_after_store(store, credential_id, replacement)?;
+            }
             return Ok(written);
         }
         use subtle::ConstantTimeEq;
@@ -4776,6 +4786,12 @@ pub(crate) fn replace_owner_aware_if_unchanged(
                 log::warn!("Conditional credential write: the vault copy did not follow: {e}");
                 return Err(COPY_NOT_FOLLOWED.to_string());
             }
+        }
+        // The follow above may have put `replacement` into the vault copy:
+        // an owner write lifts the block, verified against what the vault
+        // holds now.
+        if owner {
+            unblock_vault_secret_after_store(store, credential_id, replacement)?;
         }
         Ok(true)
     })
@@ -7024,6 +7040,55 @@ pub(crate) fn vault_secret_is_blocked(key: &str) -> Result<bool, String> {
     Ok(blocked_vault_secret(&conn, key)?.is_some())
 }
 
+/// Lift `key`'s `vault_blocked_secret:` record after `written` landed in
+/// the vault as the record-owner's fresh value: the vault no longer holds
+/// the foreign token the record hid, so a sign-in that reports success is
+/// not followed by a connect that finds nothing. Only a private token key
+/// with a live record and a vault still holding `written` clears it: a
+/// foreign rewrite landing between the store and this call keeps its
+/// block, as does every non-private key and a missing database.
+pub(crate) fn unblock_vault_secret_after_store(
+    store: &CredentialStore,
+    key: &str,
+    written: &str,
+) -> Result<(), String> {
+    if private_token_type(key).is_none() || !cli_db_path()?.exists() {
+        return Ok(());
+    }
+    let conn = open_or_init_cli()?;
+    if blocked_vault_secret(&conn, key)?.is_none() {
+        return Ok(());
+    }
+    if get_optional_secret(store, key)?
+        .as_deref()
+        .map(String::as_str)
+        != Some(written)
+    {
+        return Ok(());
+    }
+    conn.execute(
+        "DELETE FROM global_state WHERE key = ?1",
+        params![blocked_vault_secret_key(key)],
+    )
+    .map_err(|e| format!("Lift vault secret block: {e}"))?;
+    Ok(())
+}
+
+/// Whether a vault write made for `user_id`'s account is the legacy owner's
+/// own, the only write that lifts a `vault_blocked_secret:` record:
+/// `None` (no account, the pre-partition vault), `LEGACY_ONLY_ACCOUNT` and
+/// the account [`is_legacy_owner`] names. A write for any other account
+/// leaves the vault copy foreign, block and all, even when the key reached
+/// the vault because its type was not recognised as private.
+pub(crate) fn vault_write_is_owner(user_id: Option<i64>) -> bool {
+    match user_id {
+        None | Some(LEGACY_ONLY_ACCOUNT) => true,
+        Some(user_id) => open_or_init_cli()
+            .and_then(|conn| is_legacy_owner(&conn, user_id))
+            .unwrap_or(false),
+    }
+}
+
 /// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted
 /// store, falling back to the legacy vault only when its per-user row is absent.
 /// A locked partition refuses access; MUV-6 drops the fallback once purged.
@@ -8813,10 +8878,20 @@ fn store_credential_dual_with(
     mirror: impl FnOnce(i64) -> Result<(), String>,
 ) -> Result<(), String> {
     let user_id = active_user()?;
-    store_vault_then_mirror(store, credential_id, secret, || match user_id {
+    let written = store_vault_then_mirror(store, credential_id, secret, || match user_id {
         Some(user_id) => mirror(user_id),
         None => Ok(()),
-    })
+    });
+    // A private token's vault copy is the legacy owner's: the write lifts
+    // its block only when the account it mirrored into is that owner (or
+    // there is no account at all, the pre-partition vault).
+    if written.is_ok()
+        && private_token_type(credential_id).is_some()
+        && vault_write_is_owner(user_id)
+    {
+        unblock_vault_secret_after_store(store, credential_id, secret)?;
+    }
+    written
 }
 
 /// Writes `secret` to the vault key `credential_id`, then `mirror`, the
@@ -9005,7 +9080,11 @@ pub fn store_imported_credential_for_user(
             return store_credential_for_user(store, private, credential_id, kind, secret);
         }
     }
-    store_vault_then_mirror(store, credential_id, secret, || {
+    // A private token reaching the vault write is the legacy owner's only
+    // when `user_id` is that owner: a non-owner's private token went to its
+    // partition above, and one whose type was not recognised as private
+    // stays foreign in the vault, block and all.
+    let written = store_vault_then_mirror(store, credential_id, secret, || {
         let conn = open_or_init_cli()?;
         let Some(kind) = partition_credential_type(&conn, user_id, credential_id, credential_type)?
         else {
@@ -9013,7 +9092,11 @@ pub fn store_imported_credential_for_user(
         };
         let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
         set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, secret)
-    })
+    });
+    if written.is_ok() && vault_write_is_owner(Some(user_id)) {
+        unblock_vault_secret_after_store(store, credential_id, secret)?;
+    }
+    written
 }
 
 /// Remove an imported credential from both the user's partition and the vault.
@@ -9643,9 +9726,12 @@ pub fn store_typed_credential_dual_as(
             credential_type,
             secret,
         ),
-        None => store
-            .store(credential_id, secret)
-            .map_err(|e| format!("Store credential in vault: {e}")),
+        None => {
+            store
+                .store(credential_id, secret)
+                .map_err(|e| format!("Store credential in vault: {e}"))?;
+            unblock_vault_secret_after_store(store, credential_id, secret)
+        }
     }
 }
 
@@ -9678,7 +9764,13 @@ fn store_active_credential_typed_dual_as(
             secret,
             signed_in,
         ),
-        None => store_vault_then_mirror(store, credential_id, secret, || Ok(())),
+        None => {
+            let written = store_vault_then_mirror(store, credential_id, secret, || Ok(()));
+            if written.is_ok() {
+                unblock_vault_secret_after_store(store, credential_id, secret)?;
+            }
+            written
+        }
     }
 }
 
@@ -9738,9 +9830,17 @@ fn store_credential_for_user_typed_dual_as(
             signed_in,
         );
     }
-    store_vault_then_mirror(store, credential_id, secret, || {
+    // A private token reaching the vault write is the legacy owner's only
+    // when `user_id` is that owner: a non-owner's private token went to its
+    // partition above, and one whose type was not recognised as private
+    // stays foreign in the vault, block and all.
+    let written = store_vault_then_mirror(store, credential_id, secret, || {
         mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret)
-    })
+    });
+    if written.is_ok() && vault_write_is_owner(Some(user_id)) {
+        unblock_vault_secret_after_store(store, credential_id, secret)?;
+    }
+    written
 }
 
 /// MU-7: list other users that already store a profile with the SAME dedup
@@ -14244,6 +14344,68 @@ mod tests {
             Some(secret_value_digest("new-value")),
             "the newer record survives the lift of the checked one"
         );
+    }
+
+    /// NAS 2586: a `vault_blocked_secret:` record does not outlive the
+    /// legacy owner's own write. Re-signing stores the fresh token through
+    /// the typed dual writer and the block lifts in the same operation, so
+    /// the next read returns the new token instead of nothing. Red if the
+    /// typed dual writer stops calling `unblock_vault_secret_after_store`
+    /// on the owner path.
+    #[test]
+    fn an_owner_write_lifts_the_vault_secret_block() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::an_owner_write_lifts_the_vault_secret_block",
+        ) {
+            return;
+        }
+        let _guard = test_lock();
+        let store = isolated_cli_store();
+        let conn = open_or_init_cli().unwrap();
+        let owner = active_user_id(&conn).unwrap().unwrap();
+        let key = "oauth_box";
+        store.store(key, "foreign-token").unwrap();
+        block_vault_secret(&conn, key, "foreign-token").unwrap();
+        assert!(vault_secret_is_blocked(key).unwrap());
+
+        store_credential_for_user_typed_dual(&store, owner, key, "oauth", "owner-token").unwrap();
+
+        assert!(!vault_secret_is_blocked(key).unwrap());
+        let read = vault_secret_blocked_read_with(&conn, key, &|k| get_optional_secret(&store, k))
+            .unwrap();
+        assert_eq!(read.as_ref().map(|v| v.as_str()), Some("owner-token"));
+    }
+
+    /// NAS 2586: a foreign write of the same key does not lift the block.
+    /// A non-owner's token that reaches the vault only because its type was
+    /// not the private one stays foreign there, and the record keeps the
+    /// value unreadable. Red if `vault_write_is_owner` lets the lift
+    /// through.
+    #[test]
+    fn a_foreign_write_keeps_the_vault_secret_block() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::a_foreign_write_keeps_the_vault_secret_block",
+        ) {
+            return;
+        }
+        let _guard = test_lock();
+        let store = isolated_cli_store();
+        let mut conn = open_or_init_cli().unwrap();
+        let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .unwrap()
+            .id;
+        let key = "oauth_box";
+        store.store(key, "foreign-token").unwrap();
+        block_vault_secret(&conn, key, "foreign-token").unwrap();
+
+        store_credential_for_user_typed_dual(&store, other, key, "password", "foreign-token-2")
+            .unwrap();
+
+        assert!(vault_secret_is_blocked(key).unwrap());
+        let read = vault_secret_blocked_read_with(&conn, key, &|k| get_optional_secret(&store, k))
+            .unwrap();
+        assert!(read.is_none(), "the foreign value stays unreadable");
     }
 
     /// MUV-6 for private tokens: what another account saved in the vault before

@@ -92,7 +92,10 @@ impl AuthScope<'_> {
                     self.store, id, key, "oauth", value,
                 )
             }
-            _ => self.store.store(key, value).map_err(|e| e.to_string()),
+            _ => {
+                self.store.store(key, value).map_err(|e| e.to_string())?;
+                crate::user_partitions::unblock_vault_secret_after_store(self.store, key, value)
+            }
         }
     }
     fn delete(&self, key: &str) -> Result<(), String> {
