@@ -118,11 +118,12 @@ Findings not yet addressed are surfaced as **open**. Findings accepted with writ
 
 | Month | Version | Open | Suppressed (justified) | Report |
 |---|---|---|---|---|
-| Nov 2026 | v4.2.6 (`main` at `9fe735ab8` plus this audit's changes) | **0** | 25 | [HTML](docs/security/security-report-latest.html) |
+| Nov 2026 | v4.2.8+ (`main` at `5baea18e` plus the RUSTSEC-2026-0592 fix) | **0** | 35 | [Markdown](docs/security/security-report-latest.md) ([HTML](docs/security/security-report-latest.html)) |
+| Nov 2026 | v4.2.6 (`main` at `9fe735ab8` plus this audit's changes) | **0** | 25 | [HTML](https://github.com/axpdev-lab/aeroftp/blob/5baea18ebf79ab7933908dfa054c830ca48beb17/docs/security/security-report-latest.html) |
 | Jun 2026 | v4.0.7 | **0** | 28 | [HTML](https://github.com/axpdev-lab/aeroftp/blob/aa0e4774541c8eeafe14b33b0c92427d7621e7d8/docs/security/security-report-latest.html) |
 | May 2026 | v3.8.0 | **0** | 26 | archived |
 
-Only the newest row links `security-report-latest.html`. The next audit replaces that file, so the same pull request repins this row to the blob of the last `main` commit that carries it, as the June row is pinned to `aa0e477`. Dated copies under `docs/security/` are not committed (`.gitignore`). Counts: a suppressed finding is one package version and one advisory, counted once across lockfiles (since November 2026; earlier rows counted one per lockfile record).
+Only the newest row links the live `security-report-latest` files (Markdown first, since GitHub renders it; the HTML twin stays for local browser viewing). The next audit replaces those files, so the same pull request repins this row to the blob of the last `main` commit that carries them, as the v4.2.6 row is pinned to `5baea18e` and the June row to `aa0e477`. Dated copies under `docs/security/` are not committed (`.gitignore`). Counts: a suppressed finding is one package version and one advisory, counted once across lockfiles (since November 2026; earlier rows counted one per lockfile record).
 
 #### Third-party tooling
 

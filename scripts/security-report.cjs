@@ -8,7 +8,10 @@
  *   - npm audit           (Node deps)
  *   - osv-scanner         (Google OSV DB, optional)
  *
- * Produces a single self-contained HTML in docs/security/security-report-<date>.html
+ * Produces a self-contained HTML in docs/security/security-report-<date>.html
+ * (local browser viewing) and a GitHub-Flavored Markdown twin in
+ * docs/security/security-report-<date>.md (rendered by GitHub). Both are
+ * copied to security-report-latest.{html,md}.
  *
  * Usage:
  *   node scripts/security-report.cjs
@@ -482,7 +485,157 @@ function buildHtml({ pkg, cargoVersion, results }) {
 </html>`;
 }
 
-module.exports = { collectOsvFindings };
+function toolVersion(cmd, args = ['--version']) {
+  if (!commandExists(cmd)) return 'not installed';
+  const r = tryRun(cmd, args);
+  if (!r.ok || r.spawnError) return 'unknown';
+  const firstLine = (r.stdout || r.stderr || '').trim().split('\n')[0] || '';
+  const m = firstLine.match(/(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/);
+  return m ? m[1] : firstLine.trim() || 'unknown';
+}
+
+function mdCell(s) {
+  return String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+function mdLink(url, label) {
+  return url ? `[${label}](${url})` : label;
+}
+
+function buildMarkdown({ pkg, cargoVersion, results, versions }) {
+  const totalIssues = results.reduce((acc, r) => {
+    if (r.skipped || r.parseError) return acc;
+    if (r.tool === 'cargo audit') return acc + (r.counts?.vulnerabilities || 0);
+    if (r.tool === 'npm audit') {
+      const c = r.counts || {};
+      return acc + (c.critical || 0) + (c.high || 0) + (c.moderate || 0) + (c.low || 0);
+    }
+    if (r.tool === 'osv-scanner') return acc + (r.counts?.open || 0);
+    return acc;
+  }, 0);
+
+  const totalSuppressed = results.reduce((acc, r) => {
+    if (r.skipped || r.parseError) return acc;
+    if (r.tool === 'osv-scanner') return acc + (r.counts?.suppressed || 0);
+    return acc;
+  }, 0);
+
+  const lines = [];
+  lines.push('# AeroFTP Security Report');
+  lines.push('');
+  lines.push(`- Frontend version: **${pkg.version}**`);
+  lines.push(`- Backend (src-tauri) version: **${cargoVersion}**`);
+  lines.push(`- Generated: ${TIMESTAMP.toISOString()}`);
+  lines.push(`- Host: ${os.hostname()} ${process.platform}-${process.arch}`);
+  lines.push('');
+  lines.push('## Summary');
+  lines.push('');
+  lines.push(totalIssues === 0
+    ? `**No open vulnerabilities** across cargo audit, npm audit, and osv-scanner.`
+    : `**${totalIssues} open finding(s)** across the tools below. Review each one.`);
+  if (totalSuppressed > 0) {
+    lines.push(`- ${totalSuppressed} additional finding(s) suppressed via documented rationale in [\`src-tauri/.cargo/audit.toml\`](src-tauri/.cargo/audit.toml)`);
+  }
+  lines.push('');
+  lines.push('| Tool | Version | Result |');
+  lines.push('|---|---|---|');
+  for (const r of results) {
+    let result;
+    if (r.skipped) result = `skipped: ${r.reason}`;
+    else if (r.parseError) result = 'parse error (see HTML report)';
+    else if (r.tool === 'cargo audit') result = `${r.counts.vulnerabilities} vulnerabilities, ${r.counts.warnings} warnings`;
+    else if (r.tool === 'npm audit') {
+      const c = r.counts;
+      result = `${c.critical} critical, ${c.high} high, ${c.moderate} moderate, ${c.low} low, ${c.info} info`;
+    } else if (r.tool === 'osv-scanner') result = `${r.counts.open} open, ${r.counts.suppressed} suppressed`;
+    else result = '';
+    lines.push(`| ${mdCell(r.tool)} | ${mdCell(versions[r.tool] || 'unknown')} | ${mdCell(result)} |`);
+  }
+  lines.push('');
+
+  for (const r of results) {
+    lines.push(`## ${r.tool}`);
+    lines.push('');
+    if (r.skipped) {
+      lines.push(`Skipped: ${r.reason}`);
+      lines.push('');
+      continue;
+    }
+    if (r.parseError) {
+      lines.push('Could not parse tool output; see the HTML report for the raw output.');
+      lines.push('');
+      continue;
+    }
+    if (r.tool === 'cargo audit') {
+      if (r.counts.vulnerabilities === 0) {
+        lines.push('No vulnerabilities found in the Rust dependency tree.');
+      } else {
+        lines.push('| ID | Package | Severity | Title | Advisory |');
+        lines.push('|---|---|---|---|---|');
+        for (const v of r.vulns) {
+          lines.push(`| ${mdCell(v.id || '')} | ${mdCell(`${v.package} ${v.version}`)} | ${mdCell(v.severity)} | ${mdCell(v.title || '')} | ${mdLink(v.url, 'link')} |`);
+        }
+      }
+      lines.push('');
+      if (r.warnings.length) {
+        lines.push(`### Warnings (${r.warnings.length}) - unmaintained / yanked / deprecated`);
+        lines.push('');
+        lines.push('| Kind | Package | Note |');
+        lines.push('|---|---|---|');
+        for (const w of r.warnings) {
+          lines.push(`| ${mdCell(w.kind)} | ${mdCell(`${w.package} ${w.version}`)} | ${mdCell(w.message)} |`);
+        }
+        lines.push('');
+      }
+    }
+    if (r.tool === 'npm audit') {
+      const c = r.counts;
+      if ((c.critical + c.high + c.moderate + c.low) === 0) {
+        lines.push('No vulnerabilities found in production npm dependencies.');
+      } else {
+        lines.push('| Package | Severity | Range | Via | Fix available |');
+        lines.push('|---|---|---|---|---|');
+        for (const a of r.advisories) {
+          lines.push(`| ${mdCell(a.package)} | ${mdCell(a.severity)} | ${mdCell(a.range || '')} | ${mdCell((a.via || []).join(', '))} | ${a.fixAvailable ? 'yes' : 'no'} |`);
+        }
+      }
+      lines.push('');
+    }
+    if (r.tool === 'osv-scanner') {
+      const c = r.counts;
+      if (c.open === 0) {
+        lines.push('No open findings. All known advisories in scope are documented in the suppression list with written rationales.');
+      } else {
+        lines.push('| Ecosystem | Package | ID | CVSS | Fixed in | Summary |');
+        lines.push('|---|---|---|---|---|---|');
+        for (const f of r.open) {
+          const lockfiles = (f.lockfiles || []).length ? ` (${f.lockfiles.join(', ')})` : '';
+          lines.push(`| ${mdCell(f.ecosystem)} | ${mdCell(`${f.package} ${f.version}${lockfiles}`)} | ${mdLink(`https://osv.dev/vulnerability/${f.id}`, f.id)} | ${mdCell(f.severity || '')} | ${mdCell(f.fixedVersion || '')} | ${mdCell(f.summary || '')} |`);
+        }
+      }
+      lines.push('');
+      if (r.suppressed.length) {
+        lines.push(`### Suppressed via [\`src-tauri/.cargo/audit.toml\`](src-tauri/.cargo/audit.toml): ${r.suppressed.length} findings (one per package version and advisory, counted once across lockfiles)`);
+        lines.push('');
+        lines.push('| Ecosystem | Package | ID | CVSS | Fixed in | Summary |');
+        lines.push('|---|---|---|---|---|---|');
+        for (const f of r.suppressed) {
+          const lockfiles = (f.lockfiles || []).length ? ` (${f.lockfiles.join(', ')})` : '';
+          lines.push(`| ${mdCell(f.ecosystem)} | ${mdCell(`${f.package} ${f.version}${lockfiles}`)} | ${mdLink(`https://osv.dev/vulnerability/${f.id}`, f.id)} | ${mdCell(f.severity || '')} | ${mdCell(f.fixedVersion || '')} | ${mdCell(f.summary || '')} |`);
+        }
+        lines.push('');
+      }
+    }
+  }
+
+  lines.push('---');
+  lines.push('');
+  lines.push('Generated by `scripts/security-report.cjs` - self-hosted, no third-party dependency. Data sources: [RustSec](https://rustsec.org/), [npm registry](https://docs.npmjs.com/cli/v10/commands/npm-audit), [OSV](https://osv.dev/).');
+  lines.push('');
+  return lines.join('\n');
+}
+
+module.exports = { collectOsvFindings, buildMarkdown };
 
 if (require.main === module) (function main() {
   const pkg = readPkg();
@@ -502,13 +655,27 @@ if (require.main === module) (function main() {
   console.log('  - osv-scanner');
   results.push(runOsvScanner(ignoreInfo));
 
+  const versions = {
+    'cargo audit': toolVersion('cargo-audit'),
+    'npm audit': toolVersion('npm'),
+    'osv-scanner': toolVersion('osv-scanner'),
+  };
+
   const html = buildHtml({ pkg, cargoVersion, results });
   const htmlPath = path.join(OUT_DIR, `security-report-${DATE_TAG}.html`);
   fs.writeFileSync(htmlPath, html, 'utf8');
   const latestPath = path.join(OUT_DIR, 'security-report-latest.html');
   fs.copyFileSync(htmlPath, latestPath);
   console.log(`\nHTML report written: ${path.relative(ROOT, htmlPath)}`);
-  console.log(`Latest symlink:      ${path.relative(ROOT, latestPath)}`);
+  console.log(`Latest copy:         ${path.relative(ROOT, latestPath)}`);
+
+  const md = buildMarkdown({ pkg, cargoVersion, results, versions });
+  const mdPath = path.join(OUT_DIR, `security-report-${DATE_TAG}.md`);
+  fs.writeFileSync(mdPath, md, 'utf8');
+  const latestMdPath = path.join(OUT_DIR, 'security-report-latest.md');
+  fs.copyFileSync(mdPath, latestMdPath);
+  console.log(`Markdown report written: ${path.relative(ROOT, mdPath)}`);
+  console.log(`Latest copy:             ${path.relative(ROOT, latestMdPath)}`);
 
   if (ARGS.has('--json')) {
     const jsonPath = path.join(OUT_DIR, `security-report-${DATE_TAG}.json`);
