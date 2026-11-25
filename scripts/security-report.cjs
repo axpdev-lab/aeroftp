@@ -526,7 +526,8 @@ function buildMarkdown({ pkg, cargoVersion, results, versions }) {
   lines.push(`- Frontend version: **${pkg.version}**`);
   lines.push(`- Backend (src-tauri) version: **${cargoVersion}**`);
   lines.push(`- Generated: ${TIMESTAMP.toISOString()}`);
-  lines.push(`- Host: ${os.hostname()} ${process.platform}-${process.arch}`);
+  // The Markdown twin is read on GitHub: keep infra details (hostname) out of it.
+  lines.push(`- Platform: ${process.platform}-${process.arch}`);
   lines.push('');
   lines.push('## Summary');
   lines.push('');
@@ -534,7 +535,8 @@ function buildMarkdown({ pkg, cargoVersion, results, versions }) {
     ? `**No open vulnerabilities** across cargo audit, npm audit, and osv-scanner.`
     : `**${totalIssues} open finding(s)** across the tools below. Review each one.`);
   if (totalSuppressed > 0) {
-    lines.push(`- ${totalSuppressed} additional finding(s) suppressed via documented rationale in [\`src-tauri/.cargo/audit.toml\`](src-tauri/.cargo/audit.toml)`);
+    // Relative links resolve against docs/security/ on GitHub, hence ../../
+    lines.push(`- ${totalSuppressed} additional finding(s) suppressed via documented rationale in [\`src-tauri/.cargo/audit.toml\`](../../src-tauri/.cargo/audit.toml)`);
   }
   lines.push('');
   lines.push('| Tool | Version | Result |');
@@ -615,7 +617,7 @@ function buildMarkdown({ pkg, cargoVersion, results, versions }) {
       }
       lines.push('');
       if (r.suppressed.length) {
-        lines.push(`### Suppressed via [\`src-tauri/.cargo/audit.toml\`](src-tauri/.cargo/audit.toml): ${r.suppressed.length} findings (one per package version and advisory, counted once across lockfiles)`);
+        lines.push(`### Suppressed via [\`src-tauri/.cargo/audit.toml\`](../../src-tauri/.cargo/audit.toml): ${r.suppressed.length} findings (one per package version and advisory, counted once across lockfiles)`);
         lines.push('');
         lines.push('| Ecosystem | Package | ID | CVSS | Fixed in | Summary |');
         lines.push('|---|---|---|---|---|---|');

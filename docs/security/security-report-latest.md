@@ -2,13 +2,13 @@
 
 - Frontend version: **4.2.8**
 - Backend (src-tauri) version: **4.2.8**
-- Generated: 2026-11-25T14:23:00.601Z
-- Host: axpnet-ubuntu linux-x64
+- Generated: 2026-11-25T14:56:44.947Z
+- Platform: linux-x64
 
 ## Summary
 
 **No open vulnerabilities** across cargo audit, npm audit, and osv-scanner.
-- 35 additional finding(s) suppressed via documented rationale in [`src-tauri/.cargo/audit.toml`](src-tauri/.cargo/audit.toml)
+- 35 additional finding(s) suppressed via documented rationale in [`src-tauri/.cargo/audit.toml`](../../src-tauri/.cargo/audit.toml)
 
 | Tool | Version | Result |
 |---|---|---|
@@ -28,7 +28,7 @@ No vulnerabilities found in production npm dependencies.
 
 No open findings. All known advisories in scope are documented in the suppression list with written rationales.
 
-### Suppressed via [`src-tauri/.cargo/audit.toml`](src-tauri/.cargo/audit.toml): 35 findings (one per package version and advisory, counted once across lockfiles)
+### Suppressed via [`src-tauri/.cargo/audit.toml`](../../src-tauri/.cargo/audit.toml): 35 findings (one per package version and advisory, counted once across lockfiles)
 
 | Ecosystem | Package | ID | CVSS | Fixed in | Summary |
 |---|---|---|---|---|---|

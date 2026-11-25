@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { collectOsvFindings } = require('../../scripts/security-report.cjs');
+const { collectOsvFindings, buildMarkdown } = require('../../scripts/security-report.cjs');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const vuln = (id, aliases = []) => ({ id, aliases, summary: `${id} summary` });
@@ -69,4 +69,49 @@ test('a relative lockfile path from the scanner is read against the repository r
   } finally {
     process.chdir(before);
   }
+});
+
+test('buildMarkdown renders one open and one suppressed finding with GitHub-safe links', () => {
+  const finding = (id, summary) => ({
+    ecosystem: 'crates.io',
+    package: 'demo-crate',
+    version: '1.2.3',
+    id,
+    aliases: [],
+    summary,
+    severity: 'CVSS:3.1/AV:N/AC:L',
+    fixedVersion: '1.2.4',
+    lockfiles: [path.join('src-tauri', 'Cargo.lock')],
+    suppressed: false,
+  });
+  const results = [
+    { tool: 'cargo audit', skipped: false, counts: { vulnerabilities: 0, warnings: 0 }, vulns: [], warnings: [] },
+    { tool: 'npm audit', skipped: false, counts: { info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0 }, advisories: [] },
+    {
+      tool: 'osv-scanner',
+      skipped: false,
+      counts: { open: 1, suppressed: 1, total: 2 },
+      open: [{ ...finding('RUSTSEC-2026-9999', 'open | finding summary'), suppressed: false }],
+      suppressed: [{ ...finding('RUSTSEC-2026-8888', 'suppressed finding'), suppressed: true }],
+    },
+  ];
+  const md = buildMarkdown({
+    pkg: { version: '4.2.8' },
+    cargoVersion: '4.2.8',
+    results,
+    versions: { 'cargo audit': '0.22.2', 'npm audit': '11.19.0', 'osv-scanner': '2.3.8' },
+  });
+
+  // The report lives in docs/security/, so repo-root links need ../../ on GitHub.
+  assert.ok(md.includes('](../../src-tauri/.cargo/audit.toml)'), 'audit.toml links must be relative to docs/security/');
+  // Open and suppressed findings each get a table row with the osv.dev link.
+  assert.ok(md.includes('[RUSTSEC-2026-9999](https://osv.dev/vulnerability/RUSTSEC-2026-9999)'));
+  assert.ok(md.includes('[RUSTSEC-2026-8888](https://osv.dev/vulnerability/RUSTSEC-2026-8888)'));
+  assert.ok(md.includes('1 open, 1 suppressed'));
+  // Pipe characters in tool output must be escaped inside table cells.
+  assert.ok(md.includes('open \\| finding summary'));
+  // Public Markdown: no em-dash, no local hostname.
+  assert.ok(!md.includes('\u2014'), 'no U+2014 in the Markdown report');
+  assert.ok(!md.includes(os.hostname()), 'no hostname in the Markdown report');
+  assert.ok(md.includes(`Platform: ${process.platform}-${process.arch}`));
 });
