@@ -1482,10 +1482,10 @@ impl SecretWriteError {
         }
     }
 
-    fn after_vault(message: String) -> Self {
+    fn after_vault(vault_done: bool, message: String) -> Self {
         Self {
             message,
-            vault_written: true,
+            vault_written: vault_done,
         }
     }
 }
@@ -1642,7 +1642,7 @@ fn write_profile_secret_slots_if(
     if vault_done {
         if let Some(v) = vault_value {
             crate::user_partitions::unblock_vault_secret_after_store(store, key, v)
-                .map_err(SecretWriteError::after_vault)?;
+                .map_err(|e| SecretWriteError::after_vault(vault_done, e))?;
         }
     }
     let (Some(db), Some(receiver)) = (db, receiver) else {
@@ -1653,12 +1653,16 @@ fn write_profile_secret_slots_if(
     }
     #[cfg(test)]
     if tests::secret_write_fails(key, tests::WriteStage::AfterVault) {
-        return Err(SecretWriteError::after_vault("refused (test)".to_string()));
+        return Err(SecretWriteError::after_vault(
+            vault_done,
+            "refused (test)".to_string(),
+        ));
     }
     #[cfg(test)]
     tests::run_before_row_write(store, key);
-    let conn = crate::user_partitions::open_restored_db(db)
-        .map_err(|e| SecretWriteError::after_vault(format!("open {}: {e}", db.display())))?;
+    let conn = crate::user_partitions::open_restored_db(db).map_err(|e| {
+        SecretWriteError::after_vault(vault_done, format!("open {}: {e}", db.display()))
+    })?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let written = match (expected_row, value) {
         (Some(expected_row), _) => crate::user_partitions::swap_user_credential_if_one_of(
@@ -1696,9 +1700,12 @@ fn write_profile_secret_slots_if(
             if !independent_slots {
                 if let Some(expected) = expected {
                     store.swap_secret_if(key, vault_value, expected).map_err(|e| {
-                        SecretWriteError::after_vault(format!(
-                            "partition row rewritten since the import, and the vault copy could not be put back: {e}"
-                        ))
+                        SecretWriteError::after_vault(
+                            vault_done,
+                            format!(
+                                "partition row rewritten since the import, and the vault copy could not be put back: {e}"
+                            ),
+                        )
                     })?;
                 }
                 return Ok((false, false));
@@ -1713,14 +1720,15 @@ fn write_profile_secret_slots_if(
             );
             crate::user_partitions::delete_user_credential_for(&conn, receiver.user_id, key)
                 .map(|()| (vault_done, true))
-                .map_err(SecretWriteError::after_vault)
+                .map_err(|e| SecretWriteError::after_vault(vault_done, e))
         }
         // Any other failure is reported, so the caller puts back what it
         // wrote: removing the row here would delete the user's own value and
         // report the write as done.
-        Err(e) => Err(SecretWriteError::after_vault(format!(
-            "partition row not written: {e}"
-        ))),
+        Err(e) => Err(SecretWriteError::after_vault(
+            vault_done,
+            format!("partition row not written: {e}"),
+        )),
     }
 }
 
@@ -9257,6 +9265,53 @@ mod tests {
                 .unwrap()
                 .is_some(),
             "the restored vault value got its block back"
+        );
+    }
+
+    /// NAS 4698212187: the vault compare declined (a newer sign-in holds
+    /// the key) AND the row write failed: the error is still `after_vault`
+    /// but the vault half never landed, so the old block must NOT come
+    /// back over the newer token. Red if `vault_written` ignores the
+    /// declined compare.
+    #[test]
+    fn a_rollback_keeps_the_newer_sign_in_when_the_row_write_fails_too() {
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let key = "oauth_dropbox_srv_drive";
+        let _root = TestDataRoot::new(dir.path());
+        crate::user_partitions::open_or_init_cli().unwrap();
+        store.store(key, "new-signin-token").unwrap();
+        let missing = dir.path().join("no-such-dir").join("user_partitions.db");
+        let receiver = Receiver {
+            user_id: 1,
+            legacy_owner: true,
+            identity: [7; 16],
+        };
+        let snapshot = ProfileStepSnapshot {
+            receiver: Some(receiver),
+            secrets: vec![(
+                key.to_string(),
+                Some(Zeroizing::new("orig-row".to_string())),
+                Some(Some(Zeroizing::new("local-token".to_string()))),
+                Some(Some(Zeroizing::new("backup-token".to_string()))),
+                None,
+            )],
+            vault: Vec::new(),
+            blocked_vault: vec![(key.to_string(), "recorded-digest".to_string())],
+            list: Vec::new(),
+            blob: None,
+        };
+
+        let (failures, _kept) = restore_profile_step(&store, Some(missing.as_path()), &snapshot);
+        assert!(failures.iter().any(|f| f.contains(key)), "{failures:?}");
+        assert_eq!(store.get(key).unwrap(), "new-signin-token");
+        assert!(
+            crate::user_partitions::blocked_vault_secret_digest(key)
+                .unwrap()
+                .is_none(),
+            "the declined vault write restored no block"
         );
     }
 
