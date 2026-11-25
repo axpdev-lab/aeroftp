@@ -2355,6 +2355,11 @@ fn restore_profile_step(
 ) -> (Vec<String>, Vec<String>) {
     let mut failures = Vec::new();
     let mut kept = Vec::new();
+    // The keys whose vault slot the writes below put back: only one of
+    // those gets its `vault_blocked_secret:` record restored, so a newer
+    // sign-in that won the conditional write keeps both its value and its
+    // lifted block.
+    let mut vault_restored: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for (key, value, vault_value, landed, row_landed) in &snapshot.secrets {
         let value = value.as_ref().map(|v| v.as_str());
         let vault_value = match vault_value {
@@ -2380,9 +2385,10 @@ fn restore_profile_step(
             value,
             true,
         ) {
-            Ok((true, true)) => {}
             Ok((vault_done, row_done)) => {
-                if !vault_done {
+                if vault_done {
+                    vault_restored.insert(key.as_str());
+                } else {
                     kept.push(format!("{key} (vault)"));
                 }
                 if !row_done {
@@ -2395,14 +2401,21 @@ fn restore_profile_step(
     for (key, value, written) in &snapshot.vault {
         let value = value.as_ref().map(|v| v.as_str());
         match store.swap_secret_if(key, Some(written.as_str()), value) {
-            Ok(true) => {}
+            Ok(true) => {
+                vault_restored.insert(key.as_str());
+            }
             Ok(false) => kept.push(format!("{key} (vault)")),
             Err(e) => failures.push(format!("{key} (vault): {e}")),
         }
     }
     // The vault writes above lifted each captured `vault_blocked_secret:`
-    // record; put it back beside the value it hid, never over a newer one.
+    // record; put it back beside the value it hid, never over a newer one,
+    // and only where the vault value itself went back: a conditional write
+    // another writer won leaves both the newer value and its lifted block.
     for (key, digest) in &snapshot.blocked_vault {
+        if !vault_restored.contains(key.as_str()) {
+            continue;
+        }
         if let Err(e) = crate::user_partitions::restore_vault_secret_block(key, digest) {
             failures.push(format!("{key} (block): {e}"));
         }
@@ -9144,6 +9157,51 @@ mod tests {
         assert!(
             crate::user_partitions::vault_secret_is_blocked(key).unwrap(),
             "the rollback put the block record back"
+        );
+    }
+
+    /// NAS 4695617205: a newer sign-in that won the conditional vault write
+    /// keeps its token AND its lifted block: the rollback restores the
+    /// `vault_blocked_secret:` record only where the vault value itself
+    /// went back. Here the vault holds the sign-in's value, not the one
+    /// the import left, so the compare declines and no record returns.
+    /// Red if the block restore ignores the declined write.
+    #[test]
+    fn a_rollback_keeps_a_newer_sign_in_and_its_lifted_block() {
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let key = "oauth_dropbox_srv_drive";
+        let _root = TestDataRoot::new(dir.path());
+        crate::user_partitions::open_or_init_cli().unwrap();
+        // The forward writes lifted the record; the vault now holds a
+        // newer sign-in's token the conditional write must not replace.
+        store.store(key, "new-signin-token").unwrap();
+        let snapshot = ProfileStepSnapshot {
+            receiver: None,
+            secrets: vec![(
+                key.to_string(),
+                Some(Zeroizing::new("orig-row".to_string())),
+                Some(Some(Zeroizing::new("orig-vault".to_string()))),
+                Some(Some(Zeroizing::new("backup-token".to_string()))),
+                None,
+            )],
+            vault: Vec::new(),
+            blocked_vault: vec![(key.to_string(), "recorded-digest".to_string())],
+            list: Vec::new(),
+            blob: None,
+        };
+
+        let (failures, kept) = restore_profile_step(&store, None, &snapshot);
+        assert!(failures.is_empty(), "{failures:?}");
+        assert_eq!(kept, vec![format!("{key} (vault)")]);
+        assert_eq!(store.get(key).unwrap(), "new-signin-token");
+        assert!(
+            crate::user_partitions::blocked_vault_secret_digest(key)
+                .unwrap()
+                .is_none(),
+            "the declined write restored no block"
         );
     }
 
