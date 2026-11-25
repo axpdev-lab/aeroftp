@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Sambung ke URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Skema log masuk membuka profil tersimpan yang sepadan"
+            "signInHint": "Skema log masuk membuka profil tersimpan yang sepadan",
+            "password": "Kata laluan (pilihan, disimpan dalam peti besi)",
+            "inlinePasswordWarning": "URL ini mengandungi kata laluan secara terus. Gunakan medan Kata laluan atau profil tersimpan supaya rahsia tidak masuk dalam URL.",
+            "saveToServers": "Simpan ke Pelayan Saya",
+            "profileName": "Nama profil",
+            "saveSignInHint": "Skema log masuk membuka profil tersimpan yang sedia ada"
         },
         "browser": {
             "remote": "Jauh",

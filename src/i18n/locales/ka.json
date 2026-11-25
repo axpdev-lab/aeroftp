@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "დაკავშირება URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "აუტეთტიფიკატსია URL profile აეეთს"
+            "signInHint": "აუტეთტიფიკატსია URL profile აეეთს",
+            "password": "დაკავშირება password",
+            "inlinePasswordWarning": "URL password",
+            "saveToServers": "დაკავშირება profile",
+            "profileName": "ერიფილილ",
+            "saveSignInHint": "დაკავშირება profile"
         },
         "browser": {
             "remote": "დისტანციური",

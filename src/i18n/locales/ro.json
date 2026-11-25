@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Conectare la URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Schemele de autentificare deschid profilul salvat corespunzător"
+            "signInHint": "Schemele de autentificare deschid profilul salvat corespunzător",
+            "password": "Parolă (opțională, salvată în seif)",
+            "inlinePasswordWarning": "Această URL conține parola în text clar. Folosește câmpul Parolă sau un profil salvat, ca parola să nu ajungă în URL.",
+            "saveToServers": "Salvează în Serverele mele",
+            "profileName": "Nume profil",
+            "saveSignInHint": "Schemele de autentificare deschid un profil salvat existent"
         },
         "browser": {
             "remote": "La distanță",

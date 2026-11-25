@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "ភ្ជាប់ទៅ URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "ការចូលប្រើប្រាស់"
+            "signInHint": "ការចូលប្រើប្រាស់",
+            "password": "ពាក្យសម្ងាត់ (ជម្រើស, រក្សាទុកក្នុង vault)",
+            "saveToServers": "រក្សាទុកក្នុងម៉ាស៊ីនមេរបស់ខ្ញុំ",
+            "profileName": "ឈ្មោះប្រវត្តិរូប",
+            "saveSignInHint": "គ្រោងចូលប្រើប្រាស់បើកប្រវត្តិរូបដែលបានរក្សាទុក",
+            "inlinePasswordWarning": "URL នេះ has ពាក្យសម្ងាត់ as plain text"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",

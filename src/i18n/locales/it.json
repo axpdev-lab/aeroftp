@@ -553,7 +553,12 @@
         "connectUrl": {
             "title": "Connetti a URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Gli schemi di accesso aprono il profilo salvato corrispondente"
+            "signInHint": "Gli schemi di accesso aprono il profilo salvato corrispondente",
+            "password": "Password (opzionale, salvata nel vault)",
+            "inlinePasswordWarning": "Questo URL contiene una password in chiaro. Usa il campo Password o un profilo salvato, così il segreto resta fuori dall'URL.",
+            "saveToServers": "Salva in I miei server",
+            "profileName": "Nome profilo",
+            "saveSignInHint": "Gli schemi di accesso aprono un profilo salvato esistente"
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",

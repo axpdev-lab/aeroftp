@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Kumonekta sa URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Binubuksan ng mga sign-in scheme ang tumutugmang na-save na profile"
+            "signInHint": "Binubuksan ng mga sign-in scheme ang tumutugmang na-save na profile",
+            "password": "Password (opsyonal, ise-save sa vault)",
+            "inlinePasswordWarning": "May nakabalagtas na password ang URL na ito nang tahas. Gamitin ang field na Password o isang naka-save na profile para hindi mapunta ang secret sa URL.",
+            "saveToServers": "I-save sa Aking mga Server",
+            "profileName": "Pangalan ng profile",
+            "saveSignInHint": "Binubuksan ng mga sign-in scheme ang isang umiiral na na-save na profile"
         },
         "browser": {
             "remote": "Remote",

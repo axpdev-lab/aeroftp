@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Prisijungti prie URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Prisijungimo schemos atidaro atitinkamą išsaugotą profilį"
+            "signInHint": "Prisijungimo schemos atidaro atitinkamą išsaugotą profilį",
+            "password": "Slaptažodis (nebūtinas, išsaugomas seife)",
+            "inlinePasswordWarning": "Šiame URL slaptažodis pateiktas atviru tekstu. Naudokite slaptažodžio lauką arba išsaugotą profilį, kad slaptažodis nepatektų į URL.",
+            "saveToServers": "Išsaugoti mano serveriuose",
+            "profileName": "Profilio pavadinimas",
+            "saveSignInHint": "Prisijungimo schemos atidaro esamą išsaugotą profilį"
         },
         "browser": {
             "remote": "Nuotolinis",

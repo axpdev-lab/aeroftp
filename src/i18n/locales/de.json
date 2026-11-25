@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Mit URL verbinden",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Anmeldeschemata öffnen das passende gespeicherte Profil"
+            "signInHint": "Anmeldeschemata öffnen das passende gespeicherte Profil",
+            "password": "Passwort (optional, im Tresor gespeichert)",
+            "inlinePasswordWarning": "Diese URL enthaelt ein Passwort inline. Nutze das Passwort-Feld oder ein gespeichertes Profil, damit das Passwort nicht in der URL steht.",
+            "saveToServers": "In Meinen Servern speichern",
+            "profileName": "Profilname",
+            "saveSignInHint": "Anmeldeschemata oeffnen ein vorhandenes gespeichertes Profil"
         },
         "browser": {
             "remote": "Remote",

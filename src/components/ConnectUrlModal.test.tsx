@@ -8,10 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConnectUrlModal } from './ConnectUrlModal';
 
 const invoke = vi.hoisted(() => vi.fn());
+const saveLaunchUrlProfile = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('../i18n', () => ({
     useTranslation: () => (key: string) => key,
 }));
+vi.mock('../utils/connectUrlSave', () => ({ saveLaunchUrlProfile }));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -82,7 +84,7 @@ describe('ConnectUrlModal', () => {
         await typeInto(el, 'sftp://bob@example.com/reports');
         await key(el, 'Enter');
         await flush();
-        expect(invoke).toHaveBeenCalledWith('open_launch_url', { url: 'sftp://bob@example.com/reports' });
+        expect(invoke).toHaveBeenCalledWith('open_launch_url', { url: 'sftp://bob@example.com/reports', password: null });
         expect(onClose).toHaveBeenCalled();
     });
 
@@ -105,11 +107,79 @@ describe('ConnectUrlModal', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
-    it('shows the sign-in hint for an account scheme', async () => {
+    it('shows the sign-in hint for an account scheme and disables Save to My Servers', async () => {
         await render(() => {});
         const el = input();
         await typeInto(el, 'gdrive://');
         await flush();
         expect(host.textContent).toContain('connectUrl.signInHint');
+        const checkbox = host.querySelector('#connect-url-save') as HTMLInputElement;
+        expect(checkbox.disabled).toBe(true);
+        expect(host.querySelector('input[type="password"]')).toBeNull();
+    });
+
+    it('warns when the URL carries an inline password', async () => {
+        await render(() => {});
+        const el = input();
+        await typeInto(el, 'sftp://bob:secret@example.com/');
+        await flush();
+        expect(host.textContent).toContain('connectUrl.inlinePasswordWarning');
+    });
+
+    it('forwards the masked password and clears all state on successful submit', async () => {
+        const onClose = vi.fn();
+        invoke.mockResolvedValue(undefined);
+        await render(onClose);
+        const el = input();
+        await typeInto(el, 'sftp://bob@example.com/reports');
+        const pw = host.querySelector('input[type="password"]') as HTMLInputElement;
+        expect(pw).not.toBeNull();
+        await typeInto(pw, 'hunter2');
+        await key(el, 'Enter');
+        await flush();
+        expect(invoke).toHaveBeenCalledWith('open_launch_url', { url: 'sftp://bob@example.com/reports', password: 'hunter2' });
+        expect(onClose).toHaveBeenCalled();
+    });
+
+    it('saves to My Servers via the vault path before connecting, with the smart default name', async () => {
+        const onClose = vi.fn();
+        invoke.mockImplementation(async (cmd: string) => cmd === 'parse_launch_url'
+            ? { kind: 'remoteUrl', protocol: 'sftp', server: 'example.com', username: 'bob', port: 22 }
+            : undefined);
+        saveLaunchUrlProfile.mockResolvedValue({ id: 'srv_1' });
+        await render(onClose);
+        const el = input();
+        await typeInto(el, 'sftp://bob@example.com/reports');
+        const checkbox = host.querySelector('#connect-url-save') as HTMLInputElement;
+        await act(async () => { checkbox.click(); });
+        const nameInput = [...host.querySelectorAll('input[type="text"]')].find((i) => (i as HTMLInputElement).placeholder === 'connectUrl.profileName') as HTMLInputElement;
+        expect(nameInput.value).toBe('bob@example.com');
+        await key(el, 'Enter');
+        await flush();
+        expect(invoke).toHaveBeenCalledWith('parse_launch_url', { url: 'sftp://bob@example.com/reports', password: null });
+        expect(saveLaunchUrlProfile).toHaveBeenCalledWith(
+            expect.objectContaining({ server: 'example.com' }), 'bob@example.com', undefined,
+        );
+        expect(invoke).toHaveBeenCalledWith('open_launch_url', { url: 'sftp://bob@example.com/reports', password: null });
+        expect(onClose).toHaveBeenCalled();
+    });
+
+    it('fails closed when the vault save refuses: no connect, modal stays open', async () => {
+        const onClose = vi.fn();
+        invoke.mockImplementation(async (cmd: string) => cmd === 'parse_launch_url'
+            ? { kind: 'remoteUrl', protocol: 'sftp', server: 'example.com' }
+            : undefined);
+        saveLaunchUrlProfile.mockRejectedValue('STORE_NOT_READY: vault locked');
+        await render(onClose);
+        const el = input();
+        await typeInto(el, 'sftp://bob@example.com/');
+        const checkbox = host.querySelector('#connect-url-save') as HTMLInputElement;
+        await act(async () => { checkbox.click(); });
+        await key(el, 'Enter');
+        await flush();
+        expect(saveLaunchUrlProfile).toHaveBeenCalled();
+        expect(invoke).not.toHaveBeenCalledWith('open_launch_url', expect.anything());
+        expect(onClose).not.toHaveBeenCalled();
+        expect(host.textContent).toContain('STORE_NOT_READY');
     });
 });

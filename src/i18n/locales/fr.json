@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Se connecter à une URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Les schémas de connexion ouvrent le profil enregistré correspondant"
+            "signInHint": "Les schémas de connexion ouvrent le profil enregistré correspondant",
+            "password": "Mot de passe (facultatif, enregistré dans le coffre)",
+            "inlinePasswordWarning": "Cette URL contient un mot de passe en clair. Utilise le champ Mot de passe ou un profil enregistré pour garder le secret hors de l'URL.",
+            "saveToServers": "Enregistrer dans Mes serveurs",
+            "profileName": "Nom du profil",
+            "saveSignInHint": "Les schémas de connexion ouvrent un profil enregistré existant"
         },
         "browser": {
             "remote": "Distant",

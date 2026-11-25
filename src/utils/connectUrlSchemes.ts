@@ -96,6 +96,28 @@ export function suggestionForValue(value: string): UrlSchemeSuggestion | null {
     ) ?? null;
 }
 
+/** Whether the URL carries an inline `user:password@` credential. */
+export function hasInlinePassword(value: string): boolean {
+    return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/@:\s]+:[^@\s]*@/i.test(value.trim());
+}
+
+/**
+ * The profile name a URL suggests for "Save to My Servers": `user@host`,
+ * else the host, else the account; for S3 the bucket (the host part).
+ */
+export function suggestProfileName(value: string): string {
+    const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#]*)/.exec(value.trim());
+    if (!match) return '';
+    const scheme = match[1].toLowerCase();
+    const authority = match[2];
+    const at = authority.lastIndexOf('@');
+    const user = at >= 0 ? authority.slice(0, at) : '';
+    const host = (at >= 0 ? authority.slice(at + 1) : authority).split(':')[0];
+    if (scheme === 's3') return host || user;
+    if (user && host) return `${user}@${host}`;
+    return host || user;
+}
+
 /**
  * The suggestions for what is typed so far, at most `max`. A scheme prefix
  * wins over a label match; with an empty query the first `max` entries show.

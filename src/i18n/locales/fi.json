@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Yhdistä URL-osoitteeseen",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Kirjautumisjärjestelmät avaavat vastaavan tallennetun profiilin"
+            "signInHint": "Kirjautumisjärjestelmät avaavat vastaavan tallennetun profiilin",
+            "password": "Salasana (valinnainen, tallennetaan holviin)",
+            "inlinePasswordWarning": "Tämä URL sisältää salasanan selkokielisenä. Käytä salasanakenttää tai tallennettua profiilia, jotta salaisuus ei päädy URL-osoitteeseen.",
+            "saveToServers": "Tallenna Omaan palvelimiin",
+            "profileName": "Profiilin nimi",
+            "saveSignInHint": "Kirjautumisjärjestelmät avaavat olemassa olevan tallennetun profiilin"
         },
         "browser": {
             "remote": "Etä",

@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Cysylltu ag URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Mae cynlluniau mewngofnodi yn agor y proffil a gadwyd cyfatebol"
+            "signInHint": "Mae cynlluniau mewngofnodi yn agor y proffil a gadwyd cyfatebol",
+            "password": "Cyfrinair (dewisol, wedi'i gadw yn y gist)",
+            "inlinePasswordWarning": "Mae'r URL hon yn cynnwys cyfrinair ar ffurf testun plaen. Defnyddia'r maes Cyfrinair neu broffil a gadwyd fel nad yw'r secret yn yr URL.",
+            "saveToServers": "Cadw i Fy Ngweinydd",
+            "profileName": "Enw proffil",
+            "saveSignInHint": "Mae cynlluniau mewngofnodi yn agor proffil a gadwyd presennol"
         },
         "browser": {
             "remote": "Pell",

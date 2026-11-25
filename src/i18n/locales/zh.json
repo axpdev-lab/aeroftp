@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "连接到 URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "登录方案将打开匹配的已保存配置文件"
+            "signInHint": "登录方案将打开匹配的已保存配置文件",
+            "password": "密码（可选，将保存到保险库）",
+            "inlinePasswordWarning": "此 URL 内嵌了明文密码。请使用密码框或已保存的配置文件，避免密码出现在 URL 中。",
+            "saveToServers": "保存到我的服务器",
+            "profileName": "配置文件名称",
+            "saveSignInHint": "登录方案将打开现有的已保存配置文件"
         },
         "browser": {
             "remote": "远程",

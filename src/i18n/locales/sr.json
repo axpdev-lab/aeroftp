@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Poveži se na URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Šeme prijave otvaraju odgovarajući sačuvani profil"
+            "signInHint": "Šeme prijave otvaraju odgovarajući sačuvani profil",
+            "password": "Lozinka (opciono, čuva se u sefu)",
+            "inlinePasswordWarning": "Ovaj URL sadrži lozinku u otvorenom tekstu. Koristi polje Lozinka ili sačuvani profil da lozinka ne završi u URL-u.",
+            "saveToServers": "Sačuvaj u Mojim serverima",
+            "profileName": "Naziv profila",
+            "saveSignInHint": "Šeme prijave otvaraju postojeći sačuvani profil"
         },
         "browser": {
             "remote": "Удаљено",

@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Forbind til URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Login-skemaer åbner den matchende gemte profil"
+            "signInHint": "Login-skemaer åbner den matchende gemte profil",
+            "password": "Adgangskode (valgfri, gemmes i boksen)",
+            "inlinePasswordWarning": "Denne URL indeholder en adgangskode i klartekst. Brug adgangskodefeltet eller en gemt profil, så hemmeligheden ikke kommer i URL'en.",
+            "saveToServers": "Gem i Mine servere",
+            "profileName": "Profilnavn",
+            "saveSignInHint": "Login-skemaer åbner en eksisterende gemt profil"
         },
         "browser": {
             "remote": "Ekstern",

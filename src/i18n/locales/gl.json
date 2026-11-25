@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Conectar a URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Os esquemas de inicio de sesión abren o perfil gardado correspondente"
+            "signInHint": "Os esquemas de inicio de sesión abren o perfil gardado correspondente",
+            "password": "Contrasinal (opcional, gárdase na caixa)",
+            "inlinePasswordWarning": "Este URL leva un contrasinal en liña. Usa o campo Contrasinal ou un perfil gardado para manter o secreto fóra do URL.",
+            "saveToServers": "Gardar en Os meus servidores",
+            "profileName": "Nome do perfil",
+            "saveSignInHint": "Os esquemas de inicio de sesión abren un perfil gardado existente"
         },
         "browser": {
             "remote": "Remoto",

@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Ühenda URL-iga",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Sisselogimisskeemid avavad vastava salvestatud profiili"
+            "signInHint": "Sisselogimisskeemid avavad vastava salvestatud profiili",
+            "password": "Parool (valikuline, salvestatakse seifi)",
+            "inlinePasswordWarning": "See URL sisaldab parooli avatud tekstina. Kasuta paroolivälja või salvestatud profiili, et parool ei satuks URL-i.",
+            "saveToServers": "Salvesta Minu serveritesse",
+            "profileName": "Profiili nimi",
+            "saveSignInHint": "Sisselogimisskeemid avavad olemasoleva salvestatud profiili"
         },
         "browser": {
             "remote": "Kaugserver",

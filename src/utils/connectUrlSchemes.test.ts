@@ -6,9 +6,12 @@ import {
     URL_SCHEME_SUGGESTIONS,
     applyTemplate,
     filterSuggestions,
+    hasInlinePassword,
     nextPlaceholder,
     placeholderRanges,
     schemeOfValue,
+    suggestProfileName,
+    suggestionForValue,
 } from './connectUrlSchemes';
 
 describe('filterSuggestions', () => {
@@ -86,5 +89,34 @@ describe('schemeOfValue', () => {
         expect(schemeOfValue('  webdavs://host/dav ')).toBe('webdavs');
         expect(schemeOfValue('sftp')) .toBeNull();
         expect(schemeOfValue('')).toBeNull();
+    });
+});
+
+describe('hasInlinePassword', () => {
+    it('detects an inline user:password@ credential', () => {
+        expect(hasInlinePassword('sftp://bob:secret@example.com/')).toBe(true);
+        expect(hasInlinePassword('ftp://user:p%40ss@host')).toBe(true);
+        expect(hasInlinePassword('sftp://bob@example.com/')).toBe(false);
+        expect(hasInlinePassword('sftp://bob@host')).toBe(false);
+        expect(hasInlinePassword('not a url')).toBe(false);
+    });
+});
+
+describe('suggestProfileName', () => {
+    it('prefers user@host, then host, then account; S3 uses the bucket', () => {
+        expect(suggestProfileName('sftp://bob@example.com:2222/reports')).toBe('bob@example.com');
+        expect(suggestProfileName('webdavs://files.example.com/dav')).toBe('files.example.com');
+        expect(suggestProfileName('s3://AKIAKEY@my-bucket?region=eu-1')).toBe('my-bucket');
+        expect(suggestProfileName('proton://work')).toBe('work');
+        expect(suggestProfileName('')).toBe('');
+    });
+});
+
+describe('suggestionForValue', () => {
+    it('resolves aliases like gdrive', () => {
+        expect(suggestionForValue('gdrive://')?.scheme).toBe('googledrive');
+        expect(suggestionForValue('sftp://h')?.signIn).toBeUndefined();
+        expect(suggestionForValue('gdrive://')?.signIn).toBe(true);
+        expect(suggestionForValue('nope')).toBeNull();
     });
 });

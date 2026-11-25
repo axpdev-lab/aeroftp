@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Pripojiť k URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Schémy prihlásenia otvoria zodpovedajúci uložený profil"
+            "signInHint": "Schémy prihlásenia otvoria zodpovedajúci uložený profil",
+            "password": "Heslo (voliteľné, uložené v trezore)",
+            "inlinePasswordWarning": "Táto URL obsahuje heslo priamo v texte. Použite pole Heslo alebo uložený profil, aby heslo nezostalo v URL.",
+            "saveToServers": "Uložiť do Mojich serverov",
+            "profileName": "Názov profilu",
+            "saveSignInHint": "Schémy prihlásenia otvoria existujúci uložený profil"
         },
         "browser": {
             "remote": "Vzdialený",

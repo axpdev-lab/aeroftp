@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Կապվել URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Մոտխ URL profile"
+            "signInHint": "Մոտխ URL profile",
+            "password": "Կապվել password",
+            "inlinePasswordWarning": "URL password",
+            "saveToServers": "Կապվել profile",
+            "profileName": "Պրրկիուոնոն",
+            "saveSignInHint": "Կապվել profile"
         },
         "browser": {
             "remote": "Հեռավոր",

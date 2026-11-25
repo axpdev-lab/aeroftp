@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "URLに接続",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "サインインスキームは一致する保存済みプロファイルを開きます"
+            "signInHint": "サインインスキームは一致する保存済みプロファイルを開きます",
+            "password": "パスワード（任意、保管庫に保存）",
+            "inlinePasswordWarning": "このURLには平文のパスワードが含まれています。パスワード欄または保存済みプロファイルを使い、パスワードがURLに含まれないようにしてください。",
+            "saveToServers": "マイサーバーに保存",
+            "profileName": "プロファイル名",
+            "saveSignInHint": "サインインスキームは既存の保存済みプロファイルを開きます"
         },
         "browser": {
             "remote": "リモート",

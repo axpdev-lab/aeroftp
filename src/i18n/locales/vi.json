@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Kết nối tới URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Các lược đồ đăng nhập sẽ mở hồ sơ đã lưu tương ứng"
+            "signInHint": "Các lược đồ đăng nhập sẽ mở hồ sơ đã lưu tương ứng",
+            "password": "Mật khẩu (tùy chọn, lưu trong két sắt)",
+            "inlinePasswordWarning": "URL này chứa mật khẩu dạng văn bản thuần. Hãy dùng ô Mật khẩu hoặc hồ sơ đã lưu để bí mật không nằm trong URL.",
+            "saveToServers": "Lưu vào Máy chủ của tôi",
+            "profileName": "Tên hồ sơ",
+            "saveSignInHint": "Các lược đồ đăng nhập sẽ mở một hồ sơ đã lưu hiện có"
         },
         "browser": {
             "remote": "Từ xa",

@@ -2075,7 +2075,12 @@
         "connectUrl": {
             "title": "Connect to URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Sign-in schemes open the matching saved profile"
+            "signInHint": "Sign-in schemes open the matching saved profile",
+            "password": "Password (optional, saved to the vault)",
+            "inlinePasswordWarning": "This URL carries a password inline. Prefer the Password field or a saved profile, so the secret stays out of the URL.",
+            "saveToServers": "Save to My Servers",
+            "profileName": "Profile name",
+            "saveSignInHint": "Sign-in schemes open an existing saved profile"
         },
         "twoFactor": {
             "title": "Two-Factor Authentication Required",

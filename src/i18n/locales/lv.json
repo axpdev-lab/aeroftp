@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Izveidot savienojumu ar URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Pieteikšanās shēmas atver atbilstošo saglabāto profilu"
+            "signInHint": "Pieteikšanās shēmas atver atbilstošo saglabāto profilu",
+            "password": "Parole (neobligāta, saglabājas seifā)",
+            "inlinePasswordWarning": "Šis URL satur paroli atklātā tekstā. Izmantojiet paroles lauku vai saglabāto profilu, lai parole neiekļūtu URL.",
+            "saveToServers": "Saglabāt sadaļā Mani serveri",
+            "profileName": "Profila nosaukums",
+            "saveSignInHint": "Pieteikšanās shēmas atver esošu saglabāto profilu"
         },
         "browser": {
             "remote": "Attālināts",

@@ -403,7 +403,12 @@
         "connectUrl": {
             "title": "Connecta't a una URL",
             "placeholder": "sftp://user@host/path",
-            "signInHint": "Els esquemes d'inici de sessió obren el perfil desat corresponent"
+            "signInHint": "Els esquemes d'inici de sessió obren el perfil desat corresponent",
+            "password": "Contrasenya (opcional, es guarda a la caixa)",
+            "inlinePasswordWarning": "Aquesta URL porta una contrasenya en línia. Fes servir el camp Contrasenya o un perfil desat per mantenir el secret fora de l'URL.",
+            "saveToServers": "Desa a Els meus servidors",
+            "profileName": "Nom del perfil",
+            "saveSignInHint": "Els esquemes d'inici de sessió obren un perfil desat existent"
         },
         "browser": {
             "remote": "Remot",
