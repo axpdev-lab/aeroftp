@@ -5959,7 +5959,8 @@
             "mrTitle": "MR-titel",
             "mrBody": "Beskrivning (valfri)",
             "sourceCode": "Källkod",
-            "downloadAssetTitle": "Ladda ner {name}"
+            "downloadAssetTitle": "Ladda ner {name}",
+            "tokenGoesTo": "Token skickas till {instance}"
         },
         "mcp": {
             "title": "MCP Server",

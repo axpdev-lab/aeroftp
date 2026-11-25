@@ -119,7 +119,7 @@ const REVIEWED: &[Reviewed] = &[
     ("providers/webdav.rs", "format", "{}/{}{}", ", base, Self::encode_path(path), url_tail", BUILDS_A_REQUEST),
     ("providers/webdav.rs", "debug", "[WebDAV] Digest request: {} to {}", ", method.as_str(), crate::local_bridge::url_origin(&url)", ORIGIN_ONLY),
     ("providers/webdav.rs", "debug", "[WebDAV] Parsing XML from {}", ", crate::local_bridge::url_origin(&self.config.url)", ORIGIN_ONLY),
-    ("providers/webdav.rs", "format", "{}|{}|{}|{}", ", NEXTCLOUD_HANDLE_PREFIX, self.transfer_id, self.user_id, self.total_size", "the multipart handle AeroFTP encodes: prefix, random transfer id, user id, size"),
+    ("providers/webdav.rs", "format", "{}|{}|{}|{}|{}", ", NEXTCLOUD_HANDLE_PREFIX, self.transfer_id, self.user_id, self.total_size, self.destination", "the multipart handle AeroFTP encodes: prefix, random transfer id, user id, size, destination digest"),
     ("providers/webdav.rs", "format", "{}@{}", ", self.config.username, self.config .url .replace(\"https://\", \"\") .replace(\"http://\", \"\") .split('/') .next() .unwrap_or(&self.config.url)", "the connection label: user name and the authority up to the first /"),
     ("providers/webdav.rs", "info", "[WEBDAV] Filen bridge reconciled to {}", ", crate::local_bridge::url_origin(live)", ORIGIN_ONLY),
     ("providers/webdav.rs", "info", "[MEGAcmd] bridge serves the account below its root at {}; connecting to the served path", ", crate::local_bridge::url_origin(&url)", ORIGIN_ONLY),

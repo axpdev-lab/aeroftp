@@ -5959,7 +5959,8 @@
             "mrTitle": "MR վերնագիր",
             "mrBody": "Նկարագրություն (կամընտիր)",
             "sourceCode": "Սկզբնական կոդ",
-            "downloadAssetTitle": "Ներբեռնել {name}"
+            "downloadAssetTitle": "Ներբեռնել {name}",
+            "tokenGoesTo": "Տոկենը կուղարկվի {instance}-ին"
         },
         "mcp": {
             "title": "MCP Server",

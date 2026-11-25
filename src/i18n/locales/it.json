@@ -6290,6 +6290,7 @@
             "projectPathHint": "Usa owner/repo per gitlab.com, o self-hosted.com/owner/repo per istanze self-hosted",
             "accessToken": "Token di accesso",
             "tokenHint": "Token di accesso personale o di progetto con scope api.",
+            "tokenGoesTo": "Il token verrà inviato a {instance}",
             "createToken": "Crea token",
             "branchPlaceholder": "Branch (predefinito: main)",
             "acceptSelfSignedCerts": "Accetta certificati autofirmati (self-hosted)",

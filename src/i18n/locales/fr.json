@@ -5959,7 +5959,8 @@
             "mrTitle": "Titre de la MR",
             "mrBody": "Description (facultatif)",
             "sourceCode": "Code source",
-            "downloadAssetTitle": "Télécharger {name}"
+            "downloadAssetTitle": "Télécharger {name}",
+            "tokenGoesTo": "Le jeton sera envoyé à {instance}"
         },
         "mcp": {
             "title": "MCP Server",

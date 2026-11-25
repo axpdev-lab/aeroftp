@@ -5959,7 +5959,8 @@
             "mrTitle": "MR სათაური",
             "mrBody": "აღწერა (არასავალდებულო)",
             "sourceCode": "წყაროს კოდი",
-            "downloadAssetTitle": "ჩამოტვირთვა: {name}"
+            "downloadAssetTitle": "ჩამოტვირთვა: {name}",
+            "tokenGoesTo": "ტოკენი გაიგზავნება მისამართზე {instance}"
         },
         "mcp": {
             "title": "MCP Server",
