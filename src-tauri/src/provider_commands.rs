@@ -19971,6 +19971,128 @@ mod tests {
         crate::credential_store::CredentialStore::clear_cache();
     }
 
+    /// Bucket discovery for a saved STS profile resolves the vaulted session
+    /// token (`aws_session_token_<profile_id>`) under the captured account and
+    /// sends it as `x-amz-security-token`: the fake endpoint answers 200 only
+    /// when that header carries the saved token, 403 otherwise. The request
+    /// now carries `profile_id` + `has_stored_session_token` from the edit form.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_saved_sts_profile_fetch_buckets_with_its_vaulted_session_token() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::a_saved_sts_profile_fetch_buckets_with_its_vaulted_session_token",
+        ) {
+            return;
+        }
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic sts discovery master",
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master(
+            "synthetic sts discovery master",
+            None,
+        )
+        .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let account = crate::user_partitions::cli_get_active_user(&store)
+            .unwrap()
+            .expect("active account")
+            .id;
+        // The saved STS profile: flagged row in the account's list, token in
+        // its partition only (private-token write, no shared vault copy).
+        crate::user_partitions::cli_replace_server_profiles_for_user(
+            &store,
+            account,
+            &[serde_json::json!({
+                "id": "srv-sts", "name": "sts-lab", "protocol": "s3",
+                "host": "s3.example.invalid", "port": 443, "username": "AKIAEXAMPLE",
+                "hasStoredSessionToken": true,
+            })],
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            account,
+            &crate::profile_loader::aws_session_token_vault_key("srv-sts"),
+            "aws_session_token",
+            "STS-SAVED-TOKEN",
+        )
+        .unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buffer = [0u8; 4096];
+                    while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut buffer).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&buffer[..n]),
+                        }
+                    }
+                    let head = String::from_utf8_lossy(&request).to_ascii_lowercase();
+                    let authorized = head.contains("x-amz-security-token: sts-saved-token");
+                    let (status, body) = if authorized {
+                        ("200 OK", "<ListAllMyBucketsResult><Buckets><Bucket><Name>Documents</Name></Bucket></Buckets></ListAllMyBucketsResult>")
+                    } else {
+                        ("403 Forbidden", "")
+                    };
+                    let reply = format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+
+        let mut params = s3_params(None);
+        params.server = format!("http://127.0.0.1:{port}");
+        params.port = Some(port);
+        params.endpoint = Some(format!("http://127.0.0.1:{port}"));
+        params.region = Some("garage".to_string());
+        params.username = "AKIAEXAMPLE".to_string();
+        params.password = "secret".to_string();
+        params.path_style = Some(true);
+        params.profile_id = Some("srv-sts".to_string());
+        params.has_stored_session_token = Some(true);
+        let targets = provider_discover_targets(params).await;
+        server.abort();
+        let targets = targets.expect(
+            "discovery must resolve the saved STS token from the vault and send it; \
+             a 403 here means the token never reached the wire",
+        );
+        assert_eq!(
+            targets.iter().map(|t| t.value.as_str()).collect::<Vec<_>>(),
+            ["Documents"]
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        crate::credential_store::CredentialStore::clear_cache();
+    }
+
     #[test]
     fn a_launch_handle_reads_its_secret_only_for_the_connection_it_was_bound_to() {
         use crate::launch_url::launch_secret::{register, Provenance};

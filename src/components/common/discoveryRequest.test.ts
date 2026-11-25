@@ -3,7 +3,11 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ConnectionParams } from '../../types';
-import { discoveryRequestParams, discoveryRequestResetKey } from './discoveryRequest';
+import {
+    discoveryRequestParams,
+    discoveryRequestResetKey,
+    type DiscoveryEditContext,
+} from './discoveryRequest';
 
 const BASE: ConnectionParams = {
     server: 's3.example',
@@ -33,25 +37,29 @@ const withOption = (key: string, value: unknown): ConnectionParams => ({
 
 /**
  * One mutation per field the request carries, keyed by the wire name so the
- * coverage check below can compare the two lists directly.
+ * coverage check below can compare the two lists directly. `edit` is the
+ * edit-session context passed alongside the form values.
  */
-const MUTATIONS: Record<string, ConnectionParams> = {
-    providerId: { ...BASE, providerId: 'minio' },
-    server: { ...BASE, server: 'other.example' },
-    port: { ...BASE, port: 9000 },
-    username: { ...BASE, username: 'AKIAOTHER' },
-    password: { ...BASE, password: 'a-different-secret' },
-    region: withOption('region', 'us-east-1'),
-    endpoint: withOption('endpoint', 'https://s3.us-east-1.example'),
-    path_style: withOption('pathStyle', true),
-    verify_cert: withOption('verifyCert', false),
-    session_token: withOption('sessionToken', 'FwoGZXIvYXdzOTHER'),
-    role_arn: withOption('roleArn', 'arn:aws:iam::222222222222:role/second'),
-    role_external_id: withOption('roleExternalId', 'external-two'),
-    role_session_name: withOption('roleSessionName', 'other-session'),
-    role_duration_seconds: withOption('roleDurationSeconds', 3600),
-    role_mfa_serial: withOption('roleMfaSerial', 'arn:aws:iam::222222222222:mfa/device'),
-    role_mfa_token_code: withOption('roleMfaTokenCode', '654321'),
+const EDIT: DiscoveryEditContext = { profileId: 'srv_saved_1', hasStoredSessionToken: true };
+const MUTATIONS: Record<string, { params: ConnectionParams; edit?: DiscoveryEditContext }> = {
+    providerId: { params: { ...BASE, providerId: 'minio' } },
+    server: { params: { ...BASE, server: 'other.example' } },
+    port: { params: { ...BASE, port: 9000 } },
+    username: { params: { ...BASE, username: 'AKIAOTHER' } },
+    password: { params: { ...BASE, password: 'a-different-secret' } },
+    profile_id: { params: BASE, edit: { profileId: 'srv_saved_2', hasStoredSessionToken: true } },
+    has_stored_session_token: { params: BASE, edit: { profileId: 'srv_saved_1', hasStoredSessionToken: false } },
+    region: { params: withOption('region', 'us-east-1') },
+    endpoint: { params: withOption('endpoint', 'https://s3.us-east-1.example') },
+    path_style: { params: withOption('pathStyle', true) },
+    verify_cert: { params: withOption('verifyCert', false) },
+    session_token: { params: withOption('sessionToken', 'FwoGZXIvYXdzOTHER') },
+    role_arn: { params: withOption('roleArn', 'arn:aws:iam::222222222222:role/second') },
+    role_external_id: { params: withOption('roleExternalId', 'external-two') },
+    role_session_name: { params: withOption('roleSessionName', 'other-session') },
+    role_duration_seconds: { params: withOption('roleDurationSeconds', 3600) },
+    role_mfa_serial: { params: withOption('roleMfaSerial', 'arn:aws:iam::222222222222:mfa/device') },
+    role_mfa_token_code: { params: withOption('roleMfaTokenCode', '654321') },
 };
 
 describe('discovery reset key', () => {
@@ -60,16 +68,16 @@ describe('discovery reset key', () => {
         // key hashed three. This is the anti-drift check, so a field added to
         // the request without a mutation here fails instead of silently going
         // unwatched.
-        const sent = Object.keys(discoveryRequestParams('s3', BASE))
+        const sent = Object.keys(discoveryRequestParams('s3', BASE, EDIT))
             .filter((field) => field !== 'protocol' && field !== 'bucket');
         expect(new Set(Object.keys(MUTATIONS))).toEqual(new Set(sent));
     });
 
     it('changes when any one of those inputs changes', () => {
-        const base = discoveryRequestResetKey('s3', BASE);
-        for (const [field, params] of Object.entries(MUTATIONS)) {
+        const base = discoveryRequestResetKey('s3', BASE, EDIT);
+        for (const [field, mutation] of Object.entries(MUTATIONS)) {
             expect(
-                discoveryRequestResetKey('s3', params),
+                discoveryRequestResetKey('s3', mutation.params, mutation.edit ?? EDIT),
                 `changing ${field} leaves the previous account's targets selectable`,
             ).not.toBe(base);
         }
@@ -78,7 +86,7 @@ describe('discovery reset key', () => {
     it('changing only the role ARN invalidates the listed targets', () => {
         // The case that needs no race at all: assume a different role and the
         // buckets of the previous one stay on screen, and stay selectable.
-        expect(discoveryRequestResetKey('s3', MUTATIONS.role_arn))
+        expect(discoveryRequestResetKey('s3', MUTATIONS.role_arn.params))
             .not.toBe(discoveryRequestResetKey('s3', BASE));
     });
 
@@ -101,14 +109,42 @@ describe('discovery reset key', () => {
         // kDrive authenticates with the token in the password field; the
         // username is always 'api-token' and identifies no account.
         expect(discoveryRequestParams('kdrive', BASE).username).toBe('api-token');
-        expect(discoveryRequestResetKey('kdrive', MUTATIONS.username))
+        expect(discoveryRequestResetKey('kdrive', MUTATIONS.username.params))
             .toBe(discoveryRequestResetKey('kdrive', BASE));
-        expect(discoveryRequestResetKey('kdrive', MUTATIONS.password))
+        expect(discoveryRequestResetKey('kdrive', MUTATIONS.password.params))
             .not.toBe(discoveryRequestResetKey('kdrive', BASE));
     });
 
     it('separates the protocols sharing the form', () => {
         expect(discoveryRequestResetKey('s3', BASE)).not.toBe(discoveryRequestResetKey('backblaze', BASE));
+    });
+});
+
+describe('discovery for a saved STS profile being edited', () => {
+    it('carries the edited profile id and its stored-token flag', () => {
+        const request = discoveryRequestParams('s3', BASE, { profileId: 'srv_sts_1', hasStoredSessionToken: true });
+        expect(request.profile_id).toBe('srv_sts_1');
+        expect(request.has_stored_session_token).toBe(true);
+    });
+
+    it('prefers the connected saved server id over the edit context', () => {
+        const request = discoveryRequestParams(
+            's3',
+            { ...BASE, savedServerId: 'srv_conn' },
+            { profileId: 'srv_sts_1', hasStoredSessionToken: true },
+        );
+        expect(request.profile_id).toBe('srv_conn');
+    });
+
+    it('sends no profile id for an ad-hoc form', () => {
+        const request = discoveryRequestParams('s3', BASE);
+        expect(request.profile_id).toBeUndefined();
+        expect(request.has_stored_session_token).toBeUndefined();
+    });
+
+    it('invalidates the listed targets when the edited profile changes', () => {
+        expect(discoveryRequestResetKey('s3', BASE, { profileId: 'srv_a' }))
+            .not.toBe(discoveryRequestResetKey('s3', BASE, { profileId: 'srv_b' }));
     });
 });
 
