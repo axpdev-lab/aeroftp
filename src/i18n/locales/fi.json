@@ -400,6 +400,11 @@
                 "copyKept": "Aloituskansiolla {path} ei ole vastinetta {mode}-tilassa, ja se säilytettiin sellaisenaan."
             }
         },
+        "connectUrl": {
+            "title": "Yhdistä URL-osoitteeseen",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Kirjautumisjärjestelmät avaavat vastaavan tallennetun profiilin"
+        },
         "browser": {
             "remote": "Etä",
             "local": "Paikallinen",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Yhdistä URL-osoitteeseen...",
             "file": "Tiedosto",
             "edit": "Muokkaa",
             "view": "Näytä",

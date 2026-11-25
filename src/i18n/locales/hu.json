@@ -400,6 +400,11 @@
                 "copyKept": "A(z) {path} kezdőmappának nincs megfelelője {mode} módban, ezért változatlanul megmaradt."
             }
         },
+        "connectUrl": {
+            "title": "Csatlakozás URL-hez",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "A bejelentkezési sémák a megfelelő mentett profilt nyitják meg"
+        },
         "browser": {
             "remote": "Távoli",
             "local": "Helyi",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Csatlakozás URL-hez...",
             "file": "Fájl",
             "edit": "Szerkesztés",
             "view": "Nézet",

@@ -400,6 +400,11 @@
                 "copyKept": "Sākotnējai mapei {path} nav atbilsmes režīmā {mode}, un tā tika saglabāta nemainīta."
             }
         },
+        "connectUrl": {
+            "title": "Izveidot savienojumu ar URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Pieteikšanās shēmas atver atbilstošo saglabāto profilu"
+        },
         "browser": {
             "remote": "Attālināts",
             "local": "Lokāls",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Izveidot savienojumu ar URL...",
             "file": "Fails",
             "edit": "Rediģēt",
             "view": "Skats",

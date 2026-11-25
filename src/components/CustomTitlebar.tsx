@@ -56,6 +56,9 @@ interface TitlebarProps {
     onShowSiteCommand: () => void;
     onShowConnectionScreen: () => void;
     showConnectionScreen: boolean;
+    /// File > Connect to URL... (Ctrl+L): always available, also on the
+    /// connection screen / IntroHub.
+    onConnectToUrl: () => void;
     onOpenSettings: () => void;
     onShowExportImport: () => void;
     onShowSupport: () => void;
@@ -193,6 +196,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     const {
         appTheme, theme, setTheme,
         isConnected, onDisconnect, canSendSiteCommand, onShowSiteCommand, onShowConnectionScreen, showConnectionScreen,
+        onConnectToUrl,
         onOpenSettings, onShowExportImport, onShowSupport, onShowCyberTools, onShowVault,
         onShowAbout, onShowMcp, onShowShortcuts, onShowDependencies, onShowProviders,
         onShowMountManager, onUsersChanged,
@@ -257,6 +261,9 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
 
     const fileMenu: MenuEntry[] = [
         { label: t('menu.newFolder'), shortcut: 'Ctrl+N', onClick: onNewFolder, disabled: !hasFilePanel },
+        // Connect to URL... is a "new connection"-class action: always
+        // enabled, including on the connection screen / IntroHub.
+        { label: t('menu.connectToUrl'), shortcut: 'Ctrl+L', onClick: onConnectToUrl },
         { label: t('common.settings'), shortcut: 'Ctrl+,', onClick: onOpenSettings },
         { label: t('settings.exportImport'), onClick: onShowExportImport },
         { label: t('menu.mountManager'), onClick: onShowMountManager },

@@ -400,6 +400,11 @@
                 "copyKept": "Почетна фасцикла {path} нема еквивалент у режиму {mode} и задржана је непромењена."
             }
         },
+        "connectUrl": {
+            "title": "Poveži se na URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Šeme prijave otvaraju odgovarajući sačuvani profil"
+        },
         "browser": {
             "remote": "Удаљено",
             "local": "Локално",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Poveži se na URL...",
             "file": "Фајл",
             "edit": "Уреди",
             "view": "Приказ",

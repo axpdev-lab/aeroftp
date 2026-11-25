@@ -400,6 +400,11 @@
                 "copyKept": "시작 폴더 {path}에 해당하는 항목이 {mode} 모드에 없어 그대로 유지되었습니다."
             }
         },
+        "connectUrl": {
+            "title": "URL에 연결",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "로그인 스킴이 일치하는 저장된 프로필을 엽니다"
+        },
         "browser": {
             "remote": "원격",
             "local": "로컬",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "URL에 연결...",
             "file": "파일",
             "edit": "편집",
             "view": "보기",

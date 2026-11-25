@@ -400,6 +400,11 @@
                 "copyKept": "Folda ya mwanzo {path} haina kilinganishi katika hali ya {mode} na imehifadhiwa kama ilivyo."
             }
         },
+        "connectUrl": {
+            "title": "Unganisha kwa URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Mifumo ya kuingia hufungua wasifu unaolingana"
+        },
         "browser": {
             "remote": "Mbali",
             "local": "Ya Karibu",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Unganisha kwa URL...",
             "file": "Faili",
             "edit": "Hariri",
             "view": "Mtazamo",

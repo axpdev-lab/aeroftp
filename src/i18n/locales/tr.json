@@ -400,6 +400,11 @@
                 "copyKept": "{path} başlangıç klasörünün {mode} modunda bir karşılığı yok ve olduğu gibi korundu."
             }
         },
+        "connectUrl": {
+            "title": "URL'ye bağlan",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Oturum açma şemaları eşleşen kayıtlı profili açar"
+        },
         "browser": {
             "remote": "Uzak",
             "local": "Yerel",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "URL'ye bağlan...",
             "file": "Dosya",
             "edit": "Düzenle",
             "view": "Görünüm",

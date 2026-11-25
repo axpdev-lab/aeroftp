@@ -400,6 +400,11 @@
                 "copyKept": "Začetna mapa {path} nima ustreznice v načinu {mode} in je bila ohranjena nespremenjena."
             }
         },
+        "connectUrl": {
+            "title": "Poveži z URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Sheme prijave odprejo ustrezen shranjen profil"
+        },
         "browser": {
             "remote": "Oddaljeno",
             "local": "Lokalno",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Poveži z URL...",
             "file": "Datoteka",
             "edit": "Uredi",
             "view": "Pogled",

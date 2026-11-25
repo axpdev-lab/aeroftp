@@ -400,6 +400,11 @@
                 "copyKept": "Startmappen {path} har ingen tilsvarende i {mode}-tilstand og er bevaret, som den er."
             }
         },
+        "connectUrl": {
+            "title": "Forbind til URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Login-skemaer åbner den matchende gemte profil"
+        },
         "browser": {
             "remote": "Ekstern",
             "local": "Lokal",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Forbind til URL...",
             "file": "Fil",
             "edit": "Redigér",
             "view": "Visning",

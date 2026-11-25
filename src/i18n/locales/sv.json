@@ -400,6 +400,11 @@
                 "copyKept": "Startmappen {path} har ingen motsvarighet i {mode}-läge och behölls som den är."
             }
         },
+        "connectUrl": {
+            "title": "Anslut till URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Inloggningsscheman öppnar motsvarande sparade profil"
+        },
         "browser": {
             "remote": "Fjärr",
             "local": "Lokal",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Anslut till URL...",
             "file": "Arkiv",
             "edit": "Redigera",
             "view": "Visa",

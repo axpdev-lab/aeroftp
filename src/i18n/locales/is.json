@@ -400,6 +400,11 @@
                 "copyKept": "Upphafsmappan {path} á sér enga samsvörun í {mode}-ham og var haldið óbreyttri."
             }
         },
+        "connectUrl": {
+            "title": "Tengjast URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Innskráningarskemu opna samsvarandi vistað prófíl"
+        },
         "browser": {
             "remote": "Fjartengdur",
             "local": "Staðbundinn",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Tengjast URL...",
             "file": "Skrá",
             "edit": "Breyta",
             "view": "Skoða",

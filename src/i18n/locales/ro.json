@@ -400,6 +400,11 @@
                 "copyKept": "Folderul inițial {path} nu are echivalent în modul {mode} și a fost păstrat ca atare."
             }
         },
+        "connectUrl": {
+            "title": "Conectare la URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Schemele de autentificare deschid profilul salvat corespunzător"
+        },
         "browser": {
             "remote": "La distanță",
             "local": "Local",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Conectare la URL...",
             "file": "Fișier",
             "edit": "Editare",
             "view": "Vizualizare",

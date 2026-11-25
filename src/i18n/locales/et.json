@@ -400,6 +400,11 @@
                 "copyKept": "Algkaustal {path} pole režiimis {mode} vastet ja see säilitati muutmata kujul."
             }
         },
+        "connectUrl": {
+            "title": "Ühenda URL-iga",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Sisselogimisskeemid avavad vastava salvestatud profiili"
+        },
         "browser": {
             "remote": "Kaugserver",
             "local": "Kohalik",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Ühenda URL-iga...",
             "file": "Fail",
             "edit": "Redigeeri",
             "view": "Vaade",

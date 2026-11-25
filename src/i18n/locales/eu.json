@@ -400,6 +400,11 @@
                 "copyKept": "{path} hasierako karpetak ez du baliokiderik {mode} moduan, eta dagoen bezala mantendu da."
             }
         },
+        "connectUrl": {
+            "title": "Konektatu URL batera",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Saioa hasteko eskemek dagokion gordetako profila irekitzen dute"
+        },
         "browser": {
             "remote": "Urrunekoa",
             "local": "Tokikoa",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Konektatu URL batera...",
             "file": "Fitxategia",
             "edit": "Editatu",
             "view": "Ikusi",

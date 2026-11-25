@@ -400,6 +400,11 @@
                 "copyKept": "ថតដំបូង {path} គ្មានសមមូលក្នុងរបៀប {mode} ទេ ហើយត្រូវបានរក្សាទុកដដែល។"
             }
         },
+        "connectUrl": {
+            "title": "ភ្ជាប់ទៅ URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "ការចូលប្រើប្រាស់"
+        },
         "browser": {
             "remote": "ពីចម្ងាយ",
             "local": "មូលដ្ឋាន",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "ភ្ជាប់ទៅ URL...",
             "file": "ឯកសារ",
             "edit": "កែសម្រួល",
             "view": "មើល",

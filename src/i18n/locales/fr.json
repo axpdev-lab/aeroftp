@@ -400,6 +400,11 @@
                 "copyKept": "Le dossier initial {path} n'a pas d'équivalent en mode {mode} et a été conservé tel quel."
             }
         },
+        "connectUrl": {
+            "title": "Se connecter à une URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Les schémas de connexion ouvrent le profil enregistré correspondant"
+        },
         "browser": {
             "remote": "Distant",
             "local": "Local",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Se connecter à une URL...",
             "file": "Fichier",
             "edit": "Édition",
             "view": "Affichage",

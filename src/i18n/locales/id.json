@@ -400,6 +400,11 @@
                 "copyKept": "Folder awal {path} tidak memiliki padanan dalam mode {mode} dan dipertahankan apa adanya."
             }
         },
+        "connectUrl": {
+            "title": "Hubungkan ke URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Skema masuk membuka profil tersimpan yang cocok"
+        },
         "browser": {
             "remote": "Jarak Jauh",
             "local": "Lokal",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Hubungkan ke URL...",
             "file": "File",
             "edit": "Edit",
             "view": "Tampilan",

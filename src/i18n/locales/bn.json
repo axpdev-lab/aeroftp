@@ -400,6 +400,11 @@
                 "copyKept": "প্রারম্ভিক ফোল্ডার {path}-এর {mode} মোডে কোনো সমতুল্য নেই এবং এটি যেমন ছিল তেমনই রাখা হয়েছে।"
             }
         },
+        "connectUrl": {
+            "title": "সংযোগ URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "সাইন ইন স্কিম মিলিয়ে সেভ করা প্রোফাইল খোলে"
+        },
         "browser": {
             "remote": "রিমোট",
             "local": "লোকাল",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "সংযোগ URL...",
             "file": "ফাইল",
             "edit": "সম্পাদনা",
             "view": "দেখুন",

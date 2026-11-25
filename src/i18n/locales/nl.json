@@ -400,6 +400,11 @@
                 "copyKept": "De beginmap {path} heeft geen equivalent in de {mode}-modus en is ongewijzigd behouden."
             }
         },
+        "connectUrl": {
+            "title": "Verbinden met URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Inlogschema's openen het bijbehorende opgeslagen profiel"
+        },
         "browser": {
             "remote": "Extern",
             "local": "Lokaal",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Verbinden met URL...",
             "file": "Bestand",
             "edit": "Bewerken",
             "view": "Weergave",

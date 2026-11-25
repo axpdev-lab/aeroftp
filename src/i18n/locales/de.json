@@ -400,6 +400,11 @@
                 "copyKept": "Der Startordner {path} hat im Modus {mode} keine Entsprechung und wurde unverändert beibehalten."
             }
         },
+        "connectUrl": {
+            "title": "Mit URL verbinden",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Anmeldeschemata öffnen das passende gespeicherte Profil"
+        },
         "browser": {
             "remote": "Remote",
             "local": "Lokal",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Mit URL verbinden...",
             "file": "Datei",
             "edit": "Bearbeiten",
             "view": "Ansicht",

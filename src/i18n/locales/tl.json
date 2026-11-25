@@ -400,6 +400,11 @@
                 "copyKept": "Walang katumbas ang panimulang folder na {path} sa {mode} mode at pinanatili ito nang walang pagbabago."
             }
         },
+        "connectUrl": {
+            "title": "Kumonekta sa URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Binubuksan ng mga sign-in scheme ang tumutugmang na-save na profile"
+        },
         "browser": {
             "remote": "Remote",
             "local": "Lokal",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Kumonekta sa URL...",
             "file": "File",
             "edit": "I-edit",
             "view": "View",

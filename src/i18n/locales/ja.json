@@ -400,6 +400,11 @@
                 "copyKept": "初期フォルダー {path} には {mode} モードでの対応先がないため、そのまま維持されました。"
             }
         },
+        "connectUrl": {
+            "title": "URLに接続",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "サインインスキームは一致する保存済みプロファイルを開きます"
+        },
         "browser": {
             "remote": "リモート",
             "local": "ローカル",
@@ -4571,6 +4576,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "URLに接続...",
             "file": "ファイル",
             "edit": "編集",
             "view": "表示",

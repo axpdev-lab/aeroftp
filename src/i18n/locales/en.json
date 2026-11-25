@@ -2072,6 +2072,11 @@
                 "copyKept": "The initial folder {path} has no equivalent in {mode} mode and was kept as it is."
             }
         },
+        "connectUrl": {
+            "title": "Connect to URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Sign-in schemes open the matching saved profile"
+        },
         "twoFactor": {
             "title": "Two-Factor Authentication Required",
             "description": "Enter the 6-digit code from your authenticator app to continue connecting.",
@@ -3022,6 +3027,7 @@
         },
         "menu": {
             "about": "About AeroFTP",
+            "connectToUrl": "Connect to URL...",
             "debugMode": "Debug Mode",
             "delete": "Delete",
             "dependencies": "Dependencies...",

@@ -400,6 +400,11 @@
                 "copyKept": "Pradinis aplankas {path} neturi atitikmens {mode} režime ir buvo paliktas toks, koks yra."
             }
         },
+        "connectUrl": {
+            "title": "Prisijungti prie URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Prisijungimo schemos atidaro atitinkamą išsaugotą profilį"
+        },
         "browser": {
             "remote": "Nuotolinis",
             "local": "Vietinis",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Prisijungti prie URL...",
             "file": "Failas",
             "edit": "Redaguoti",
             "view": "Rodymas",

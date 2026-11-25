@@ -16031,6 +16031,18 @@ impl SecondLaunch for AppSecondLaunch<'_> {
     }
 }
 
+/// File > Connect to URL...: validate `url` with the one launch-URL parser
+/// the CLI and the single-instance hook read, then queue it exactly like a
+/// second-instance launch, so the existing tab-reuse dispatch in the
+/// frontend opens it. A parse error is returned to the modal, which shows it
+/// without closing; the raw URL (it may hold credentials) is never logged.
+#[tauri::command]
+fn open_launch_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let request = open_request::launch_url_request(&url)?;
+    open_request::deliver(&app, vec![request]);
+    Ok(())
+}
+
 /// Handles a second launch once the UI origin is known to be ours (see
 /// [`SecondLaunchGate`]). Otherwise the
 /// OS "Extract here / to folder" verb (Deliverable G) opens only the
@@ -28786,6 +28798,7 @@ pub fn run() {
             file_associations::file_associations_status,
             file_associations::file_associations_set_integration,
             open_request::take_open_requests,
+            open_launch_url,
             file_associations::file_associations_set_default,
             file_associations::file_associations_open_settings,
             ftp_read_file_base64,

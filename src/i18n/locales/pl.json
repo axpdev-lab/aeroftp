@@ -400,6 +400,11 @@
                 "copyKept": "Folder początkowy {path} nie ma odpowiednika w trybie {mode} i został zachowany bez zmian."
             }
         },
+        "connectUrl": {
+            "title": "Połącz z URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Schematy logowania otwierają odpowiedni zapisany profil"
+        },
         "browser": {
             "remote": "Zdalny",
             "local": "Lokalny",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Połącz z URL...",
             "file": "Plik",
             "edit": "Edycja",
             "view": "Widok",

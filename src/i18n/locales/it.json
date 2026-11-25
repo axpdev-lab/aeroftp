@@ -550,6 +550,11 @@
                 "copyKept": "La cartella iniziale {path} non ha un equivalente in modalità {mode} ed è stata mantenuta così com'è."
             }
         },
+        "connectUrl": {
+            "title": "Connetti a URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Gli schemi di accesso aprono il profilo salvato corrispondente"
+        },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
             "description": "Inserisci il codice a 6 cifre dalla tua app authenticator per continuare la connessione.",
@@ -5056,6 +5061,7 @@
             "title": "Debug"
         },
         "menu": {
+            "connectToUrl": "Connetti a URL...",
             "file": "File",
             "edit": "Modifica",
             "view": "Vista",

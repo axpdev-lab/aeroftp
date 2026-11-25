@@ -400,6 +400,11 @@
                 "copyKept": "Nid oes gan y ffolder cychwynnol {path} gyfwerth yn y modd {mode}, a chafodd ei gadw fel y mae."
             }
         },
+        "connectUrl": {
+            "title": "Cysylltu ag URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Mae cynlluniau mewngofnodi yn agor y proffil a gadwyd cyfatebol"
+        },
         "browser": {
             "remote": "Pell",
             "local": "Lleol",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Cysylltu ag URL...",
             "file": "Ffeil",
             "edit": "Golygu",
             "view": "Golwg",

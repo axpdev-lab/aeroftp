@@ -400,6 +400,11 @@
                 "copyKept": "Počáteční složka {path} nemá v režimu {mode} žádný ekvivalent a zůstala beze změny."
             }
         },
+        "connectUrl": {
+            "title": "Připojit k URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Schémata přihlášení otevírají odpovídající uložený profil"
+        },
         "browser": {
             "remote": "Vzdálený",
             "local": "Místní",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Připojit k URL...",
             "file": "Soubor",
             "edit": "Upravit",
             "view": "Zobrazit",

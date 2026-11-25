@@ -400,6 +400,11 @@
                 "copyKept": "初始文件夹 {path} 在 {mode} 模式下没有对应项，已保持原样。"
             }
         },
+        "connectUrl": {
+            "title": "连接到 URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "登录方案将打开匹配的已保存配置文件"
+        },
         "browser": {
             "remote": "远程",
             "local": "本地",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "连接到 URL...",
             "file": "文件",
             "edit": "编辑",
             "view": "视图",

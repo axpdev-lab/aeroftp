@@ -400,6 +400,11 @@
                 "copyKept": "Thư mục ban đầu {path} không có tương đương trong chế độ {mode} và được giữ nguyên."
             }
         },
+        "connectUrl": {
+            "title": "Kết nối tới URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Các lược đồ đăng nhập sẽ mở hồ sơ đã lưu tương ứng"
+        },
         "browser": {
             "remote": "Từ xa",
             "local": "Cục bộ",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Kết nối tới URL...",
             "file": "Tệp",
             "edit": "Chỉnh sửa",
             "view": "Xem",

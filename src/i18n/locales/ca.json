@@ -400,6 +400,11 @@
                 "copyKept": "La carpeta inicial {path} no té cap equivalent en el mode {mode} i s'ha mantingut tal com era."
             }
         },
+        "connectUrl": {
+            "title": "Connecta't a una URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Els esquemes d'inici de sessió obren el perfil desat corresponent"
+        },
         "browser": {
             "remote": "Remot",
             "local": "Local",
@@ -4607,6 +4612,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Connecta't a una URL...",
             "file": "Fitxer",
             "edit": "Editar",
             "view": "Visualització",
