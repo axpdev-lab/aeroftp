@@ -12,6 +12,7 @@ import { Checkbox } from './ui/Checkbox';
 import {
     Server,
     Cloud,
+    Globe,
     Lock,
     ShieldCheck,
     ShieldAlert,
@@ -47,15 +48,6 @@ const SourceForgeLogo: React.FC<{ size?: number; className?: string }> = ({ size
         <path fill="#ff6600" d="M46.2 94.8c-.4 0-.9-.2-1.2-.5L.5 49.8c-.6-.6-.6-1.7 0-2.4l47-47C47.8.2 48.2 0 48.6 0h13.5c.8 0 1.3.5 1.5 1s.2 1.2-.4 1.8L19.1 47c-.9.9-.9 2.3 0 3.2l34.9 35c.6.6.6 1.7 0 2.4l-6.7 6.8c-.3.2-.7.4-1.1.4z" />
         <path fill="#ff6600" d="M55.1 102.6c-.8 0-1.3-.5-1.5-1s-.2-1.2.4-1.8L98.2 55.6c.4-.4.7-1 .7-1.6s-.2-1.2-.7-1.6l-35-35c-.6-.6-.6-1.7 0-2.4L70 8.2c.3-.3.7-.5 1.2-.5s.8.3 1.1.6l44.4 44.5c.3.3.5.7.5 1.2s-.2.9-.5 1.2l-47 47c-.3.3-.7.5-1.2.5H55.1z" />
         <path fill="#ff6600" d="M67 54.2c0-5-1.8-7.4-2.8-8.2-.2-.2-.5 0-.4.2.2 2.9-3.4 3.6-3.4 8v.1c0 2.7 2 4.9 4.6 4.9s4.6-2.2 4.6-4.9v-.1c0-1.3-.5-2.5-1-3.4-.1-.2-.4-.1-.3.1.8 3.8-1.3 6.2-1.3 3.3z" />
-    </svg>
-);
-
-const AwsS3Logo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-        <path fill="#e25444" d="M12 2L3 7v10l9 5 9-5V7l-9-5z" />
-        <path fill="#7b1d13" d="M12 2v20l9-5V7l-9-5z" />
-        <path fill="#58150d" d="M12 22l-9-5V7l9 5v10z" />
-        <path fill="#ffffff" d="M12 12L3 7l9-5 9 5-9 5z" />
     </svg>
 );
 
@@ -149,7 +141,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
     {
         type: 'webdav',
         name: 'WebDAV',
-        icon: <Cloud size={16} />,
+        icon: <Globe size={16} />,
         description: t('protocol.webdavDesc'),
         badge: 'TLS',
         color: 'text-orange-500',
@@ -158,7 +150,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
     {
         type: 's3',
         name: 'S3',
-        icon: <AwsS3Logo size={18} />,
+        icon: <Bucket size={18} />,
         description: t('protocol.s3Desc'),
         badge: 'HMAC',
         color: 'text-amber-600',
@@ -466,8 +458,8 @@ const PROTOCOLS_FALLBACK: ProtocolFallbackInfo[] = withConnectionDefaults<Omit<P
     { type: 'ftp', name: 'FTP', icon: <Server size={16} />, badge: 'TLS', color: 'text-blue-500' },
     { type: 'sftp', name: 'SFTP', icon: <Lock size={16} />, badge: 'SSH', color: 'text-emerald-500' },
     { type: 'scp', name: 'SCP', icon: <Lock size={16} />, badge: 'SSH', color: 'text-emerald-500' },
-    { type: 'webdav', name: 'WebDAV', icon: <Cloud size={16} />, badge: 'TLS', color: 'text-orange-500' },
-    { type: 's3', name: 'S3', icon: <AwsS3Logo size={18} />, badge: 'HMAC', color: 'text-amber-600' },
+    { type: 'webdav', name: 'WebDAV', icon: <Globe size={16} />, badge: 'TLS', color: 'text-orange-500' },
+    { type: 's3', name: 'S3', icon: <Bucket size={18} />, badge: 'HMAC', color: 'text-amber-600' },
     { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true },
     { type: 'sftp' as const, name: 'SourceForge', icon: <SourceForgeLogo size={18} />, badge: 'SFTP', color: 'text-orange-500', providerId: 'sourceforge' },
     { type: 'aerocloud', name: 'AeroCloud', icon: <Cloud size={18} />, badge: 'Sync', color: 'text-sky-500', isCloudStorage: true },

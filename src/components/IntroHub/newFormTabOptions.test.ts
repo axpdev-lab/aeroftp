@@ -29,7 +29,7 @@ describe('Add Service: the form a pick opens', () => {
         const proton = buildDiscoverCategories()
             .flatMap((category) => category.items)
             .find((item) => item.id === 'proton');
-        expect(proton?.badge).toBe('API / CLI');
+        expect(proton?.badge).toBe('E2E 256-bit');
         expect(proton?.description).not.toMatch(/via the Proton Drive CLI/);
     });
 

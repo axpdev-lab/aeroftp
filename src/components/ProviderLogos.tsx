@@ -579,13 +579,15 @@ const SourceForgeLogo: React.FC<LogoProps> = ({ size = 20 }) => (
     </svg>
 );
 
-// Quotaless: PNG cloud logo
+// Quotaless: white PNG cloud logo, so it is inverted on light themes
+// (light/ice have no `dark` class) and kept white on dark/cyber themes.
 export const QuotalessLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/quotaless.png"
         alt="Quotaless"
         width={size}
         height={size}
+        className="invert dark:invert-0"
         style={{ objectFit: 'contain' }}
     />
 );
