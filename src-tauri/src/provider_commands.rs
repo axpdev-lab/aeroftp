@@ -19899,15 +19899,20 @@ mod tests {
                     }
                     // Take the hold barrier ONLY when the complete request is
                     // the authenticated bucket-list call: an unauthenticated
-                    // probe (no Authorization header) must not consume it.
+                    // probe (no Authorization header) is answered 404 at once
+                    // and must not consume the barrier or signal the test.
                     let is_authenticated = request
                         .windows(b"authorization:".len())
                         .any(|w| w.eq_ignore_ascii_case(b"authorization:"));
-                    let hold_rx = if is_authenticated {
-                        hold_rx.lock().await.take()
-                    } else {
-                        None
-                    };
+                    if !is_authenticated {
+                        let reply = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        let _ = stream.write_all(reply.as_bytes()).await;
+                        return;
+                    }
+                    let hold_rx = hold_rx.lock().await.take();
+                    // Signal only AFTER the authenticated request has taken the
+                    // hold: a preliminary probe must not release the barrier
+                    // before the bucket-list request arrives.
                     let _ = requested_tx.send(()).await;
                     // Hold the reply so the account switch lands while the
                     // discovery is still awaiting it.
@@ -19923,6 +19928,30 @@ mod tests {
                 });
             }
         });
+
+        // A COMPLETE preliminary probe (headers end, no Authorization header) is
+        // answered 404 but must not signal: the barrier waits for the
+        // authenticated bucket-list request only.
+        {
+            let mut probe = tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .unwrap();
+            probe
+                .write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+                .await
+                .unwrap();
+            let mut reply = Vec::new();
+            probe.read_to_end(&mut reply).await.unwrap();
+            assert!(
+                String::from_utf8_lossy(&reply).starts_with("HTTP/1.1 404"),
+                "an unauthenticated complete probe gets 404, got: {}",
+                String::from_utf8_lossy(&reply)
+            );
+            assert!(
+                requested_rx.try_recv().is_err(),
+                "a complete preliminary probe must not signal the barrier"
+            );
+        }
 
         let mut params = s3_params(None);
         params.provider_id = Some("filen-desktop-s3".to_string());

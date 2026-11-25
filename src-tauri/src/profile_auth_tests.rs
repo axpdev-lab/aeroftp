@@ -1871,6 +1871,61 @@ fn with_unreadable_profile_vault(test: impl FnOnce(&CredentialStore)) {
     }
 }
 
+/// CodeRabbit (pr1613 r7, gap on bridge_commands restore): the session can be
+/// lost between the snapshot and the recovery (account locked or switched in
+/// between). The partition then cannot be read, but the shared vault must
+/// still be restored from the snapshot, and the returned error must say both:
+/// a silently skipped vault rollback would leave the new secret in the vault.
+#[test]
+fn a_session_loss_after_the_snapshot_still_restores_the_shared_vault() {
+    with_unreadable_profile_vault(|store| {
+        // A passphrase-protected account, unlocked so partition writes work.
+        let mut conn = users::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let protected = users::create_user(
+            &mut conn,
+            &root_key,
+            "Protected",
+            None,
+            None,
+            Some("pw-session-loss"),
+        )
+        .unwrap();
+        users::unlock_user(&conn, &root_key, protected.id, Some("pw-session-loss")).unwrap();
+        drop(conn);
+
+        let key = "server_session-loss";
+        store.store(key, "vault-before").unwrap();
+        let before = users::snapshot_credential_for_user(store, protected.id, key).unwrap();
+        users::store_imported_credential_for_user(store, protected.id, key, None, "file-value")
+            .unwrap();
+        assert_eq!(store.get(key).unwrap(), "file-value");
+
+        // The session is lost after the snapshot, before the recovery.
+        users::clear_user_session();
+
+        let err = users::restore_credential_for_user(
+            store,
+            protected.id,
+            key,
+            None,
+            "file-value",
+            &before,
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("partition") && err.contains("vault"),
+            "the error must name the partition failure and the vault recovery: {err}"
+        );
+        assert_eq!(
+            store.get(key).unwrap(),
+            "vault-before",
+            "the shared vault must go back to the snapshot value even when the partition is unreadable"
+        );
+        store.delete(key).unwrap();
+    });
+}
+
 /// CodeRabbit (CLI deep, #1574): a profile token that cannot be read is an
 /// error, not a missing token. The legacy singleton beside it may be another
 /// profile's account, so the connect and the rclone export that read the

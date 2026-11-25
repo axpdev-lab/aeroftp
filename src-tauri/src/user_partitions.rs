@@ -4694,16 +4694,45 @@ pub fn restore_credential_op_for_user(
         .map_err(|e| format!("Start credential restore: {e}"))?;
     let effective_kind = credential_type.unwrap_or_else(|| relocate_secret_kind(credential_id));
     let private_only = private_token_user(Some(user_id), effective_kind)?.is_some();
-    let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
-    let vault = if private_only {
-        None
-    } else {
-        get_optional_secret(store, credential_id)?
-    };
     let write_op = if written_delete {
         SecretWrite::delete(credential_id.to_string(), None)
     } else {
         SecretWrite::new(credential_id.to_string(), None, written)
+    };
+    let partition = match get_user_credential_for(&tx, &root_key, user_id, credential_id) {
+        Ok(value) => value,
+        Err(partition_err) => {
+            // Session lost after the snapshot: the partition cannot be read or
+            // restored now, but the shared vault does not need the partition DEK
+            // and must not keep the new value. Restore the vault slot from the
+            // snapshot, then report the partition failure alongside it. The
+            // transaction rolls back on drop; nothing was written to it.
+            drop(tx);
+            if !private_only {
+                let vault = get_optional_secret(store, credential_id)?;
+                match rollback_action_for_write(
+                    vault.as_ref().map(|v| v.as_str()),
+                    &write_op,
+                    before.vault.as_ref().map(|v| v.as_str()),
+                ) {
+                    RollbackAction::Leave => {}
+                    RollbackAction::Restore(value) => store
+                        .store(credential_id, value)
+                        .map_err(|e| format!("Restore credential in vault: {e}"))?,
+                    RollbackAction::Delete => store
+                        .delete(credential_id)
+                        .map_err(|e| format!("Delete credential from vault: {e}"))?,
+                }
+            }
+            return Err(format!(
+                "Restore credential in partition: {partition_err}; the shared vault slot was restored from the snapshot"
+            ));
+        }
+    };
+    let vault = if private_only {
+        None
+    } else {
+        get_optional_secret(store, credential_id)?
     };
     // The partition first: until the commit it can still go back by itself, so a
     // failure here or in the vault leaves both places holding what they held.

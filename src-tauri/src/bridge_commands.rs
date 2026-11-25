@@ -742,18 +742,28 @@ pub(crate) fn store_bridge_import_secret_for_user(
         Some(uid) => {
             let prior = crate::user_partitions::snapshot_credential_for_user(store, uid, key)?;
             let result = store_bridge_import_secret_for_user_inner(store, user_id, key, secret);
-            if result.is_err() {
-                // Restore each slot to its exact prior value, or delete only
-                // the slot that was previously absent; a slot changed by
-                // someone else in between is left alone.
-                let kind = key
-                    .starts_with("aws_session_token_")
-                    .then_some("aws_session_token");
-                let _ = crate::user_partitions::restore_credential_for_user(
-                    store, uid, key, kind, secret, &prior,
-                );
+            match result {
+                Ok(()) => Ok(()),
+                Err(write_err) => {
+                    // Restore each slot to its exact prior value, or delete only
+                    // the slot that was previously absent; a slot changed by
+                    // someone else in between is left alone. A recovery that
+                    // itself fails is reported alongside the write error, not
+                    // discarded: a silently skipped rollback leaves the new
+                    // secret in the shared vault.
+                    let kind = key
+                        .starts_with("aws_session_token_")
+                        .then_some("aws_session_token");
+                    match crate::user_partitions::restore_credential_for_user(
+                        store, uid, key, kind, secret, &prior,
+                    ) {
+                        Ok(()) => Err(write_err),
+                        Err(recovery_err) => {
+                            Err(format!("{write_err}; recovery also failed: {recovery_err}"))
+                        }
+                    }
+                }
             }
-            result
         }
         None => {
             // Confirmed legacy-only caller: if an account has become active
