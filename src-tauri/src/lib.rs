@@ -16035,14 +16035,17 @@ impl SecondLaunch for AppSecondLaunch<'_> {
 /// the CLI and the single-instance hook read, then queue it exactly like a
 /// second-instance launch, so the existing tab-reuse dispatch in the
 /// frontend opens it. `password` is the dialog's masked Password field,
-/// zeroized on arrival; a parse error is returned to the modal, which shows
+/// wrapped in `Zeroizing` until it is copied into the request; a parse error is returned to the modal, which shows
 /// it without closing. The raw URL (it may hold credentials) is never logged.
 #[tauri::command]
-fn open_launch_url(
+async fn open_launch_url(
     app: tauri::AppHandle,
     url: String,
     password: Option<String>,
 ) -> Result<(), String> {
+    // Zeroizing guards the masked field until it is copied into the request;
+    // from there the request's plain `password` field carries it exactly as
+    // the single-instance launch path already does.
     let password = password.map(zeroize::Zeroizing::new);
     let masked = password.as_ref().map(|p| p.as_str());
     let request = open_request::launch_url_request(&url, masked)?;
@@ -16053,9 +16056,10 @@ fn open_launch_url(
 /// Parse a launch URL exactly like `open_launch_url` but without queueing it:
 /// the Connect to URL... dialog reads the request to pre-fill and store a
 /// "Save to My Servers" profile. Same parser, same errors, raw URL never
-/// logged.
+/// logged. The request's `password` field travels back over IPC the same way
+/// the queued single-instance request travels to the webview.
 #[tauri::command]
-fn parse_launch_url(
+async fn parse_launch_url(
     url: String,
     password: Option<String>,
 ) -> Result<open_request::OpenRequest, String> {

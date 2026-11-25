@@ -14,6 +14,7 @@ import {
     hasInlinePassword,
     nextPlaceholder,
     placeholderRanges,
+    schemeOfValue,
     suggestProfileName,
     suggestionForValue,
     type UrlSchemeSuggestion,
@@ -92,6 +93,9 @@ export function ConnectUrlModal({ onClose }: ConnectUrlModalProps) {
             if (saveToServers && suggestion && !signIn) {
                 const request = await invoke<OpenRequest>('parse_launch_url', { url, password: masked });
                 await saveLaunchUrlProfile(request, profileName, password || undefined);
+                // Saved once: a retry after a failed connect must not write a
+                // duplicate profile.
+                setSaveToServers(false);
             }
             await invoke('open_launch_url', { url, password: masked });
             close();
@@ -112,12 +116,17 @@ export function ConnectUrlModal({ onClose }: ConnectUrlModalProps) {
                 setActive((prev) => (prev + delta + suggestions.length) % suggestions.length);
             }
         } else if (e.key === 'Tab') {
-            e.preventDefault();
+            // Shift+Tab always moves focus backwards; Tab is captured only
+            // when it actually applies a placeholder jump or a completion,
+            // so keyboard users can always reach the other fields.
+            if (e.shiftKey) return;
             if (placeholderRanges(value).length > 0) {
+                e.preventDefault();
                 const next = nextPlaceholder(value, input.selectionStart ?? value.length);
                 const at = next ?? { start: value.length, end: value.length, name: '' };
                 input.setSelectionRange(at.start, at.end);
-            } else if (suggestions.length > 0) {
+            } else if (!schemeOfValue(value) && listVisible && suggestions.length > 0) {
+                e.preventDefault();
                 applySuggestion(suggestions[Math.min(active, suggestions.length - 1)]);
             }
         } else if (e.key === 'Enter') {

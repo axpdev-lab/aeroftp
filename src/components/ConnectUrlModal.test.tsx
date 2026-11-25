@@ -42,9 +42,14 @@ const typeInto = (el: HTMLInputElement, value: string) => act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, value);
     el.dispatchEvent(new Event('input', { bubbles: true }));
 });
-const key = (el: Element, k: string) => act(async () => {
-    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
-});
+const key = (el: Element, k: string, opts: { shiftKey?: boolean } = {}) => {
+    let event: KeyboardEvent | null = null;
+    act(() => {
+        event = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, shiftKey: !!opts.shiftKey });
+        el.dispatchEvent(event);
+    });
+    return event!;
+};
 // requestAnimationFrame in jsdom runs on a timer; flush it.
 const flush = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
 
@@ -98,6 +103,23 @@ describe('ConnectUrlModal', () => {
         await flush();
         expect(onClose).not.toHaveBeenCalled();
         expect(host.textContent).toContain('Unsupported URL scheme');
+    });
+
+    it('Tab on a complete URL is not captured, so focus can move on; Shift+Tab never is', async () => {
+        await render(() => {});
+        const el = input();
+        await typeInto(el, 'sftp://bob@example.com/reports');
+        const tab = key(el, 'Tab');
+        expect(tab.defaultPrevented).toBe(false);
+        const shiftTab = key(el, 'Tab', { shiftKey: true });
+        expect(shiftTab.defaultPrevented).toBe(false);
+        // But on a template with placeholders Tab still jumps.
+        await typeInto(el, 'sft');
+        key(el, 'Tab');
+        await flush();
+        const tab2 = key(el, 'Tab');
+        expect(tab2.defaultPrevented).toBe(true);
+        expect(el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0)).toBe('host');
     });
 
     it('Escape closes the modal', async () => {
