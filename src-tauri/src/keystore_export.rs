@@ -2395,7 +2395,14 @@ fn restore_profile_step(
                     kept.push(format!("{key} (row)"));
                 }
             }
-            Err(e) => failures.push(format!("{key}: {}", e.message)),
+            Err(e) => {
+                // `after_vault`: the vault value went back and only the row
+                // failed, so the block goes back with it.
+                if e.vault_written {
+                    vault_restored.insert(key.as_str());
+                }
+                failures.push(format!("{key}: {}", e.message));
+            }
         }
     }
     for (key, value, written) in &snapshot.vault {
@@ -9202,6 +9209,54 @@ mod tests {
                 .unwrap()
                 .is_none(),
             "the declined write restored no block"
+        );
+    }
+
+    /// NAS 4697555022: the rollback's vault write landed and only the
+    /// partition row write failed (`after_vault`): the value is back, so
+    /// its `vault_blocked_secret:` record goes back too. Red if the error
+    /// arm leaves the restored value without its block.
+    #[test]
+    fn a_rollback_restores_the_block_when_only_the_row_write_failed() {
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let key = "oauth_dropbox_srv_drive";
+        let _root = TestDataRoot::new(dir.path());
+        crate::user_partitions::open_or_init_cli().unwrap();
+        // What the import left in the vault; the conditional write puts
+        // the original back, then the row write cannot open its database.
+        store.store(key, "backup-token").unwrap();
+        let missing = dir.path().join("no-such-dir").join("user_partitions.db");
+        let receiver = Receiver {
+            user_id: 1,
+            legacy_owner: true,
+            identity: [7; 16],
+        };
+        let snapshot = ProfileStepSnapshot {
+            receiver: Some(receiver),
+            secrets: vec![(
+                key.to_string(),
+                Some(Zeroizing::new("orig-row".to_string())),
+                Some(Some(Zeroizing::new("local-token".to_string()))),
+                Some(Some(Zeroizing::new("backup-token".to_string()))),
+                None,
+            )],
+            vault: Vec::new(),
+            blocked_vault: vec![(key.to_string(), "recorded-digest".to_string())],
+            list: Vec::new(),
+            blob: None,
+        };
+
+        let (failures, _kept) = restore_profile_step(&store, Some(missing.as_path()), &snapshot);
+        assert!(failures.iter().any(|f| f.contains(key)), "{failures:?}");
+        assert_eq!(store.get(key).unwrap(), "local-token");
+        assert!(
+            crate::user_partitions::blocked_vault_secret_digest(key)
+                .unwrap()
+                .is_some(),
+            "the restored vault value got its block back"
         );
     }
 
