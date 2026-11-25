@@ -2924,21 +2924,10 @@ pub struct RcloneSkippedRemote {
     pub reason: String,
 }
 
-/// Option keys the importer fills with a revealed secret: the rclone-crypt
-/// password and salt (`map_crypt_remote`) and the Filen CLI API key
-/// (`map_remote`). The save paths move them into the vault; whatever prints an
-/// import (the CLI `import rclone --json` report) leaves them out, as the GUI
-/// preview does.
-pub const IMPORT_SECRET_OPTION_KEYS: &[&str] = &[
-    "rcloneCryptPassword",
-    "rcloneCryptPassword2",
-    "filen_api_key",
-    // The SFTP key passphrase a profile keeps in its options, which the
-    // rclone exporter writes as `key_file_pass` (review of #980).
-    "key_passphrase",
-    // The native Proton Drive session the export path injects.
-    PROTON_SESSION_OPTION,
-];
+/// Option keys carrying secrets in `ServerProfileExport.options`. Unified with
+/// [`crate::profile_export::OPTIONS_SECRET_KEYS`] so bridge imports, CLI
+/// redaction, and credential-free exports never drift apart (AWS-10).
+pub const IMPORT_SECRET_OPTION_KEYS: &[&str] = crate::profile_export::OPTIONS_SECRET_KEYS;
 
 /// `options` without the keys in [`IMPORT_SECRET_OPTION_KEYS`], for output.
 pub fn options_without_secrets(options: Option<&serde_json::Value>) -> Option<serde_json::Value> {
@@ -6955,6 +6944,28 @@ pub fn export_rclone(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The canonical secret-key list covers both spellings of the inline AWS
+    /// STS token, so `options_without_secrets` strips `sessionToken` and
+    /// `session_token` alike while non-secret options (region, endpoint)
+    /// survive.
+    #[test]
+    fn options_without_secrets_strips_both_session_token_spellings() {
+        assert!(crate::profile_export::OPTIONS_SECRET_KEYS.contains(&"sessionToken"));
+        assert!(crate::profile_export::OPTIONS_SECRET_KEYS.contains(&"session_token"));
+        let options = serde_json::json!({
+            "region": "eu-west-1",
+            "endpoint": "https://s3.example.com",
+            "sessionToken": "CAMEL-SECRET",
+            "session_token": "SNAKE-SECRET",
+        });
+        let stripped = options_without_secrets(Some(&options)).unwrap();
+        assert_eq!(
+            stripped,
+            serde_json::json!({ "region": "eu-west-1", "endpoint": "https://s3.example.com" })
+        );
+        assert!(!stripped.to_string().contains("SECRET"));
+    }
 
     /// Which OAuth app stays stored does not change from run to run.
     #[test]
@@ -15699,6 +15710,9 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
 
     #[test]
     fn a_key_file_path_is_expanded_as_rclone_expands_it() {
+        // Compares relative-path resolution against current_dir(): take the
+        // shared env lock like every other working-directory-reading test.
+        let _env = crate::test_env::lock();
         let dir = Path::new("/etc/rclone");
         let path = std::env::var("PATH").unwrap_or_default();
         assert_eq!(

@@ -14314,18 +14314,33 @@ fn load_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
 ) -> Result<Vec<serde_json::Value>, String> {
+    Ok(load_active_user_profiles_with_account(cli, store)?.0)
+}
+
+/// Like [`load_active_user_profiles`] but also returns the account the list
+/// was read under, so callers can bind later reads (exports) to it. `Some(id)`
+/// means the list came from that account's partition; `None` means the legacy
+/// `config_server_profiles` blob fallback served it and its owning account is
+/// unknown, so a credential-bearing export must not claim that account.
+fn load_active_user_profiles_with_account(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Result<(Vec<serde_json::Value>, Option<i64>), String> {
     use ftp_client_gui_lib::user_partitions;
     let target = match ensure_active_user_unlocked(cli, store)? {
         Some(t) => t,
         None => return Err("NO_ACTIVE_USER".to_string()),
     };
+    let account = target.id;
     match user_partitions::cli_list_server_profiles_for_user(store, target.id) {
         Ok(mut profiles) => {
             // rclone-crypt secrets that `import rclone --apply` used to leave in
             // a profile's options move to the vault and a binding, once; the list
             // is re-read, merged and written in one transaction, and only when a
-            // move applied.
-            let uid = scoped_credential_user_id(cli, store);
+            // move applied. The moves go under the account captured with this
+            // list, not under a re-resolved active account: a switch mid-load
+            // must not write one account's secrets into another's partition.
+            let uid = Some(account);
             let notes = ftp_client_gui_lib::bridge_commands::migrate_legacy_rclone_crypt_on_load(
                 &mut profiles,
                 |key, secret| dual_store_server_cred_checked(store, uid, key, secret),
@@ -14353,7 +14368,7 @@ fn load_active_user_profiles(
                     eprintln!("Warning: {note}");
                 }
             }
-            Ok(profiles)
+            Ok((profiles, Some(account)))
         }
         Err(e) if e == "USER_LOCKED" => Err(e),
         Err(e) if e == "NO_ACTIVE_USER" => Err(e),
@@ -14361,7 +14376,9 @@ fn load_active_user_profiles(
             // Partition unavailable (downgrade or transient I/O): fall back to
             // legacy blob so the user is not locked out of their CLI history.
             // Note: legacy blob is single-user, so `--user` cannot be honoured
-            // on this path — log a clear stderr hint and serve the blob.
+            // on this path - log a clear stderr hint and serve the blob. The
+            // returned account is `None`: the blob's owning account is unknown,
+            // so credential reads must not be bound to `account` on this path.
             if cli.user.is_some() && cli.verbose > 0 {
                 eprintln!(
                     "Warning: user partition unavailable, --user override ignored (falling back to legacy blob)."
@@ -14370,8 +14387,9 @@ fn load_active_user_profiles(
             let raw = store
                 .get("config_server_profiles")
                 .map_err(|e| format!("Failed to read server profiles: {}", e))?;
-            serde_json::from_str(&raw)
-                .map_err(|e| format!("Failed to parse server profiles: {}", e))
+            let profiles: Vec<serde_json::Value> = serde_json::from_str(&raw)
+                .map_err(|e| format!("Failed to parse server profiles: {}", e))?;
+            Ok((profiles, None))
         }
     }
 }
@@ -30544,6 +30562,22 @@ async fn create_and_connect_for_agent(
                 host = resolved_endpoint;
             }
         }
+        let active_uid = active_credential_user_id(&store);
+        let requires_stored_session_token = matched
+            .get("hasStoredSessionToken")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        ftp_client_gui_lib::profile_loader::inject_vault_s3_session_token(
+            provider_type,
+            Some(profile_id),
+            requires_stored_session_token,
+            &mut extra,
+            |key| {
+                ftp_client_gui_lib::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                    &store, active_uid, key,
+                )
+            },
+        )?;
     }
 
     let config = ftp_client_gui_lib::providers::ProviderConfig {
@@ -32009,6 +32043,26 @@ fn profile_value_to_provider_config(
             if host.trim().is_empty() {
                 host = resolved_endpoint;
             }
+        }
+        let profile_id = profile.get("id").and_then(|v| v.as_str());
+        let scoped_uid = scoped_credential_user_id(cli, store);
+        let requires_stored_session_token = profile
+            .get("hasStoredSessionToken")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if let Err(e) = ftp_client_gui_lib::profile_loader::inject_vault_s3_session_token(
+            provider_type,
+            profile_id,
+            requires_stored_session_token,
+            &mut extra,
+            |key| {
+                ftp_client_gui_lib::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                    store, scoped_uid, key,
+                )
+            },
+        ) {
+            print_error(format, &e, 6);
+            return Err(6);
         }
     }
 
@@ -43381,7 +43435,7 @@ async fn cmd_import_template(
 /// `sourcePath`, `totalRemotes`. This reproduces the exact output of
 /// `cmd_import_rclone`: credentials are NEVER printed; every server reports
 /// `hasCredential` (bool) instead of the secret, both in text and JSON.
-fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) -> i32 {
+fn format_bridge_import_json(v: &serde_json::Value) -> serde_json::Value {
     let servers = v
         .get("servers")
         .and_then(|s| s.as_array())
@@ -43407,39 +43461,71 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         .and_then(|s| s.as_u64())
         .unwrap_or(servers.len() as u64);
 
-    if json {
-        // Redact credentials: never echo plaintext secrets to stdout.
-        let redacted_servers: Vec<serde_json::Value> = servers
-            .iter()
-            .map(|s| {
-                serde_json::json!({
-                    "id": s.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                    "name": s.get("name").cloned().unwrap_or(serde_json::Value::Null),
-                    "host": s.get("host").cloned().unwrap_or(serde_json::Value::Null),
-                    "port": s.get("port").cloned().unwrap_or(serde_json::Value::Null),
-                    "username": s.get("username").cloned().unwrap_or(serde_json::Value::Null),
-                    "protocol": s.get("protocol").cloned().unwrap_or(serde_json::Value::Null),
-                    "initialPath": s.get("initialPath").cloned().unwrap_or(serde_json::Value::Null),
-                    "options": s.get("options").cloned().unwrap_or(serde_json::Value::Null),
-                    "hasCredential": s
-                        .get("credential")
-                        .map(|c| !c.is_null())
-                        .unwrap_or(false),
-                })
+    // Redact credentials and options-borne secrets (such as AWS
+    // `sessionToken`): never echo plaintext secrets to stdout.
+    let redacted_servers: Vec<serde_json::Value> = servers
+        .iter()
+        .map(|s| {
+            let redacted_options =
+                ftp_client_gui_lib::rclone_import::options_without_secrets(s.get("options"))
+                    .unwrap_or(serde_json::Value::Null);
+            serde_json::json!({
+                "id": s.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                "name": s.get("name").cloned().unwrap_or(serde_json::Value::Null),
+                "host": s.get("host").cloned().unwrap_or(serde_json::Value::Null),
+                "port": s.get("port").cloned().unwrap_or(serde_json::Value::Null),
+                "username": s.get("username").cloned().unwrap_or(serde_json::Value::Null),
+                "protocol": s.get("protocol").cloned().unwrap_or(serde_json::Value::Null),
+                "initialPath": s.get("initialPath").cloned().unwrap_or(serde_json::Value::Null),
+                "options": redacted_options,
+                "hasCredential": s
+                    .get("credential")
+                    .map(|c| !c.is_null())
+                    .unwrap_or(false),
             })
-            .collect();
-        let envelope = serde_json::json!({
-            "servers": redacted_servers,
-            "skipped": skipped,
-            "warnings": warnings,
-            "sourcePath": source_path,
-            "totalRemotes": total_remotes,
-        });
+        })
+        .collect();
+    serde_json::json!({
+        "servers": redacted_servers,
+        "skipped": skipped,
+        "warnings": warnings,
+        "sourcePath": source_path,
+        "totalRemotes": total_remotes,
+    })
+}
+
+fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) -> i32 {
+    if json {
+        let envelope = format_bridge_import_json(v);
         println!(
             "{}",
             serde_json::to_string_pretty(&envelope).unwrap_or_default()
         );
     } else {
+        let servers = v
+            .get("servers")
+            .and_then(|s| s.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let skipped = v
+            .get("skipped")
+            .and_then(|s| s.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let warnings = v
+            .get("warnings")
+            .and_then(|s| s.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let source_path = v
+            .get("sourcePath")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string();
+        let total_remotes = v
+            .get("totalRemotes")
+            .and_then(|s| s.as_u64())
+            .unwrap_or(servers.len() as u64);
         println!("Scanned {} remotes from {}", total_remotes, source_path);
         println!();
 
@@ -43652,6 +43738,7 @@ struct ProfileExportScaffold {
     provider_id: Option<String>,
     initial_path: Option<String>,
     overlay: Option<serde_json::Value>,
+    has_stored_session_token: bool,
     secret: String,
 }
 
@@ -43683,12 +43770,14 @@ fn export_needs_vault_secret(protocol: &str, options: Option<&serde_json::Value>
 }
 
 /// Pull every profile the `--profiles` selectors pick (or all profiles if
-/// `None`) from the vault, decoding `server_<id>` credentials. A selector that
-/// picks nothing is recorded as skipped, under the selector as typed.
-/// `oauth_protocols` are always recorded as skipped because rclone/WinSCP/
-/// FileZilla all need their own OAuth flow for those.
+/// `None`) from the vault, decoding `server_<id>` credentials under `account`,
+/// the account captured with the profile list. A selector that picks nothing
+/// is recorded as skipped, under the selector as typed. `oauth_protocols` are
+/// always recorded as skipped because rclone/WinSCP/FileZilla all need their
+/// own OAuth flow for those.
 fn collect_export_scaffold(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    account: Option<i64>,
     servers_json: &serde_json::Value,
     selectors: Option<&[String]>,
     source: &str,
@@ -43701,14 +43790,19 @@ fn collect_export_scaffold(
         source,
         supported_protocols,
         oauth_protocols,
-        |id, protocol| export_vault_secret(store, id, protocol),
+        |id, protocol| export_vault_secret(store, account, id, protocol),
     )
 }
 
-/// The secret a profile is exported with, from the active user's partition
-/// with fallback to the legacy vault (MUV-3); empty when none is stored.
+/// The secret a profile is exported with, read under the account captured with
+/// the profile list (`Some(uid)`, falling back to the legacy vault) or under
+/// the legacy vault alone (`None`, legacy-list provenance). Reading every
+/// secret under that one captured account is what keeps a `--user` export from
+/// mixing the active account's credentials into the other account's list;
+/// empty when none is stored.
 fn export_vault_secret(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
     id: &str,
     protocol: &str,
 ) -> String {
@@ -43723,16 +43817,11 @@ fn export_vault_secret(
         // `JottacloudProvider::refresh_token_account`). Try per-profile
         // first, then fall back to the singleton, so export_rclone can
         // rebuild the rclone `token` line from it.
-        let uid = active_credential_user_id(store);
         read_server_cred(store, uid, &format!("jottacloud_refresh_{}", id))
             .or_else(|| read_server_cred(store, uid, "jottacloud_refresh"))
             .unwrap_or_default()
     } else {
-        match read_server_cred(
-            store,
-            active_credential_user_id(store),
-            &format!("server_{}", id),
-        ) {
+        match read_server_cred(store, uid, &format!("server_{}", id)) {
             Some(stored) => {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stored) {
                     v.get("password")
@@ -43851,6 +43940,11 @@ fn collect_export_scaffold_with(
             .and_then(|v| v.as_str())
             .map(str::to_string);
 
+        let has_stored_session_token = filled
+            .get("hasStoredSessionToken")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         // By id, the key the secret was read under: by name, two profiles of
         // one name both went out with the second one's secret.
         if !secret.is_empty() {
@@ -43867,6 +43961,7 @@ fn collect_export_scaffold_with(
             provider_id,
             initial_path,
             overlay,
+            has_stored_session_token,
             secret,
         });
     }
@@ -43970,13 +44065,32 @@ async fn cmd_export_rclone(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(cli, &store) {
-        Ok(v) => v,
+    // One account per export run: capture the account WITH the profile list
+    // (proven provenance, legacy fallback included) so every vault read below
+    // (the password, the token, api-key, session and crypt injections) goes
+    // through that same captured id and a switch mid-export cannot mix
+    // accounts. An account lookup error no longer degrades to a shared-vault
+    // secret read.
+    let (profiles_list, export_user) = match load_active_user_profiles_with_account(cli, &store) {
+        Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
             return 4;
         }
     };
+    // The legacy blob fallback leaves the list's owning account unknown
+    // (None): refuse the credential-bearing export rather than let the
+    // injectors treat None as the active account and write its tokens under
+    // profiles the list may not belong to.
+    let Some(export_user) = export_user else {
+        print_error(
+            format,
+            "profile list provenance is unknown (legacy blob fallback); refusing a credential-bearing export",
+            4,
+        );
+        return 4;
+    };
+    let servers_json = serde_json::Value::Array(profiles_list);
     let selectors = parse_profile_selectors(profiles);
 
     // Single source of truth shared with the GUI bridge: the credential
@@ -43995,6 +44109,7 @@ async fn cmd_export_rclone(
 
     let collected = match collect_export_scaffold(
         &store,
+        Some(export_user),
         &servers_json,
         selectors.as_deref(),
         "rclone",
@@ -44025,6 +44140,7 @@ async fn cmd_export_rclone(
         if let Err(reason) = ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
             &mut options,
             &store,
+            Some(export_user),
             &p.protocol,
             &p.id,
         ) {
@@ -44034,18 +44150,21 @@ async fn cmd_export_rclone(
         ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
             &mut options,
             &store,
+            Some(export_user),
             &p.protocol,
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_proton_export_options(
             &mut options,
             &store,
+            Some(export_user),
             &p.protocol,
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_onedrive_export_options(
             &mut options,
             &store,
+            Some(export_user),
             &p.protocol,
             &p.id,
         );
@@ -44063,12 +44182,14 @@ async fn cmd_export_rclone(
             ftp_client_gui_lib::bridge_commands::ensure_zoho_rclone_root_folder(
                 &mut options,
                 &p.id,
+                Some(export_user),
             )
             .await;
         }
         ftp_client_gui_lib::bridge_commands::inject_rclone_crypt_export_options(
             &mut options,
             &store,
+            Some(export_user),
             &p.id,
             p.overlay.as_ref(),
         );
@@ -44117,6 +44238,7 @@ async fn cmd_export_rclone(
                 outcome.exported,
                 &target_path,
                 &skipped,
+                &[],
             );
             0
         }
@@ -44143,13 +44265,30 @@ async fn cmd_export_winscp(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(cli, &store) {
-        Ok(v) => v,
+    // Capture the account with the profile list so the password read below
+    // uses that same captured account: a `--user` export must not mix the
+    // active account's secrets into the other account's list. `None` is the
+    // legacy blob fallback, whose owning account is unknown, and the secret
+    // read then stays on the legacy vault with it.
+    let (profiles_list, list_account) = match load_active_user_profiles_with_account(cli, &store) {
+        Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
             return 4;
         }
     };
+    // The legacy blob fallback leaves the list's owning account unknown
+    // (None): refuse the credential-bearing export rather than read secrets
+    // under an account the list may not belong to.
+    let Some(list_account) = list_account else {
+        print_error(
+            format,
+            "profile list provenance is unknown (legacy blob fallback); refusing a credential-bearing export",
+            4,
+        );
+        return 4;
+    };
+    let servers_json = serde_json::Value::Array(profiles_list);
     let selectors = parse_profile_selectors(profiles);
 
     // WinSCP handles FTP/FTPS/SFTP and S3. Everything else is skipped.
@@ -44158,6 +44297,7 @@ async fn cmd_export_winscp(
 
     let collected = match collect_export_scaffold(
         &store,
+        Some(list_account),
         &servers_json,
         selectors.as_deref(),
         "winscp",
@@ -44211,7 +44351,14 @@ async fn cmd_export_winscp(
                 emit_empty_export(json, &skipped);
                 return 4;
             }
-            emit_export_success(json, "WinSCP.ini", outcome.exported, &target_path, &skipped);
+            emit_export_success(
+                json,
+                "WinSCP.ini",
+                outcome.exported,
+                &target_path,
+                &skipped,
+                &[],
+            );
             0
         }
         Err(e) => {
@@ -44240,13 +44387,30 @@ async fn cmd_export_filezilla(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(cli, &store) {
-        Ok(v) => v,
+    // Capture the account with the profile list so the password read below
+    // uses that same captured account: a `--user` export must not mix the
+    // active account's secrets into the other account's list. `None` is the
+    // legacy blob fallback, whose owning account is unknown, and the secret
+    // read then stays on the legacy vault with it.
+    let (profiles_list, list_account) = match load_active_user_profiles_with_account(cli, &store) {
+        Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
             return 4;
         }
     };
+    // The legacy blob fallback leaves the list's owning account unknown
+    // (None): refuse the credential-bearing export rather than read secrets
+    // under an account the list may not belong to.
+    let Some(list_account) = list_account else {
+        print_error(
+            format,
+            "profile list provenance is unknown (legacy blob fallback); refusing a credential-bearing export",
+            4,
+        );
+        return 4;
+    };
+    let servers_json = serde_json::Value::Array(profiles_list);
     let selectors = parse_profile_selectors(profiles);
 
     // Keep the CLI protocol filter consistent with FileZilla and the GUI.
@@ -44255,6 +44419,7 @@ async fn cmd_export_filezilla(
 
     let mut collected = match collect_export_scaffold(
         &store,
+        Some(list_account),
         &servers_json,
         selectors.as_deref(),
         "filezilla",
@@ -44294,7 +44459,7 @@ async fn cmd_export_filezilla(
 
     match export_filezilla(&exportable, &collected.passwords, &target_path) {
         Ok(outcome) => {
-            let (count, refused) = outcome.into_export_parts();
+            let (count, refused, _warnings, _written_path) = outcome.into_export_parts();
             collected.skipped.extend(refused);
             // Nothing written, as for the other formats: the file at the
             // destination is left as it was.
@@ -44308,6 +44473,7 @@ async fn cmd_export_filezilla(
                     count,
                     &target_path,
                     &collected.skipped,
+                    &[],
                 );
                 0
             }
@@ -44364,17 +44530,35 @@ async fn cmd_export_bridge(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(cli, &store) {
-        Ok(v) => v,
+    // Capture the account with the profile list so the password read below
+    // uses that same captured account: a `--user` export must not mix the
+    // active account's secrets into the other account's list. `None` is the
+    // legacy blob fallback, whose owning account is unknown, and the secret
+    // read then stays on the legacy vault with it.
+    let (profiles_list, list_account) = match load_active_user_profiles_with_account(cli, &store) {
+        Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
             return 4;
         }
     };
+    // The legacy blob fallback leaves the list's owning account unknown
+    // (None): refuse the credential-bearing export rather than read secrets
+    // under an account the list may not belong to.
+    let Some(list_account) = list_account else {
+        print_error(
+            format,
+            "profile list provenance is unknown (legacy blob fallback); refusing a credential-bearing export",
+            4,
+        );
+        return 4;
+    };
+    let servers_json = serde_json::Value::Array(profiles_list);
     let selectors = parse_profile_selectors(profiles);
 
     let collected = match collect_export_scaffold(
         &store,
+        Some(list_account),
         &servers_json,
         selectors.as_deref(),
         src,
@@ -44394,8 +44578,23 @@ async fn cmd_export_bridge(
 
     let (ext, label) =
         ftp_client_gui_lib::bridge_shared::bridge_export_format(src).unwrap_or(("txt", src));
+    let mut created_private_aws_dir: Option<std::path::PathBuf> = None;
     let target_path = match output {
         Some(p) => std::path::PathBuf::from(p),
+        None if src == "aws" => {
+            // AWS-08: write AWS credentials + sibling config into a private
+            // 0700 directory instead of the shared `/tmp`.
+            match ftp_client_gui_lib::aws_credentials_import::default_aws_cli_export_path() {
+                Ok(p) => {
+                    created_private_aws_dir = p.parent().map(std::path::Path::to_path_buf);
+                    p
+                }
+                Err(e) => {
+                    print_error(format, &format!("export failed: {}", e), 4);
+                    return 4;
+                }
+            }
+        }
         None => std::env::temp_dir().join(format!("aeroftp-{}-export.{}", src, ext)),
     };
 
@@ -44403,29 +44602,52 @@ async fn cmd_export_bridge(
     // `export_<src>` (shared signature
     // `(&[<Src>ExportServer], &HashMap<String,String>, &Path) -> Result<R,String>`,
     // where `R` is a count or an outcome that also names what it refused).
-    use ftp_client_gui_lib::bridge_shared::ExportReport;
+    use ftp_client_gui_lib::bridge_shared::{ExportParts, ExportReport};
+    // The session-token read uses the account captured with the profile list
+    // above, the same one the password read went through: a `--user` export
+    // must not pair one account's access key with the other's session token.
+    let scoped_uid = Some(list_account);
+    let mut unreadable: Vec<(String, String)> = Vec::new();
     macro_rules! run_export {
         ($ty:ident, $f:expr) => {{
-            let exportable: Vec<$ty> = collected
-                .profiles
-                .iter()
-                .map(|p| $ty {
+            let mut exportable: Vec<$ty> = Vec::with_capacity(collected.profiles.len());
+            for p in &collected.profiles {
+                let mut opts = p.options.clone();
+                if src == "aws" || src == "kopia" {
+                    if let Err(reason) = ftp_client_gui_lib::bridge_commands::inject_aws_session_token_export_option_for_user(
+                        &mut opts,
+                        &store,
+                        scoped_uid,
+                        &p.protocol,
+                        &p.id,
+                        p.has_stored_session_token,
+                    ) {
+                        unreadable.push((p.name.clone(), reason));
+                        continue;
+                    }
+                }
+                exportable.push($ty {
                     id: p.id.clone(),
                     name: p.name.clone(),
                     host: p.host.clone(),
                     port: p.port,
                     username: p.username.clone(),
                     protocol: Some(p.protocol.clone()),
-                    options: p.options.clone(),
+                    options: opts,
                     provider_id: p.provider_id.clone(),
                     initial_path: p.initial_path.clone(),
-                })
-                .collect();
-            $f(&exportable, &collected.passwords, &target_path).map(ExportReport::into_export_parts)
+                });
+            }
+            if exportable.is_empty() {
+                Ok((0, Vec::new(), Vec::new(), None))
+            } else {
+                $f(&exportable, &collected.passwords, &target_path)
+                    .map(ExportReport::into_export_parts)
+            }
         }};
     }
 
-    let result: Result<(usize, Vec<(String, String)>), String> = match src {
+    let result: Result<ExportParts, String> = match src {
         "aws" => run_export!(AwsExportServer, export_aws_credentials),
         "ssh" => run_export!(SshExportServer, export_ssh_config),
         "mc" => run_export!(McExportServer, export_mc),
@@ -44442,20 +44664,29 @@ async fn cmd_export_bridge(
     };
 
     match result {
-        Ok((count, refused)) => {
+        Ok((count, refused, warnings, written_path)) => {
             // Two lists of refusals reach the operator as one: the profiles
             // the protocol filter dropped, and the ones the exporter itself
             // could not write or had no room for (single-repository formats).
             let mut skipped = collected.skipped.clone();
+            skipped.extend(unreadable);
             skipped.extend(refused);
             if count == 0 {
+                if let Some(dir) = created_private_aws_dir.as_deref() {
+                    let _ = std::fs::remove_dir(dir);
+                }
                 emit_empty_export(json, &skipped);
                 return 4;
             }
-            emit_export_success(json, label, count, &target_path, &skipped);
+            let reported_path =
+                resolved_export_reported_path(&target_path, written_path.as_deref());
+            emit_export_success(json, label, count, reported_path, &skipped, &warnings);
             0
         }
         Err(e) => {
+            if let Some(dir) = created_private_aws_dir.as_deref() {
+                let _ = std::fs::remove_dir(dir);
+            }
             print_error(format, &format!("export failed: {}", e), 4);
             4
         }
@@ -44608,8 +44839,9 @@ async fn cmd_profile_export(
     };
 
     // 2. Load the active user's profiles (the GUI-shared config_server_profiles
-    //    shape, camelCase, already carrying persistModeCredentials).
-    let mut profiles = match load_active_user_profiles(cli, &store) {
+    //    shape, camelCase, already carrying persistModeCredentials), capturing
+    //    the account the list was read under so the export below is bound to it.
+    let (mut profiles, list_account) = match load_active_user_profiles_with_account(cli, &store) {
         Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("cannot read profiles: {e}"), 1);
@@ -44681,12 +44913,37 @@ async fn cmd_profile_export(
 
     // 5. Reuse the GUI export path verbatim. It collects the credentials from
     //    the vault (under the include_credentials flag) and writes the strong-
-    //    KDF encrypted envelope.
-    let result = ftp_client_gui_lib::export_server_profiles_core(
+    //    KDF encrypted envelope. The export is bound to the account the list
+    //    above was read under (proven list provenance), so the export is
+    //    refused (ACCOUNT_CHANGED, no file) when the active account changed
+    //    since that read. An explicit `--user` selects that captured account
+    //    directly instead of resolving it again here. When the list came from
+    //    the legacy blob fallback the provenance is unknown (`None`): refuse a
+    //    credential-bearing export rather than bind secrets to an account the
+    //    list may not belong to.
+    let binding = match (&cli.user, list_account) {
+        (Some(_), Some(account)) => ftp_client_gui_lib::ExportAccountBinding::ExplicitUser(account),
+        (None, Some(account)) => {
+            ftp_client_gui_lib::ExportAccountBinding::MatchActive(Some(account))
+        }
+        (_, None) => {
+            if include_credentials {
+                print_error(
+                    format,
+                    "profile list provenance is unknown (legacy blob fallback); refusing a credential-bearing export",
+                    4,
+                );
+                return 4;
+            }
+            ftp_client_gui_lib::ExportAccountBinding::MatchActive(None)
+        }
+    };
+    let result = ftp_client_gui_lib::export_server_profiles_core_with_policy(
         servers_json,
         password.clone(),
         include_credentials,
         output.to_string(),
+        binding,
     )
     .await;
     password.zeroize();
@@ -46801,32 +47058,70 @@ fn emit_empty_export(json: bool, skipped: &[(String, String)]) {
     }
 }
 
+fn format_export_success_json(
+    count: usize,
+    target_path: &std::path::Path,
+    skipped: &[(String, String)],
+    warnings: &[(String, String)],
+) -> serde_json::Value {
+    serde_json::json!({
+        "exported": count,
+        "path": target_path.display().to_string(),
+        "skipped": skipped,
+        "warnings": warnings,
+    })
+}
+
+fn format_export_success_text(
+    count: usize,
+    target_path: &std::path::Path,
+    skipped: &[(String, String)],
+    warnings: &[(String, String)],
+) -> String {
+    let mut out = format!("Exported {} profiles to {}\n", count, target_path.display());
+    if !skipped.is_empty() {
+        out.push('\n');
+        out.push_str(&format!("Skipped ({}):\n", skipped.len()));
+        for (n, r) in skipped {
+            out.push_str(&format!("  {} : {}\n", n, r));
+        }
+    }
+    if !warnings.is_empty() {
+        out.push('\n');
+        out.push_str(&format!("Warnings ({}):\n", warnings.len()));
+        for (n, r) in warnings {
+            out.push_str(&format!("  {} : {}\n", n, r));
+        }
+    }
+    out
+}
+
+fn resolved_export_reported_path<'a>(
+    target_path: &'a std::path::Path,
+    written_path: Option<&'a std::path::Path>,
+) -> &'a std::path::Path {
+    written_path.unwrap_or(target_path)
+}
+
 fn emit_export_success(
     json: bool,
     label: &str,
     count: usize,
     target_path: &std::path::Path,
     skipped: &[(String, String)],
+    warnings: &[(String, String)],
 ) {
     let _ = label;
     if json {
         println!(
             "{}",
-            serde_json::json!({
-                "exported": count,
-                "path": target_path.display().to_string(),
-                "skipped": skipped,
-            })
+            format_export_success_json(count, target_path, skipped, warnings)
         );
     } else {
-        eprintln!("Exported {} profiles to {}", count, target_path.display());
-        if !skipped.is_empty() {
-            eprintln!();
-            eprintln!("Skipped ({}):", skipped.len());
-            for (n, r) in skipped {
-                eprintln!("  {} : {}", n, r);
-            }
-        }
+        eprint!(
+            "{}",
+            format_export_success_text(count, target_path, skipped, warnings)
+        );
     }
 }
 
@@ -46838,18 +47133,6 @@ fn emit_export_success(
 #[allow(dead_code)]
 fn _scaffold_secret_is_used(p: &ProfileExportScaffold) -> &str {
     &p.secret
-}
-
-/// Read the GUI-managed server profile list from the active user partition
-/// (same source as `aeroftp-cli profiles list`). The vault MUST already be
-/// unlocked. Falls back to the legacy `config_server_profiles` blob on
-/// partition unavailability so downgrades are not bricked.
-fn read_vault_profiles(
-    cli: &Cli,
-    store: &ftp_client_gui_lib::credential_store::CredentialStore,
-) -> Result<serde_json::Value, String> {
-    let profiles = load_active_user_profiles(cli, store)?;
-    Ok(serde_json::Value::Array(profiles))
 }
 
 async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
@@ -88198,6 +88481,403 @@ mod tests {
         );
     }
 
+    /// The profile-list read behind the exports captures the account it read
+    /// under: an explicit `--user` keeps that account's list even after the
+    /// active account is switched, and the captured id is what the secret
+    /// reads are bound to.
+    #[test]
+    fn the_profile_list_read_captures_its_account_across_a_switch() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_LIST_CAPTURES_ACCOUNT_CHILD";
+        if std::env::var(CHILD).is_ok() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                use ftp_client_gui_lib::user_partitions as up;
+                let mut cli = test_cli();
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let first_meta = up::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("first account");
+                let first = first_meta.id;
+                let first_name = first_meta.name;
+                let second = up::cli_create_user(&store, "Second", None, None, None)
+                    .unwrap()
+                    .id;
+                up::cli_replace_server_profiles_for_user(
+                    &store,
+                    first,
+                    &[
+                        serde_json::json!({"id":"srv-first","name":"first-lab","protocol":"sftp",
+                        "host":"a.example","port":22,"username":"u"}),
+                    ],
+                )
+                .unwrap();
+                up::cli_replace_server_profiles_for_user(
+                    &store,
+                    second,
+                    &[
+                        serde_json::json!({"id":"srv-second","name":"second-lab","protocol":"sftp",
+                        "host":"b.example","port":22,"username":"u"}),
+                    ],
+                )
+                .unwrap();
+                up::cli_set_active_user(&store, first).unwrap();
+
+                // `--user <first>`, then switch the active account before the
+                // list read: the captured account still wins.
+                cli.user = Some(first_name);
+                up::cli_set_active_user(&store, second).unwrap();
+                let (profiles, account) =
+                    load_active_user_profiles_with_account(&cli, &store).unwrap();
+                assert_eq!(account, Some(first));
+                let arr = profiles.as_slice();
+                assert_eq!(arr.len(), 1);
+                assert_eq!(
+                    arr[0]["id"], "srv-first",
+                    "the --user account's list must be returned even after the active account switched"
+                );
+
+                // Control: no --user keeps the active-account resolution.
+                cli.user = None;
+                let (profiles2, account2) =
+                    load_active_user_profiles_with_account(&cli, &store).unwrap();
+                assert_eq!(account2, Some(second));
+                assert_eq!(profiles2[0]["id"], "srv-second");
+            });
+            return;
+        }
+        let root = crate::isolated_cli::root();
+        assert_child_finishes_in(
+            root.path(),
+            "tests::the_profile_list_read_captures_its_account_across_a_switch",
+            &[
+                (CHILD, "1"),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
+            ],
+        );
+    }
+
+    /// The same profile id saved under two accounts holds different
+    /// credentials in each: an export scoped to `--user Bob` while Alice is
+    /// active must read Bob's password AND Bob's AWS session token through the
+    /// account captured with the profile list, never Alice's. Both secret
+    /// reads go through that one captured account.
+    #[test]
+    fn export_reads_password_and_session_token_under_the_captured_account() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_EXPORT_CAPTURED_ACCOUNT_CHILD";
+        if std::env::var(CHILD).is_ok() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                use ftp_client_gui_lib::user_partitions as up;
+                let mut cli = test_cli();
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let alice = up::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("alice account")
+                    .id;
+                let bob = up::cli_create_user(&store, "Bob", None, None, None)
+                    .unwrap()
+                    .id;
+                // One profile id in both partitions, different secrets each.
+                let profile = serde_json::json!({"id":"srv-shared","name":"shared-s3","protocol":"s3",
+                    "host":"s3.example.invalid","port":443,"username":"u","options":{}});
+                up::cli_replace_server_profiles_for_user(
+                    &store,
+                    alice,
+                    std::slice::from_ref(&profile),
+                )
+                .unwrap();
+                up::cli_replace_server_profiles_for_user(
+                    &store,
+                    bob,
+                    std::slice::from_ref(&profile),
+                )
+                .unwrap();
+                // Strict partition writes (no shared vault copy), so each read
+                // can only come from the named account's partition.
+                up::store_credential_for_user(
+                    &store,
+                    alice,
+                    "server_srv-shared",
+                    "server",
+                    "alice-secret",
+                )
+                .unwrap();
+                up::store_credential_for_user(
+                    &store,
+                    bob,
+                    "server_srv-shared",
+                    "server",
+                    "bob-secret",
+                )
+                .unwrap();
+                let token_key =
+                    ftp_client_gui_lib::profile_loader::aws_session_token_vault_key("srv-shared");
+                up::store_credential_for_user(
+                    &store,
+                    alice,
+                    &token_key,
+                    "aws_session_token",
+                    "alice-token",
+                )
+                .unwrap();
+                up::store_credential_for_user(
+                    &store,
+                    bob,
+                    &token_key,
+                    "aws_session_token",
+                    "bob-token",
+                )
+                .unwrap();
+                up::cli_set_active_user(&store, alice).unwrap();
+
+                // `--user Bob` while Alice is active: the capture binds the export.
+                cli.user = Some("Bob".to_string());
+                let (profiles, account) =
+                    load_active_user_profiles_with_account(&cli, &store).unwrap();
+                let account = account.expect("a partition read proves its account");
+                assert_eq!(account, bob);
+                let servers_json = serde_json::Value::Array(profiles);
+                let supported =
+                    ftp_client_gui_lib::bridge_shared::bridge_supported_protocols("aws");
+                let collected = collect_export_scaffold(
+                    &store,
+                    Some(account),
+                    &servers_json,
+                    None,
+                    "aws",
+                    supported,
+                    &[],
+                )
+                .unwrap();
+                assert_eq!(collected.profiles.len(), 1);
+                assert_eq!(
+                    collected.passwords.get("srv-shared").map(String::as_str),
+                    Some("bob-secret"),
+                    "the password must come from the captured account, not the active one"
+                );
+
+                let mut opts = Some(serde_json::json!({}));
+                ftp_client_gui_lib::bridge_commands::inject_aws_session_token_export_option_for_user(
+                    &mut opts,
+                    &store,
+                    Some(account),
+                    "s3",
+                    "srv-shared",
+                    true,
+                )
+                .unwrap();
+                assert_eq!(
+                    opts.as_ref()
+                        .and_then(|o| o.get("sessionToken"))
+                        .and_then(|v| v.as_str()),
+                    Some("bob-token"),
+                    "the session token must come from the captured account too"
+                );
+
+                // Control: capturing Alice reads Alice's secrets for the same id.
+                let alice_list = up::cli_list_server_profiles_for_user(&store, alice).unwrap();
+                let collected_alice = collect_export_scaffold(
+                    &store,
+                    Some(alice),
+                    &serde_json::Value::Array(alice_list),
+                    None,
+                    "aws",
+                    supported,
+                    &[],
+                )
+                .unwrap();
+                assert_eq!(
+                    collected_alice
+                        .passwords
+                        .get("srv-shared")
+                        .map(String::as_str),
+                    Some("alice-secret")
+                );
+            });
+            return;
+        }
+        let root = crate::isolated_cli::root();
+        assert_child_finishes_in(
+            root.path(),
+            "tests::export_reads_password_and_session_token_under_the_captured_account",
+            &[
+                (CHILD, "1"),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
+            ],
+        );
+    }
+
+    /// The rclone-crypt migration inside the profile-list load writes under the
+    /// account captured with the list, not under a re-resolved active account:
+    /// with `--user Bob` while Alice is active (and even after switching the
+    /// active account to Alice before the load), the legacy inline crypt secret
+    /// lands in Bob's partition, never in Alice's, and Bob's profile loses the
+    /// inline secret.
+    #[test]
+    fn the_crypt_migration_writes_under_the_captured_account_across_a_switch() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_CRYPT_MIGRATION_CAPTURED_CHILD";
+        if std::env::var(CHILD).is_ok() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                use ftp_client_gui_lib::user_partitions as up;
+                let mut cli = test_cli();
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let alice_meta = up::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("alice account");
+                let alice = alice_meta.id;
+                let bob = up::cli_create_user(&store, "Bob", None, None, None)
+                    .unwrap()
+                    .id;
+                // Bob's profile carries a legacy inline rclone-crypt password.
+                let legacy = serde_json::json!({"id":"srv-crypt","name":"crypt-lab","protocol":"ftp",
+                    "host":"ftp.example.invalid","port":21,"username":"u",
+                    "options":{"rcloneCryptEnabled":true,"rcloneCryptPassword":"LegacyCryptPw!"}});
+                up::cli_replace_server_profiles_for_user(&store, bob, &[legacy]).unwrap();
+                up::cli_set_active_user(&store, alice).unwrap();
+
+                // `--user Bob`, and the active account is Alice for the whole load.
+                cli.user = Some("Bob".to_string());
+                let (profiles, account) =
+                    load_active_user_profiles_with_account(&cli, &store).unwrap();
+                assert_eq!(account, Some(bob), "the captured account is the --user one");
+
+                let key = "aerocrypt_overlay_pw_srv-crypt";
+                // Owner-aware reads: a non-legacy-owner account reads its own
+                // partition exclusively, so these prove where the migrated
+                // secret landed: the captured account's partition only.
+                let carol = up::cli_create_user(&store, "Carol", None, None, None)
+                    .unwrap()
+                    .id;
+                let bob_pw = up::resolve_credential_for_user_owner_aware(&store, bob, key)
+                    .unwrap()
+                    .expect(
+                        "the migrated crypt secret must be in the captured account's partition",
+                    );
+                assert_eq!(bob_pw.as_str(), "LegacyCryptPw!");
+                assert!(
+                    up::resolve_credential_for_user_owner_aware(&store, carol, key)
+                        .unwrap()
+                        .is_none(),
+                    "another account's partition must not receive the migrated secret"
+                );
+                let profile = &profiles[0];
+                assert!(
+                    profile
+                        .get("aeroCryptOverlay")
+                        .map(|b| !b.is_null())
+                        .unwrap_or(false),
+                    "the profile got its overlay binding: {profile}"
+                );
+                assert!(
+                    profile.pointer("/options/rcloneCryptPassword").is_none(),
+                    "the inline secret left the options: {profile}"
+                );
+            });
+            return;
+        }
+        let root = crate::isolated_cli::root();
+        assert_child_finishes_in(
+            root.path(),
+            "tests::the_crypt_migration_writes_under_the_captured_account_across_a_switch",
+            &[
+                (CHILD, "1"),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
+            ],
+        );
+    }
+
+    /// When the partition list read fails and the loader serves the legacy
+    /// `config_server_profiles` blob, the owning account is unknown (`None`):
+    /// a credential-bearing rclone export must then refuse (exit 4, no file)
+    /// instead of letting the injectors treat `None` as the active account
+    /// and stamp its OAuth token onto a profile the list may not belong to.
+    #[test]
+    fn rclone_export_refuses_when_the_list_fell_back_to_the_legacy_blob() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_EXPORT_LEGACY_FALLBACK_CHILD";
+        if std::env::var(CHILD).is_ok() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                use ftp_client_gui_lib::user_partitions as up;
+                let cli = test_cli();
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let active = up::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("active account")
+                    .id;
+                // A healthy OAuth token in the ACTIVE account's partition: if
+                // the export wrongly treated `None` as the active account,
+                // this token would be injected into the export.
+                up::store_credential_for_user(
+                    &store,
+                    active,
+                    "oauth_googledrive_srv-legacy",
+                    "oauth",
+                    "ACTIVE-ACCOUNT-TOKEN",
+                )
+                .unwrap();
+                // The legacy blob: one OAuth profile, which needs no password
+                // and so would receive the token on a credential-bearing export.
+                store
+                    .store(
+                        "config_server_profiles",
+                        &serde_json::json!([{
+                            "id": "srv-legacy",
+                            "name": "legacy-drive",
+                            "protocol": "googledrive",
+                            "host": "drive.google.com",
+                            "port": 443,
+                            "username": "u",
+                        }])
+                        .to_string(),
+                    )
+                    .unwrap();
+                // Break the partition list read: a stored row whose blob does
+                // not decrypt fails the list read, so from here on the loader
+                // falls back to the legacy blob and reports unknown provenance.
+                let conn = up::open_or_init_cli().unwrap();
+                conn.execute_batch(&format!(
+                    "INSERT INTO server_profiles(user_id, profile_uid, dedup_key, name, \
+                     encrypted_blob, nonce, created_at, updated_at) VALUES ({active}, \
+                     'srv-broken', 'srv-broken', 'broken', x'0011', x'0022', 0, 0);"
+                ))
+                .unwrap();
+                drop(conn);
+
+                let (profiles, account) =
+                    load_active_user_profiles_with_account(&cli, &store).unwrap();
+                assert!(account.is_none(), "the legacy fallback must report None");
+                assert_eq!(profiles[0]["id"], "srv-legacy");
+
+                let dir = tempfile::TempDir::new().unwrap();
+                let out = dir.path().join("rclone.conf");
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let code = rt.block_on(cmd_export_rclone(
+                    Some(out.to_string_lossy().into_owned()),
+                    None,
+                    false,
+                    &cli,
+                    OutputFormat::Text,
+                ));
+                assert_eq!(
+                    code, 4,
+                    "a credential-bearing export must be refused on unknown provenance, got {code}"
+                );
+                assert!(!out.exists(), "no export file may be written");
+            });
+            return;
+        }
+        let root = crate::isolated_cli::root();
+        assert_child_finishes_in(
+            root.path(),
+            "tests::rclone_export_refuses_when_the_list_fell_back_to_the_legacy_blob",
+            &[
+                (CHILD, "1"),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
+            ],
+        );
+    }
+
     /// How long a child may run before it counts as blocked on its open stdin.
     /// It detects a hang, not a slow run: a child waiting on a pipe that is
     /// never closed never finishes, so any bound catches it, and the bound only
@@ -110531,5 +111211,114 @@ mod get_slash_key_tests {
             assert!(!cli_get_target_has_file_name(name, true, Some(true)));
         }
         assert!(cli_get_target_has_file_name("normal.txt", false, None));
+    }
+
+    #[test]
+    fn cli_export_success_formats_warnings_in_json_and_text() {
+        let target = std::path::Path::new("/tmp/private/credentials");
+        let skipped = vec![("bad".to_string(), "double quote".to_string())];
+        let warnings = vec![
+            (
+                "AWS config".to_string(),
+                "existing /tmp/private/config was left unchanged; written to config.aeroftp"
+                    .to_string(),
+            ),
+            (
+                "AWS credentials".to_string(),
+                "existing /tmp/private/credentials was left unchanged; written to credentials.aeroftp"
+                    .to_string(),
+            ),
+        ];
+
+        let json_out = format_export_success_json(1, target, &skipped, &warnings);
+        assert_eq!(json_out["exported"], 1);
+        assert_eq!(json_out["warnings"].as_array().unwrap().len(), 2);
+        assert_eq!(json_out["warnings"][0][0], "AWS config");
+        assert_eq!(json_out["warnings"][1][0], "AWS credentials");
+
+        let text_out = format_export_success_text(1, target, &skipped, &warnings);
+        assert!(text_out.contains("Warnings (2):"), "{text_out}");
+        assert!(text_out.contains("AWS config :"), "{text_out}");
+        assert!(text_out.contains("AWS credentials :"), "{text_out}");
+    }
+
+    #[test]
+    fn cli_bridge_import_json_redacts_session_token_and_keeps_region() {
+        let raw = serde_json::json!({
+            "servers": [{
+                "id": "aws-sts-1",
+                "name": "sts-demo",
+                "host": "",
+                "port": 443,
+                "username": "ASIATEST",
+                "protocol": "s3",
+                "initialPath": null,
+                "credential": "SUPER_SECRET_KEY",
+                "options": {
+                    "sessionToken": "TOKEN_SENTINEL",
+                    "region": "us-east-1"
+                }
+            }],
+            "skipped": [],
+            "warnings": [],
+            "sourcePath": "/tmp/credentials",
+            "totalRemotes": 1
+        });
+        let out = format_bridge_import_json(&raw);
+        let serialized = out.to_string();
+        assert!(
+            !serialized.contains("TOKEN_SENTINEL"),
+            "CLI import JSON must never leak sessionToken: {serialized}"
+        );
+        assert!(
+            !serialized.contains("SUPER_SECRET_KEY"),
+            "CLI import JSON must never leak credential: {serialized}"
+        );
+        assert_eq!(out["servers"][0]["options"]["region"], "us-east-1");
+        assert!(out["servers"][0]["options"].get("sessionToken").is_none());
+        assert_eq!(out["servers"][0]["hasCredential"], true);
+    }
+
+    #[test]
+    fn cli_aws_export_reports_side_file_path_when_user_credentials_preserved() {
+        use ftp_client_gui_lib::aws_credentials_import::{export_aws_credentials, AwsExportServer};
+        use ftp_client_gui_lib::bridge_shared::ExportReport;
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        std::fs::write(
+            &target,
+            "[user]\naws_access_key_id = AKIAUSER\naws_secret_access_key = usersecret\n",
+        )
+        .unwrap();
+        std::fs::write(&cfg, "[profile user]\nregion = eu-west-1\n").unwrap();
+
+        let servers = vec![AwsExportServer {
+            id: "srv-1".to_string(),
+            name: "prod".to_string(),
+            host: "s3.lab.example.com".to_string(),
+            port: 443,
+            username: "AKIAPROD".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({ "region": "us-east-1" })),
+            provider_id: Some("custom-s3".to_string()),
+            initial_path: None,
+        }];
+        let passwords =
+            std::collections::HashMap::from([("srv-1".to_string(), "prod-secret".to_string())]);
+        let (count, skipped, warnings, written_path) =
+            export_aws_credentials(&servers, &passwords, &target)
+                .unwrap()
+                .into_export_parts();
+        let reported = resolved_export_reported_path(&target, written_path.as_deref());
+        let json_out = format_export_success_json(count, reported, &skipped, &warnings);
+
+        let expected_side = dir.path().join("credentials.aeroftp");
+        assert_eq!(
+            json_out["path"].as_str(),
+            Some(expected_side.to_string_lossy().as_ref()),
+            "CLI export JSON must report the actual credentials.aeroftp side path: {json_out}"
+        );
     }
 }

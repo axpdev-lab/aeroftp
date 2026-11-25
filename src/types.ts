@@ -730,6 +730,7 @@ export interface ServerProfile {
   password?: string; // DEPRECATED: migrated to secure credential store
   hasStoredCredential?: boolean; // true if password stored in OS keyring/vault
   hasStoredFilenApiKey?: boolean; // true if a Filen CLI API key is stored in the vault under filen_api_key_<id> (issue #230); the key itself is never persisted in options
+  hasStoredSessionToken?: boolean; // true if an AWS STS session token is stored in the vault under aws_session_token_<id>; never persisted in options
   protocol?: ProviderType; // Default: 'ftp'
   initialPath?: string; // Initial remote directory to navigate after connection
   localInitialPath?: string; // Initial local directory for this project/server

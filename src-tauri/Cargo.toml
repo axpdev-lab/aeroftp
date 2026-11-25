@@ -352,6 +352,9 @@ windows = { version = "0.58", features = [
     # domain user out of their own vault.key / vault.db.
     "Win32_Security_Authorization",
     "Win32_System_Threading",
+    # ACCESS_ALLOWED_ACE_TYPE, used by the handle-based owner-only DACL
+    # verification in windows_acl.rs.
+    "Win32_System_SystemServices",
     "Win32_UI_Shell",
     "Win32_UI_Shell_PropertiesSystem",
     # SetConsoleCtrlHandler: MCP/orchestrate stdio daemon must swallow

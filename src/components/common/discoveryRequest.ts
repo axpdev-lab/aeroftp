@@ -23,15 +23,31 @@ import { discoveryResetKey } from './DiscoverableTargetField';
 /** Providers whose targets (buckets, drives) can be listed before connecting. */
 export type DiscoveryProtocol = 's3' | 'backblaze' | 'kdrive';
 
+/**
+ * Edit-session context for discovery: the saved profile the form is editing,
+ * when any. Its id lets the backend resolve the vaulted STS session token
+ * (`aws_session_token_<id>`) under the captured account instead of seeing
+ * only an inline token.
+ */
+export interface DiscoveryEditContext {
+    profileId?: string;
+    hasStoredSessionToken?: boolean;
+}
+
 /** The payload `provider_discover_targets` receives, in its snake_case wire shape. */
 export function discoveryRequestParams(
     protocol: DiscoveryProtocol,
     rawParams: ConnectionParams,
+    edit?: DiscoveryEditContext,
 ): Record<string, unknown> {
     const params = withFilenBridgeCredentialDefaults(rawParams);
     const options = params.options || {};
     return {
         protocol,
+        // A saved profile (connected from the list or being edited) carries its
+        // id so the backend can look the vaulted STS token up by it.
+        profile_id: rawParams.savedServerId ?? edit?.profileId,
+        has_stored_session_token: edit?.hasStoredSessionToken,
         providerId: params.providerId,
         server: params.server,
         port: params.port,
@@ -74,8 +90,9 @@ const NOT_AN_INPUT = new Set(['bucket']);
 export function discoveryRequestResetKey(
     protocol: DiscoveryProtocol,
     params: ConnectionParams,
+    edit?: DiscoveryEditContext,
 ): string {
-    const request = discoveryRequestParams(protocol, params);
+    const request = discoveryRequestParams(protocol, params, edit);
     const parts = Object.keys(request)
         .filter((field) => !NOT_AN_INPUT.has(field))
         .sort()

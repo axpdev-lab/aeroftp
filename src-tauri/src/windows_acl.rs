@@ -46,6 +46,23 @@
 
 use std::path::Path;
 
+/// Access mask for the Windows staging handle opened by
+/// `bridge_shared::stage_export_temp_600_with_acl`: GENERIC_READ |
+/// GENERIC_WRITE | WRITE_DAC | DELETE. `restrict_acl` calls `SetSecurityInfo`
+/// on THIS handle and setting a DACL requires WRITE_DAC, which generic
+/// read/write access does not include; the same handle is later renamed onto
+/// the destination by handle (`rename_staged_by_handle`,
+/// `SetFileInformationByHandle(FileRenameInfo)`), and a rename by handle
+/// requires DELETE. GENERIC_WRITE alone implies neither right.
+#[cfg(windows)]
+pub(crate) const STAGING_ACCESS: u32 = 0x8000_0000 | 0x4000_0000 | 0x0004_0000 | 0x0001_0000;
+/// Share mode for the same staging handle: FILE_SHARE_DELETE only, so no
+/// other local account can open the file for read or write between creation
+/// and the handle-based rename, while the rename itself is still permitted
+/// while the handle is live.
+#[cfg(windows)]
+pub(crate) const FILE_SHARE_DELETE: u32 = 0x0000_0004;
+
 /// Restrict file/directory access to the current user, SYSTEM and
 /// Administrators. Best-effort: failures are logged and never propagated,
 /// because an object that could not be hardened is still usable, while an
@@ -77,6 +94,29 @@ pub fn restrict_to_owner(path: &Path) {
 /// No-op on non-Windows platforms
 #[cfg(not(windows))]
 pub fn restrict_to_owner(_path: &Path) {}
+
+/// Restrict file/directory access to the current user, SYSTEM and
+/// Administrators, failing closed if the owner-only DACL cannot be applied or
+/// verified. Used before writing secret-bearing export payloads into a temp
+/// file so an export directory with a permissive parent DACL never exposes
+/// secret bytes on disk.
+///
+/// On Windows the DACL is applied to `file`'s open handle, and `path` must
+/// still identify that same file object (volume serial + file index) before
+/// and after: while the staging handle allows `FILE_SHARE_DELETE`, another
+/// account with delete-child rights in the directory could rename the path,
+/// and a path-only check could then harden (or verify) a different file than
+/// the one the payload is written to.
+#[cfg(windows)]
+pub fn restrict_to_owner_checked(file: &std::fs::File, path: &Path) -> std::io::Result<()> {
+    win::restrict_owner_only_by_handle(file, path)
+}
+
+/// No-op on non-Windows platforms (Unix enforces `0600` on the open handle).
+#[cfg(not(windows))]
+pub fn restrict_to_owner_checked(_file: &std::fs::File, _path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
 
 /// Drop the explicit DACL and re-enable inheritance from the parent
 /// (equivalent to `icacls <path> /reset`).
@@ -135,18 +175,20 @@ mod win {
         CloseHandle, LocalFree, ERROR_ACCESS_DENIED, ERROR_SUCCESS, HANDLE, HLOCAL, WIN32_ERROR,
     };
     use windows::Win32::Security::Authorization::{
-        SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE,
-        SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_IS_WELL_KNOWN_GROUP,
-        TRUSTEE_TYPE, TRUSTEE_W,
+        SetEntriesInAclW, SetNamedSecurityInfoW, SetSecurityInfo, EXPLICIT_ACCESS_W,
+        NO_MULTIPLE_TRUSTEE, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID, TRUSTEE_IS_USER,
+        TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_TYPE, TRUSTEE_W,
     };
     use windows::Win32::Security::{
         CreateWellKnownSid, GetTokenInformation, InitializeAcl, TokenUser,
         WinBuiltinAdministratorsSid, WinLocalSystemSid, ACL, ACL_REVISION,
-        DACL_SECURITY_INFORMATION, NO_INHERITANCE, PROTECTED_DACL_SECURITY_INFORMATION, PSID,
-        SECURITY_MAX_SID_SIZE, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY, TOKEN_USER,
-        UNPROTECTED_DACL_SECURITY_INFORMATION, WELL_KNOWN_SID_TYPE,
+        DACL_SECURITY_INFORMATION, NO_INHERITANCE, PROTECTED_DACL_SECURITY_INFORMATION,
+        PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+        TOKEN_QUERY, TOKEN_USER, UNPROTECTED_DACL_SECURITY_INFORMATION, WELL_KNOWN_SID_TYPE,
     };
-    use windows::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
+    use windows::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_ALL_ACCESS,
+    };
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
     /// `windows` 0.58 does not derive `Default` on `PSID`.
@@ -325,9 +367,10 @@ mod win {
         }
     }
 
-    /// Replace the object's DACL with one that grants full control to the
-    /// current user, SYSTEM and Administrators, and nothing to anybody else.
-    pub(super) fn apply_owner_only_dacl(path: &Path, is_dir: bool) -> Result<(), String> {
+    /// A DACL granting full control to the current user, SYSTEM and
+    /// Administrators, and nothing to anybody else. A NULL result would mean
+    /// "everyone, full control", so it is refused by the caller.
+    fn owner_only_acl(is_dir: bool) -> Result<LocalAcl, String> {
         let user = TokenUserSid::query()?;
         let system = WellKnownSid::new(WinLocalSystemSid)?;
         let admins = WellKnownSid::new(WinBuiltinAdministratorsSid)?;
@@ -351,7 +394,13 @@ mod win {
             // "harden" the vault into being world-writable.
             return Err("SetEntriesInAclW returned a NULL DACL".to_string());
         }
+        Ok(acl)
+    }
 
+    /// Replace the object's DACL with one that grants full control to the
+    /// current user, SYSTEM and Administrators, and nothing to anybody else.
+    pub(super) fn apply_owner_only_dacl(path: &Path, is_dir: bool) -> Result<(), String> {
+        let acl = owner_only_acl(is_dir)?;
         let path_w = wide(path);
         unsafe {
             check(
@@ -365,6 +414,211 @@ mod win {
                     None,
                 ),
                 "SetNamedSecurityInfoW",
+            )
+        }
+    }
+
+    /// The file's identity (volume serial + file index) as seen through an
+    /// open handle.
+    fn file_identity(handle: HANDLE) -> Result<(u32, u32, u32), String> {
+        let mut info = BY_HANDLE_FILE_INFORMATION::default();
+        unsafe {
+            GetFileInformationByHandle(handle, &mut info)
+                .map_err(|e| format!("GetFileInformationByHandle failed: {e}"))?;
+        }
+        Ok((
+            info.dwVolumeSerialNumber,
+            info.nFileIndexHigh,
+            info.nFileIndexLow,
+        ))
+    }
+
+    /// Open `path` for metadata/ACL rights only, share-all: those rights do
+    /// not conflict with a live `FILE_SHARE_DELETE`-only staging handle.
+    fn open_path_metadata(path: &Path) -> std::io::Result<std::fs::File> {
+        use std::os::windows::fs::OpenOptionsExt;
+        // READ_CONTROL (0x0002_0000) | WRITE_DAC (0x0004_0000) | FILE_READ_ATTRIBUTES (0x0080)
+        const METADATA_ACL_ACCESS: u32 = 0x0006_0080;
+        const SHARE_ALL: u32 = 0x0000_0007;
+        std::fs::OpenOptions::new()
+            .access_mode(METADATA_ACL_ACCESS)
+            .share_mode(SHARE_ALL)
+            .open(path)
+    }
+
+    /// Handle-based owner-only hardening for the staged export temp file.
+    /// The DACL is set on the OPEN HANDLE's object (`SetSecurityInfo`), never
+    /// on the mutable path, and `path` must identify that same file object
+    /// (volume serial + file index) before and after the change. While the
+    /// staging handle allows `FILE_SHARE_DELETE`, another account with
+    /// delete-child rights in the export directory can rename the path; this
+    /// check fails closed instead of hardening (or verifying) a different
+    /// file than the one the payload is about to be written to.
+    pub(super) fn restrict_owner_only_by_handle(
+        file: &std::fs::File,
+        path: &Path,
+    ) -> std::io::Result<()> {
+        use std::os::windows::io::AsRawHandle;
+        let other = |e: String| std::io::Error::other(e);
+        let denied =
+            |msg: &str| std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg.to_string());
+        let staging_handle = HANDLE(file.as_raw_handle());
+        let staging = file_identity(staging_handle).map_err(other)?;
+        let path_still_staged = || -> std::io::Result<()> {
+            let path_file = open_path_metadata(path)?;
+            let via_path = file_identity(HANDLE(path_file.as_raw_handle())).map_err(other)?;
+            if via_path != staging {
+                return Err(denied("the staged path no longer refers to the open file"));
+            }
+            Ok(())
+        };
+        // Identity first: harden only if the path is still our staged file.
+        path_still_staged()?;
+        let acl = owner_only_acl(false).map_err(other)?;
+        unsafe {
+            check(
+                SetSecurityInfo(
+                    staging_handle,
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                    NULL_SID,
+                    NULL_SID,
+                    Some(acl.0 as *const ACL),
+                    None,
+                ),
+                "SetSecurityInfo",
+            )
+            .map_err(other)?;
+        }
+        // Verify on the SAME HANDLE: read the DACL back through it and require
+        // the owner-only DACL. A path-based probe here could verify a
+        // different file after a rename under FILE_SHARE_DELETE. On failure,
+        // roll back through the handle too: no path-based ACL write after the
+        // handle is open.
+        if let Err(reason) = verify_owner_only_dacl_by_handle(staging_handle) {
+            let _ = restore_inherited_dacl_by_handle(staging_handle);
+            return Err(denied(&format!(
+                "owner-only ACL verification failed on the staging handle: {reason}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Free a `GetSecurityInfo` security descriptor.
+    struct PsdGuard(PSECURITY_DESCRIPTOR);
+
+    impl Drop for PsdGuard {
+        fn drop(&mut self) {
+            if !self.0 .0.is_null() {
+                unsafe {
+                    let _ = LocalFree(HLOCAL(self.0 .0));
+                }
+            }
+        }
+    }
+
+    /// Read the DACL back through `handle` (never the path) and require
+    /// exactly the owner-only DACL: present, protected, and every ACE an
+    /// allow-full-control ACE for the current user, SYSTEM or Administrators.
+    pub(super) fn verify_owner_only_dacl_by_handle(handle: HANDLE) -> Result<(), String> {
+        use windows::Win32::Security::Authorization::GetSecurityInfo;
+        use windows::Win32::Security::{
+            AclSizeInformation, EqualSid, GetAce, GetAclInformation, GetSecurityDescriptorControl,
+            GetSecurityDescriptorDacl, ACCESS_ALLOWED_ACE, ACE_HEADER, ACL_SIZE_INFORMATION,
+            SE_DACL_PROTECTED,
+        };
+        use windows::Win32::System::SystemServices::ACCESS_ALLOWED_ACE_TYPE;
+        let user = TokenUserSid::query()?;
+        let system = WellKnownSid::new(WinLocalSystemSid)?;
+        let admins = WellKnownSid::new(WinBuiltinAdministratorsSid)?;
+        let expected = [user.psid(), system.psid(), admins.psid()];
+        unsafe {
+            let mut psd = PSECURITY_DESCRIPTOR(core::ptr::null_mut());
+            check(
+                GetSecurityInfo(
+                    handle,
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(&mut psd),
+                ),
+                "GetSecurityInfo",
+            )?;
+            let psd = PsdGuard(psd);
+            let mut present = windows::Win32::Foundation::BOOL::default();
+            let mut dacl: *mut ACL = core::ptr::null_mut();
+            let mut defaulted = windows::Win32::Foundation::BOOL::default();
+            GetSecurityDescriptorDacl(psd.0, &mut present, &mut dacl, &mut defaulted)
+                .map_err(|e| format!("GetSecurityDescriptorDacl failed: {e}"))?;
+            if !present.as_bool() || dacl.is_null() {
+                return Err("the handle has no DACL".to_string());
+            }
+            let mut control = 0u16;
+            let mut revision = 0u32;
+            GetSecurityDescriptorControl(psd.0, &mut control, &mut revision)
+                .map_err(|e| format!("GetSecurityDescriptorControl failed: {e}"))?;
+            if control & SE_DACL_PROTECTED.0 == 0 {
+                return Err("the DACL is not protected".to_string());
+            }
+            let mut size = ACL_SIZE_INFORMATION::default();
+            GetAclInformation(
+                dacl,
+                &mut size as *mut ACL_SIZE_INFORMATION as *mut core::ffi::c_void,
+                core::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+                AclSizeInformation,
+            )
+            .map_err(|e| format!("GetAclInformation failed: {e}"))?;
+            if size.AceCount as usize != expected.len() {
+                return Err(format!(
+                    "the DACL has {} ACEs, expected {}",
+                    size.AceCount,
+                    expected.len()
+                ));
+            }
+            for index in 0..size.AceCount {
+                let mut ace: *mut core::ffi::c_void = core::ptr::null_mut();
+                GetAce(dacl, index, &mut ace).map_err(|e| format!("GetAce failed: {e}"))?;
+                let header = &*(ace as *const ACE_HEADER);
+                if u32::from(header.AceType) != ACCESS_ALLOWED_ACE_TYPE {
+                    return Err("the DACL holds a non-allow ACE".to_string());
+                }
+                let allow = &*(ace as *const ACCESS_ALLOWED_ACE);
+                if allow.Mask != FILE_ALL_ACCESS.0 {
+                    return Err("a DACL ACE does not grant full control".to_string());
+                }
+                let sid = PSID(
+                    (ace as *const u8).add(core::mem::offset_of!(ACCESS_ALLOWED_ACE, SidStart))
+                        as *mut core::ffi::c_void,
+                );
+                if !expected.iter().any(|e| EqualSid(sid, *e).is_ok()) {
+                    return Err("a DACL ACE names another trustee".to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Roll the handle's DACL back to inheritance (empty explicit DACL plus
+    /// UNPROTECTED_DACL_SECURITY_INFORMATION) through the SAME handle: never
+    /// through the path, which a rename under FILE_SHARE_DELETE can have
+    /// pointed at another file.
+    pub(super) fn restore_inherited_dacl_by_handle(handle: HANDLE) -> Result<(), String> {
+        let acl = EmptyAcl::new()?;
+        unsafe {
+            check(
+                SetSecurityInfo(
+                    handle,
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | UNPROTECTED_DACL_SECURITY_INFORMATION,
+                    NULL_SID,
+                    NULL_SID,
+                    Some(acl.as_ptr()),
+                    None,
+                ),
+                "SetSecurityInfo (rollback)",
             )
         }
     }
@@ -461,11 +715,68 @@ pub fn check_windows_reserved(filename: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
 
-    fn scratch(tag: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("aeroftp-acl-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    /// Pin: the production staging mask must carry DELETE (a rename by
+    /// handle fails without it) and WRITE_DAC (SetSecurityInfo on the handle
+    /// fails without it). GENERIC_WRITE alone implies neither right.
+    #[test]
+    fn the_production_staging_mask_carries_delete_and_write_dac() {
+        assert_ne!(STAGING_ACCESS & 0x0001_0000, 0, "DELETE right missing");
+        assert_ne!(STAGING_ACCESS & 0x0004_0000, 0, "WRITE_DAC right missing");
+        assert_eq!(FILE_SHARE_DELETE, 0x0000_0004);
+    }
+
+    /// The handle-based rename preserves the native Win32 error kind, so a
+    /// noclobber publish onto an occupied destination reports AlreadyExists
+    /// (retryable, next side slot) instead of a generic Other, and the error
+    /// path keeps temp cleanup armed while a successful publish disarms it
+    /// without touching whatever later appears at the old staging path.
+    #[test]
+    fn handle_rename_preserves_native_error_kind_and_publication_disarms_cleanup_safely() {
+        let dir = scratch("rename-publish");
+        let parent = dir.path();
+        let dest = parent.join("dest");
+        std::fs::write(&dest, b"occupied").unwrap();
+
+        // Error path: noclobber rename onto the occupied destination.
+        let tmp = crate::bridge_shared::stage_export_temp_600(parent, b"payload").unwrap();
+        let staging = tmp.path().to_path_buf();
+        let err = crate::bridge_shared::persist_staged_temp_noclobber(tmp, &dest)
+            .expect_err("noclobber publish onto an occupied destination must fail");
+        assert_eq!(
+            err.error.kind(),
+            std::io::ErrorKind::AlreadyExists,
+            "the native Win32 kind must survive the rename wrapper: {err:?}"
+        );
+        drop(err.file);
+        assert!(
+            !staging.exists(),
+            "a failed publish must still clean up its staging file"
+        );
+        assert_eq!(std::fs::read(&dest).unwrap(), b"occupied");
+
+        // Success path: replace publish moves the staged file, and a
+        // replacement created at the old staging path afterwards is untouched.
+        let tmp2 = crate::bridge_shared::stage_export_temp_600(parent, b"payload2").unwrap();
+        let staging2 = tmp2.path().to_path_buf();
+        crate::bridge_shared::persist_staged_temp(tmp2, &dest)
+            .expect("replace publish must succeed");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"payload2");
+        assert!(!staging2.exists());
+        std::fs::write(&staging2, b"replacement").unwrap();
+        assert_eq!(
+            std::fs::read(&staging2).unwrap(),
+            b"replacement",
+            "publication must not touch the old staging path"
+        );
+    }
+
+    /// Auto-cleaned scratch directory: `TempDir` removes the tree on drop
+    /// even when an assertion panics, unlike a manual `remove_dir_all`.
+    fn scratch(tag: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("aeroftp-acl-{tag}-"))
+            .tempdir()
+            .unwrap()
     }
 
     /// The whole point of the rewrite: after hardening, the user who owns the
@@ -474,7 +785,7 @@ mod tests {
     #[test]
     fn hardened_file_stays_deletable_by_its_owner() {
         let dir = scratch("file");
-        let file = dir.join("vault.key");
+        let file = dir.path().join("vault.key");
         std::fs::write(&file, b"AEROVKEY\x02\x02\x00\x00").unwrap();
 
         restrict_to_owner(&file);
@@ -488,7 +799,6 @@ mod tests {
             std::fs::remove_file(&file).is_ok(),
             "owner must still delete"
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Directory hardening is inheritable, so files created afterwards must
@@ -497,42 +807,166 @@ mod tests {
     fn hardened_directory_stays_removable() {
         let dir = scratch("dir");
 
-        restrict_to_owner(&dir);
+        restrict_to_owner(dir.path());
 
-        let child = dir.join("vault.db");
+        let child = dir.path().join("vault.db");
         std::fs::write(&child, b"{}").unwrap();
         assert!(std::fs::read(&child).is_ok());
         assert!(std::fs::remove_file(&child).is_ok());
-        assert!(std::fs::remove_dir_all(&dir).is_ok());
+        assert!(std::fs::remove_dir_all(dir.path()).is_ok());
     }
 
     #[test]
     fn reset_to_inherited_recovers_a_hardened_file() {
         let dir = scratch("rec");
-        let file = dir.join("vault.db");
+        let file = dir.path().join("vault.db");
         std::fs::write(&file, b"{}").unwrap();
 
         restrict_to_owner(&file);
         reset_to_inherited(&file).expect("owner keeps WRITE_DAC, so reset must succeed");
 
         assert!(std::fs::remove_file(&file).is_ok());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn repair_reports_nothing_to_do_on_a_healthy_file() {
         let dir = scratch("ok");
-        let file = dir.join("plain.txt");
+        let file = dir.path().join("plain.txt");
         std::fs::write(&file, b"x").unwrap();
 
         assert_eq!(repair_access_if_locked(&file), Ok(false));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn repair_is_a_no_op_on_a_missing_path() {
         let dir = scratch("missing");
-        assert_eq!(repair_access_if_locked(&dir.join("nope")), Ok(false));
-        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(repair_access_if_locked(&dir.path().join("nope")), Ok(false));
+    }
+
+    #[test]
+    fn restrict_to_owner_checked_verifies_live_staging_handle_and_rejects_missing_path() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = scratch("checked");
+        let file = dir.path().join("staged.tmp");
+        let live_handle = std::fs::OpenOptions::new()
+            .create_new(true)
+            // std rejects create_new without write/append even when an
+            // explicit access_mode is set (Windows disposition check).
+            .write(true)
+            .access_mode(STAGING_ACCESS)
+            .share_mode(FILE_SHARE_DELETE)
+            .open(&file)
+            .expect("create staged handle with FILE_SHARE_DELETE");
+
+        restrict_to_owner_checked(&live_handle, &file)
+            .expect("checked owner-only ACL must verify cleanly against live staging handle");
+        assert!(
+            restrict_to_owner_checked(&live_handle, &dir.path().join("missing.tmp")).is_err(),
+            "checked ACL must fail closed when the path no longer refers to the open file"
+        );
+        drop(live_handle);
+        let _ = std::fs::remove_file(&file);
+    }
+
+    /// Structural pin for the handle binding: after the path is renamed away
+    /// and a different file is planted at the old path, the verify and the
+    /// rollback helpers still act on the OPEN HANDLE's file object. A
+    /// path-based verify/rollback would have inspected or rewritten the
+    /// planted file instead.
+    #[test]
+    fn verification_and_rollback_are_bound_to_the_staging_handle_not_the_path() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = scratch("handle-bound");
+        let file = dir.path().join("staged.tmp");
+        let live_handle = std::fs::OpenOptions::new()
+            .create_new(true)
+            // std rejects create_new without write/append even when an
+            // explicit access_mode is set (Windows disposition check).
+            .write(true)
+            .access_mode(STAGING_ACCESS)
+            .share_mode(FILE_SHARE_DELETE)
+            .open(&file)
+            .expect("create staged handle");
+
+        restrict_to_owner_checked(&live_handle, &file).expect("hardening must verify cleanly");
+
+        // Another account renames the staged path away and plants a different
+        // file at the old path.
+        let renamed = dir.path().join("swapped.tmp");
+        std::fs::rename(&file, &renamed).expect("FILE_SHARE_DELETE allows the rename");
+        let planted = dir.path().join("staged.tmp");
+        std::fs::write(&planted, b"attacker").unwrap();
+
+        // Verify through the HANDLE: the handle's object is the hardened one,
+        // so verification succeeds even though the path now names the planted
+        // file (a path-based verify would read the planted file's DACL).
+        assert!(
+            win::verify_owner_only_dacl_by_handle(windows::Win32::Foundation::HANDLE(
+                std::os::windows::io::AsRawHandle::as_raw_handle(&live_handle) as *mut _
+            ))
+            .is_ok(),
+            "verification must read the DACL back through the staging handle"
+        );
+
+        // Roll back through the HANDLE: the handle's object loses the
+        // owner-only DACL (verify now fails), while the planted file at the
+        // old path is untouched (still plainly readable/writable).
+        win::restore_inherited_dacl_by_handle(windows::Win32::Foundation::HANDLE(
+            std::os::windows::io::AsRawHandle::as_raw_handle(&live_handle) as *mut _,
+        ))
+        .expect("rollback must succeed through the handle");
+        assert!(
+            win::verify_owner_only_dacl_by_handle(windows::Win32::Foundation::HANDLE(
+                std::os::windows::io::AsRawHandle::as_raw_handle(&live_handle) as *mut _
+            ))
+            .is_err(),
+            "after the handle rollback the handle's object no longer has the owner-only DACL"
+        );
+        assert_eq!(
+            std::fs::read(&planted).unwrap(),
+            b"attacker",
+            "the planted file at the old path must be untouched"
+        );
+        assert!(
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&planted)
+                .is_ok(),
+            "the planted file's ACL must be unchanged: no path-based ACL write happened"
+        );
+        drop(live_handle);
+        let _ = std::fs::remove_file(&planted);
+        let _ = std::fs::remove_file(&renamed);
+    }
+
+    #[test]
+    fn restrict_to_owner_checked_fails_closed_when_the_path_was_renamed_away() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = scratch("renamed");
+        let file = dir.path().join("staged.tmp");
+        let live_handle = std::fs::OpenOptions::new()
+            .create_new(true)
+            // std rejects create_new without write/append even when an
+            // explicit access_mode is set (Windows disposition check).
+            .write(true)
+            .access_mode(STAGING_ACCESS)
+            .share_mode(FILE_SHARE_DELETE)
+            .open(&file)
+            .expect("create staged handle with FILE_SHARE_DELETE");
+
+        // Another account with delete-child rights renames the staged path
+        // while our handle stays open on the original file object.
+        let renamed = dir.path().join("swapped.tmp");
+        std::fs::rename(&file, &renamed).expect("FILE_SHARE_DELETE allows the rename");
+        // ...and plants a different file at the original path.
+        std::fs::write(&file, b"attacker").unwrap();
+
+        assert!(
+            restrict_to_owner_checked(&live_handle, &file).is_err(),
+            "the path now identifies a different file object: the ACL check must fail closed"
+        );
+        drop(live_handle);
+        let _ = std::fs::remove_file(&file);
+        let _ = std::fs::remove_file(&renamed);
     }
 }

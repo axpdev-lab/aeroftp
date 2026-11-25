@@ -25027,6 +25027,7 @@ pub fn per_profile_vault_keys(profile_id: &str, protocol: Option<&str>) -> Vec<S
         format!("aerocrypt_overlay_keyfile_path_{}", profile_id),
         format!("aerocrypt_overlay_config_{}", profile_id),
         format!("filen_api_key_{}", profile_id),
+        format!("aws_session_token_{}", profile_id),
         format!("onedrive_drive_id_{}", profile_id),
         format!("onedrive_drive_type_{}", profile_id),
         format!("proton_native_session_{}", profile_id),
@@ -25089,19 +25090,37 @@ pub fn per_profile_vault_keys_for_target_reset(
 /// The singleton is read only when the profile's own key is absent; a key
 /// that cannot be read fails the export (`Err`), because the singleton may
 /// be another profile's account.
-fn collect_provider_secrets_for_server(
+#[cfg(test)]
+pub(crate) fn collect_provider_secrets_for_server(
     store: &credential_store::CredentialStore,
+    server: &profile_export::ServerProfileExport,
+) -> Result<profile_export::ProviderSecrets, String> {
+    collect_provider_secrets_for_server_for_user(store, None, server)
+}
+
+pub(crate) fn collect_provider_secrets_for_server_for_user(
+    store: &credential_store::CredentialStore,
+    user_id: Option<i64>,
     server: &profile_export::ServerProfileExport,
 ) -> Result<profile_export::ProviderSecrets, String> {
     let mut out = profile_export::ProviderSecrets::default();
     let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
 
-    // MUV-4: read the per-profile token from the active user's partition (vault
+    // Every profile-scoped secret below is read owner-aware: a secondary
+    // account exporting a profile with the same id must never pull the legacy
+    // owner's shared vault fallback (overlay password, mode credentials,
+    // Filen key, drive ids, Proton session, GitHub auth) into its archive.
+    let resolve_user_owner_aware = |key: &str| match user_id {
+        Some(uid) => user_partitions::resolve_credential_for_user_owner_aware(store, uid, key),
+        None => user_partitions::resolve_active_credential_owner_aware(store, key),
+    };
+
+    // MUV-4: read the per-profile token from the captured user's partition (vault
     // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
         let per_profile = format!("oauth_{}_{}", slug, server.id);
         let read = |key: &str| {
-            user_partitions::resolve_active_credential_owner_aware(store, key)
+            resolve_user_owner_aware(key)
                 .map_err(|e| format!("{}: cannot read its OAuth token: {e}", server.name))
         };
         if let Some(value) = read(&per_profile)? {
@@ -25120,7 +25139,7 @@ fn collect_provider_secrets_for_server(
     if protocol == "jottacloud" {
         let per_profile = format!("jottacloud_refresh_{}", server.id);
         let read = |key: &str| {
-            user_partitions::resolve_active_credential_owner_aware(store, key)
+            resolve_user_owner_aware(key)
                 .map(|value| value.map(|value| value.to_string()))
                 .map_err(|e| format!("{}: cannot read its Jottacloud token: {e}", server.name))
         };
@@ -25165,42 +25184,34 @@ fn collect_provider_secrets_for_server(
     // and interop rclone-crypt share these generic vault keys) so an exported
     // Crypt profile reconnects on import without re-entering the overlay password.
     // Protocol-agnostic: the overlay can sit on any provider-API backend.
-    if let Ok(Some(pw)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_pw_{}", server.id),
-    ) {
+    if let Ok(Some(pw)) = resolve_user_owner_aware(&format!("aerocrypt_overlay_pw_{}", server.id)) {
         out.aerocrypt_overlay_pw = Some(pw.to_string());
     }
-    if let Ok(Some(salt)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_salt_{}", server.id),
-    ) {
+    if let Ok(Some(salt)) =
+        resolve_user_owner_aware(&format!("aerocrypt_overlay_salt_{}", server.id))
+    {
         out.aerocrypt_overlay_salt = Some(salt.to_string());
     }
     // AeroCrypt keyfile PATH (not the keyfile contents). Lets a same-device
     // re-import find the keyfile without re-picking it; on another device the
     // path may be stale and the UI must re-point.
-    if let Ok(Some(kf_path)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_keyfile_path_{}", server.id),
-    ) {
+    if let Ok(Some(kf_path)) =
+        resolve_user_owner_aware(&format!("aerocrypt_overlay_keyfile_path_{}", server.id))
+    {
         out.aerocrypt_overlay_keyfile_path = Some(kf_path.to_string());
     }
-    if let Ok(Some(config)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_config_{}", server.id),
-    ) {
+    if let Ok(Some(config)) =
+        resolve_user_owner_aware(&format!("aerocrypt_overlay_config_{}", server.id))
+    {
         out.aerocrypt_overlay_config = Some(config.to_string());
     }
 
     // Issue #215 Caveat A: bundle the per-protocol credential snapshots so a
     // multi-protocol account keeps each mode's saved credentials on import. The
-    // `server_` prefix routes this through the active user's partition exactly
+    // `server_` prefix routes this through the captured user's partition exactly
     // like the per-profile password (modeCredentialStore already stripped the
     // single-use TOTP/STS codes at write time).
-    if let Ok(Some(modes)) =
-        user_partitions::resolve_active_credential(store, &format!("server_modes_{}", server.id))
-    {
+    if let Ok(Some(modes)) = resolve_user_owner_aware(&format!("server_modes_{}", server.id)) {
         out.mode_credentials = Some(modes.to_string());
     }
 
@@ -25208,40 +25219,53 @@ fn collect_provider_secrets_for_server(
     // It is a long-lived secret kept only in the vault (never on the saved
     // profile's `options`), so without this the `.aeroftp` export dropped it and a
     // re-imported Filen profile fell back to password + TOTP.
-    if let Ok(Some(api_key)) =
-        user_partitions::resolve_active_credential(store, &format!("filen_api_key_{}", server.id))
-    {
+    if let Ok(Some(api_key)) = resolve_user_owner_aware(&format!("filen_api_key_{}", server.id)) {
         out.filen_api_key = Some(api_key.to_string());
+    }
+
+    // AWS-11: bundle the per-profile AWS STS session token (`aws_session_token_<id>`)
+    // via owner-aware lookup scoped to `user_id` when captured so credential-enabled
+    // `.aeroftp` backups restore working STS profiles into an empty vault without
+    // leaking another user's token or mixing credentials across an account switch.
+    // Fail closed if the profile is marked `hasStoredSessionToken: true` and
+    // neither a vault token nor an explicit inline token is available.
+    // The explicit inline token wins: connection injection uses it when
+    // present, so the export must bundle the token the connection actually
+    // uses, not a different vaulted value.
+    if let Some(token) = inline_s3_session_token(server.options.as_ref()) {
+        out.aws_session_token = Some(token);
+    } else if let Some(session_token) = profile_loader::resolve_vault_s3_session_token_owner_aware(
+        store,
+        user_id,
+        &profile_loader::aws_session_token_vault_key(&server.id),
+    )? {
+        out.aws_session_token = Some(session_token);
+    } else if server.has_stored_session_token == Some(true) {
+        return Err(format!(
+            "{}: its saved AWS session token is missing from the vault",
+            server.name
+        ));
     }
 
     // OneDrive drive id/type captured at connect (`onedrive_drive_id_<id>` /
     // `onedrive_drive_type_<id>`). Vault-only like the Filen key, so the export
     // dropped them; carried so a re-import is a complete snapshot.
-    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("onedrive_drive_id_{}", server.id),
-    ) {
+    if let Ok(Some(v)) = resolve_user_owner_aware(&format!("onedrive_drive_id_{}", server.id)) {
         out.onedrive_drive_id = Some(v.to_string());
     }
-    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("onedrive_drive_type_{}", server.id),
-    ) {
+    if let Ok(Some(v)) = resolve_user_owner_aware(&format!("onedrive_drive_type_{}", server.id)) {
         out.onedrive_drive_type = Some(v.to_string());
     }
 
     // The native Proton Drive session (`proton_native_session_<id>`), written
     // at sign-in and at every refresh. Vault-only like the Filen key; it
     // travels like every other per-profile secret (owner decision 2026-10-17).
-    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("proton_native_session_{}", server.id),
-    ) {
+    if let Ok(Some(v)) = resolve_user_owner_aware(&format!("proton_native_session_{}", server.id)) {
         out.proton_native_session = Some(v.to_string());
     }
 
     let read_auth = |prefix: &str| {
-        user_partitions::resolve_active_credential(store, &format!("{prefix}_{}", server.id))
+        resolve_user_owner_aware(&format!("{prefix}_{}", server.id))
             .ok()
             .flatten()
             .map(|value| value.to_string())
@@ -25265,8 +25289,16 @@ async fn export_server_profiles(
     password: String,
     include_credentials: bool,
     file_path: String,
+    account_id: Option<i64>,
 ) -> Result<profile_export::ExportMetadata, String> {
-    export_server_profiles_core(servers_json, password, include_credentials, file_path).await
+    export_server_profiles_core(
+        servers_json,
+        password,
+        include_credentials,
+        file_path,
+        account_id,
+    )
+    .await
 }
 
 /// Core of [`export_server_profiles`], callable outside the Tauri command
@@ -25274,11 +25306,48 @@ async fn export_server_profiles(
 /// and GUI share ONE credential-collection + encryption implementation (a
 /// `#[tauri::command]` cannot be `pub` without a macro-name clash, hence the
 /// split).
+///
+/// `account_id` is the account the caller read `servers_json` under: the
+/// export is bound to it and refused with
+/// [`user_partitions::ACCOUNT_CHANGED`] (writing no file) when the active
+/// account at export differs, so a switch between the list read and the
+/// export can never pair one account's profile metadata with another
+/// account's secrets.
 pub async fn export_server_profiles_core(
     servers_json: String,
     password: String,
     include_credentials: bool,
     file_path: String,
+    account_id: Option<i64>,
+) -> Result<profile_export::ExportMetadata, String> {
+    export_server_profiles_core_with_policy(
+        servers_json,
+        password,
+        include_credentials,
+        file_path,
+        ExportAccountBinding::MatchActive(account_id),
+    )
+    .await
+}
+
+/// How [`export_server_profiles_core_with_policy`] binds the credential reads
+/// to an account. `MatchActive(captured)` refuses with
+/// [`user_partitions::ACCOUNT_CHANGED`] when the active account at export time
+/// differs from the account the caller read the profile list under (GUI
+/// default). `ExplicitUser(uid)` serves an explicit CLI `--user` selection
+/// even when another account is active.
+#[derive(Clone, Copy, Debug)]
+pub enum ExportAccountBinding {
+    MatchActive(Option<i64>),
+    ExplicitUser(i64),
+}
+
+pub async fn export_server_profiles_core_with_policy(
+    servers_json: String,
+    password: String,
+    include_credentials: bool,
+    file_path: String,
+    binding: ExportAccountBinding,
 ) -> Result<profile_export::ExportMetadata, String> {
     let mut servers: Vec<profile_export::ServerProfileExport> =
         serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {}", e))?;
@@ -25290,19 +25359,65 @@ pub async fn export_server_profiles_core(
     if include_credentials {
         match credential_store::CredentialStore::from_cache() {
             Some(store) => {
+                // Bind the export to the account the caller read the profile
+                // list under: on a mismatch nothing is written. An explicit
+                // `--user` selection reads that account directly instead of
+                // refusing, because the caller did not read the list under the
+                // active account.
+                let read_user: Option<i64> = match binding {
+                    ExportAccountBinding::ExplicitUser(uid) => Some(uid),
+                    ExportAccountBinding::MatchActive(captured) => {
+                        // Capture the active user once per export so password and
+                        // per-profile provider secrets (such as AWS STS session
+                        // tokens) always come from the same partition even across
+                        // an account switch.
+                        let active_user = user_partitions::cli_get_active_user(&store)
+                            .ok()
+                            .flatten()
+                            .map(|u| u.id);
+                        if captured != active_user {
+                            return Err(user_partitions::ACCOUNT_CHANGED.to_string());
+                        }
+                        // With no account at capture, read the legacy keys only
+                        // and refuse if an account is active by the time of the
+                        // read; a switch in between must not move the read into
+                        // a partition.
+                        match active_user {
+                            Some(uid) => Some(uid),
+                            None => {
+                                if user_partitions::cli_get_active_user(&store)?.is_some() {
+                                    return Err(user_partitions::ACCOUNT_CHANGED.to_string());
+                                }
+                                Some(user_partitions::LEGACY_ONLY_ACCOUNT)
+                            }
+                        }
+                    }
+                };
                 for server in &mut servers {
-                    // MUV-3: export the active user's per-user credential, with
+                    // MUV-3: export the captured user's per-user credential, with
                     // fallback to the legacy vault.
-                    if let Ok(Some(cred)) = user_partitions::resolve_active_credential(
-                        &store,
-                        &format!("server_{}", server.id),
-                    ) {
+                    let key = format!("server_{}", server.id);
+                    let resolved_cred = match read_user {
+                        Some(uid) => {
+                            // Owner-aware: a secondary account with no private
+                            // password row must never export the legacy owner's
+                            // shared fallback password.
+                            user_partitions::resolve_credential_for_user_owner_aware(
+                                &store, uid, &key,
+                            )
+                        }
+                        None => {
+                            user_partitions::resolve_legacy_only_credential_checked(&store, &key)
+                        }
+                    };
+                    if let Ok(Some(cred)) = resolved_cred {
                         server.credential = Some(cred.to_string());
                     }
                     // Issue #214: bundle OAuth / Jotta tokens alongside the
                     // per-profile password so an import on a fresh device
                     // reconnects without a browser re-auth.
-                    let secrets = collect_provider_secrets_for_server(&store, server)?;
+                    let secrets =
+                        collect_provider_secrets_for_server_for_user(&store, read_user, server)?;
                     if secrets.oauth.is_some()
                         || secrets.jotta_refresh.is_some()
                         || secrets.aerocrypt_overlay_pw.is_some()
@@ -25313,6 +25428,7 @@ pub async fn export_server_profiles_core(
                         || secrets.oauth_client_id.is_some()
                         || secrets.oauth_client_secret.is_some()
                         || secrets.filen_api_key.is_some()
+                        || secrets.aws_session_token.is_some()
                         || secrets.onedrive_drive_id.is_some()
                         || secrets.onedrive_drive_type.is_some()
                         || secrets.proton_native_session.is_some()
@@ -25323,7 +25439,13 @@ pub async fn export_server_profiles_core(
                 }
             }
             None => {
-                log::warn!("Export: vault not ready, credentials will not be included");
+                // A credential-enabled export with no vault must fail before
+                // anything is written: silently dropping credentials would
+                // produce a backup that looks complete but cannot reconnect.
+                return Err(
+                    "Vault is locked or unavailable; unlock the vault and retry credential export"
+                        .to_string(),
+                );
             }
         }
     } else {
@@ -25482,6 +25604,31 @@ impl PreparedImport {
 /// connection, is refused and reported: the stored secrets were saved for the old
 /// one, so keeping them could send a password to the new one. Such a profile
 /// keeps its configuration and its secrets.
+/// Remove BOTH supported S3 inline session-token option spellings
+/// (`sessionToken` and `session_token`) from `options` and return the selected
+/// non-empty value. Precedence when both are present: camelCase `sessionToken`
+/// wins over snake_case `session_token` (falling back to `session_token` if
+/// `sessionToken` is empty or whitespace).
+fn extract_and_strip_inline_s3_session_token(
+    options: &mut Option<serde_json::Value>,
+) -> Option<String> {
+    let opts = options.as_mut().and_then(|v| v.as_object_mut())?;
+    let camel = opts
+        .remove("sessionToken")
+        .and_then(|v| v.as_str().map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty());
+    let snake = opts
+        .remove("session_token")
+        .and_then(|v| v.as_str().map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty());
+    camel.or(snake)
+}
+
+// Moved to `profile_loader` so the backup export, the bridge export
+// injection and the agent connect path share one selector; re-exported here
+// for the existing call sites.
+pub(crate) use profile_loader::inline_s3_session_token;
+
 fn prepare_import(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
@@ -25493,6 +25640,18 @@ fn prepare_import(
 
     let mut servers = servers.to_vec();
     let mut provider_secrets = provider_secrets.clone();
+    // Normalize legacy `.aeroftp` backups that stored an AWS STS token inline
+    // in `options.sessionToken` or `options.session_token`: strip both keys
+    // unconditionally so neither reaches the renderer or profile store, and
+    // lift non-empty tokens ONLY for planned non-skipped entries after ID
+    // remapping.
+    let mut legacy_session_tokens: std::collections::HashMap<usize, String> =
+        std::collections::HashMap::new();
+    for (idx, server) in servers.iter_mut().enumerate() {
+        if let Some(tok) = extract_and_strip_inline_s3_session_token(&mut server.options) {
+            legacy_session_tokens.insert(idx, tok);
+        }
+    }
     let candidates: Vec<ImportCandidate<'_>> = servers
         .iter()
         .map(|s| ImportCandidate {
@@ -25598,6 +25757,14 @@ fn prepare_import(
             }
         }
     }
+    for planned in plan.iter().filter(|p| p.outcome != ImportOutcome::Skipped) {
+        if let Some(tok) = legacy_session_tokens.remove(&planned.index) {
+            let entry = provider_secrets.entry(planned.id.clone()).or_default();
+            if entry.aws_session_token.is_none() {
+                entry.aws_session_token = Some(tok);
+            }
+        }
+    }
     PreparedImport {
         servers,
         provider_secrets,
@@ -25687,6 +25854,28 @@ fn import_report(
     report
 }
 
+/// Reject a bundle whose typed `awsSessionToken` for a profile is blank or
+/// whitespace-only BEFORE planning or writing anything: an invalid bundle must
+/// not alter the profile or the vault.
+fn reject_blank_typed_session_tokens(
+    servers: &[profile_export::ServerProfileExport],
+    provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
+) -> Result<(), String> {
+    for server in servers {
+        if let Some(secrets) = provider_secrets.get(&server.id) {
+            if let Some(token) = &secrets.aws_session_token {
+                if token.trim().is_empty() {
+                    return Err(format!(
+                        "{}: its awsSessionToken in the backup is blank",
+                        server.name
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// What an import of `file_path` would do to `current`, without touching the
 /// vault or the list. The report's `stored` is `current`.
 pub fn preview_server_profiles(
@@ -25700,6 +25889,7 @@ pub fn preview_server_profiles(
     let file_digest = import_bytes_digest(&bytes);
     let (servers, provider_secrets, metadata) =
         profile_export::import_profiles_from_bytes(&bytes, password).map_err(|e| e.to_string())?;
+    reject_blank_typed_session_tokens(&servers, &provider_secrets)?;
     let prepared = prepare_import(&servers, &provider_secrets, mode, policy, current);
     let mut report = import_report(
         &prepared,
@@ -25760,6 +25950,7 @@ fn import_server_profiles_blocking(
     check_reviewed_file(&bytes, reviewed_digest)?;
     let (servers, provider_secrets, metadata) =
         profile_export::import_profiles_from_bytes(&bytes, &password).map_err(|e| e.to_string())?;
+    reject_blank_typed_session_tokens(&servers, &provider_secrets)?;
     let metadata = serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null);
     let store = credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
     user_partitions::init_or_migrate_cli(&store)
@@ -26039,6 +26230,7 @@ pub(crate) struct RestoredImportSecrets {
     pub(crate) aerocrypt_keyfile_path: std::collections::HashSet<String>,
     pub(crate) aerocrypt_config: std::collections::HashSet<String>,
     pub(crate) filen_api_key: std::collections::HashSet<String>,
+    pub(crate) aws_session_token: std::collections::HashSet<String>,
 }
 
 /// The secrets [`import_secret_writes`] writes for `servers`, by kind.
@@ -26059,6 +26251,7 @@ pub(crate) fn restored_import_secrets(
         aerocrypt_keyfile_path: with(|s| s.aerocrypt_overlay_keyfile_path.is_some()),
         aerocrypt_config: with(|s| s.aerocrypt_overlay_config.is_some()),
         filen_api_key: with(|s| s.filen_api_key.is_some()),
+        aws_session_token: with(|s| s.aws_session_token.is_some()),
     }
 }
 
@@ -26096,6 +26289,23 @@ pub(crate) fn import_secret_writes(
                 None,
                 cred,
             ));
+            // AWS-11: when a credential-enabled backup overwrites an S3 profile
+            // without an `aws_session_token`, clear any stale vaulted token so
+            // restored non-STS credentials never mix with an expired token.
+            // Credential-less backups (`server.credential.is_none()`) preserve
+            // existing vault secrets per `profile_import_plan`.
+            let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
+            if matches!(protocol.as_str(), "s3" | "s3-compatible")
+                && provider_secrets
+                    .get(&server.id)
+                    .and_then(|s| s.aws_session_token.as_ref())
+                    .is_none()
+            {
+                writes.push(SecretWrite::delete(
+                    profile_loader::aws_session_token_vault_key(&server.id),
+                    Some("aws_session_token"),
+                ));
+            }
         }
     }
     // In file order, like the shared secrets written after them.
@@ -26122,6 +26332,13 @@ pub(crate) fn import_secret_writes(
                     jotta_json,
                 ));
             }
+        }
+        if let Some(session_token) = &secrets.aws_session_token {
+            writes.push(SecretWrite::new(
+                profile_loader::aws_session_token_vault_key(id),
+                Some("aws_session_token"),
+                session_token,
+            ));
         }
         // CWP-20B: the crypt-overlay secrets, shared by both overlay kinds
         // (AeroCrypt + rclone) and protocol-agnostic. The keyfile PATH, not the
@@ -26343,6 +26560,11 @@ pub(crate) fn redact_imported_server(
     s: &profile_export::ServerProfileExport,
     restored: &RestoredImportSecrets,
 ) -> serde_json::Value {
+    // Defense in depth: strip any legacy inline `options.sessionToken` or
+    // `options.session_token` even if a caller invokes `redact_imported_server`
+    // outside `prepare_import`.
+    let mut sanitized_options = s.options.clone();
+    let _ = extract_and_strip_inline_s3_session_token(&mut sanitized_options);
     serde_json::json!({
         "id": s.id,
         "name": s.name,
@@ -26354,7 +26576,7 @@ pub(crate) fn redact_imported_server(
         "localInitialPath": s.local_initial_path,
         "color": s.color,
         "lastConnected": s.last_connected,
-        "options": s.options,
+        "options": sanitized_options,
         "providerId": s.provider_id,
         // Top-level ServerProfile fields that live OUTSIDE `options` and
         // so must be re-emitted explicitly or the import drops them:
@@ -26369,6 +26591,7 @@ pub(crate) fn redact_imported_server(
         // restored so the profile reconnects via the key (skipping the
         // TOTP window) instead of falling back to password + 2FA.
         "hasStoredFilenApiKey": restored.filen_api_key.contains(&s.id),
+        "hasStoredSessionToken": restored.aws_session_token.contains(&s.id),
         // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
         // kinds). The flags reflect what was actually restored, not the
         // source state, so the UI prompts for the overlay password only
@@ -27226,6 +27449,7 @@ mod per_profile_vault_keys_tests {
             "aerocrypt_overlay_keyfile_path_srv_1_abc",
             "aerocrypt_overlay_config_srv_1_abc",
             "filen_api_key_srv_1_abc",
+            "aws_session_token_srv_1_abc",
             "onedrive_drive_id_srv_1_abc",
             "onedrive_drive_type_srv_1_abc",
             "proton_native_session_srv_1_abc",
@@ -27267,6 +27491,309 @@ mod per_profile_vault_keys_tests {
             );
             assert!(deleted.contains(&key), "transient auth must be purged");
         }
+    }
+
+    #[test]
+    fn native_backup_restore_writes_typed_aws_session_token_and_sets_flag() {
+        let server = crate::profile_export::ServerProfileExport {
+            id: "srv_sts_backup".to_string(),
+            name: "STS Backup".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "ASIABACKUP".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("secret-backup".to_string()),
+            ..Default::default()
+        };
+        let secrets = std::collections::HashMap::from([(
+            "srv_sts_backup".to_string(),
+            crate::profile_export::ProviderSecrets {
+                aws_session_token: Some("TOK-BACKUP-99".to_string()),
+                ..Default::default()
+            },
+        )]);
+
+        let writes = super::import_secret_writes(std::slice::from_ref(&server), &secrets);
+        let token_write = writes
+            .iter()
+            .find(|w| w.key == "aws_session_token_srv_sts_backup")
+            .expect("aws_session_token write must be emitted");
+        assert_eq!(token_write.kind, Some("aws_session_token"));
+        assert_eq!(token_write.value.as_str(), "TOK-BACKUP-99");
+
+        let restored = super::restored_import_secrets(std::slice::from_ref(&server), &secrets);
+        assert!(restored.aws_session_token.contains("srv_sts_backup"));
+        let redacted = super::redact_imported_server(&server, &restored);
+        assert_eq!(redacted["hasStoredSessionToken"], true);
+        assert!(!redacted.to_string().contains("TOK-BACKUP-99"));
+
+        // Overwriting an S3 profile with new permanent credentials (no STS token)
+        // emits a delete for `aws_session_token_<id>` so stale tokens are cleared.
+        let empty_secrets = std::collections::HashMap::new();
+        let overwrite_writes =
+            super::import_secret_writes(std::slice::from_ref(&server), &empty_secrets);
+        let del_write = overwrite_writes
+            .iter()
+            .find(|w| w.key == "aws_session_token_srv_sts_backup")
+            .expect("credential-enabled S3 overwrite without token must emit delete");
+        assert!(del_write.delete);
+        assert_eq!(del_write.kind, Some("aws_session_token"));
+
+        // Credential-less backup preserves existing secrets (no delete emitted).
+        let credless = crate::profile_export::ServerProfileExport {
+            credential: None,
+            ..server
+        };
+        let credless_writes =
+            super::import_secret_writes(std::slice::from_ref(&credless), &empty_secrets);
+        assert!(
+            credless_writes
+                .iter()
+                .all(|w| w.key != "aws_session_token_srv_sts_backup"),
+            "credential-less backup must not delete existing aws_session_token"
+        );
+    }
+
+    #[test]
+    fn legacy_options_session_token_is_normalized_into_vault_and_stripped_from_redacted_response() {
+        let legacy_server = crate::profile_export::ServerProfileExport {
+            id: "srv_legacy_sts".to_string(),
+            name: "Legacy STS".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "ASIALEGACY".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("legacy-secret".to_string()),
+            options: Some(serde_json::json!({
+                "region": "eu-west-1",
+                "sessionToken": "LEGACY-INLINE-TOKEN-55"
+            })),
+            ..Default::default()
+        };
+        let prepared = super::prepare_import(
+            std::slice::from_ref(&legacy_server),
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            &[],
+        );
+        let stored = prepared.stored();
+        let writes = super::import_secret_writes(&stored, &prepared.provider_secrets);
+        let tok_write = writes
+            .iter()
+            .find(|w| w.key == "aws_session_token_srv_legacy_sts")
+            .expect("legacy options.sessionToken must normalize into a vaulted token write");
+        assert!(
+            !tok_write.delete,
+            "must store token, never schedule deletion"
+        );
+        assert_eq!(tok_write.kind, Some("aws_session_token"));
+        assert_eq!(tok_write.value.as_str(), "LEGACY-INLINE-TOKEN-55");
+
+        let restored = super::restored_import_secrets(&stored, &prepared.provider_secrets);
+        let redacted = super::redact_imported_server(&stored[0], &restored);
+        assert_eq!(redacted["hasStoredSessionToken"], true);
+        assert!(
+            !redacted.to_string().contains("LEGACY-INLINE-TOKEN-55"),
+            "redacted IPC server leaked legacy sessionToken: {redacted}"
+        );
+        assert!(redacted["options"].get("sessionToken").is_none());
+        assert_eq!(redacted["options"]["region"], "eu-west-1");
+    }
+
+    /// B1, B2, B3 (NAS 2303):
+    /// - B1: skipped duplicate row's inline token must never attach to retained profile;
+    ///   Duplicate mode gives the second row its own id and its own token.
+    /// - B2: full overwrite path clears `hasStoredSessionToken` when a credential-enabled
+    ///   S3 backup deletes the token, and preserves `hasStoredSessionToken: true` when
+    ///   a credential-free backup omits credentials.
+    /// - B3: both `sessionToken` and `session_token` are extracted and stripped;
+    ///   `sessionToken` wins over `session_token` when both are non-empty.
+    #[test]
+    fn native_backup_token_normalization_duplicate_isolation_and_overwrite_flag_clear() {
+        // B3: snake_case alone, camelCase alone, and both together.
+        let snake_srv = crate::profile_export::ServerProfileExport {
+            id: "srv_snake".to_string(),
+            name: "Snake".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("sec".to_string()),
+            options: Some(serde_json::json!({
+                "region": "us-east-1",
+                "session_token": "SNAKE-TOK-1"
+            })),
+            ..Default::default()
+        };
+        let both_srv = crate::profile_export::ServerProfileExport {
+            id: "srv_both".to_string(),
+            name: "Both".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("sec".to_string()),
+            options: Some(serde_json::json!({
+                "region": "us-east-1",
+                "sessionToken": "CAMEL-WINS",
+                "session_token": "SNAKE-LOSES"
+            })),
+            ..Default::default()
+        };
+        let prep_b3 = super::prepare_import(
+            &[snake_srv.clone(), both_srv.clone()],
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert_eq!(
+            prep_b3
+                .provider_secrets
+                .get("srv_snake")
+                .and_then(|s| s.aws_session_token.as_deref()),
+            Some("SNAKE-TOK-1")
+        );
+        assert_eq!(
+            prep_b3
+                .provider_secrets
+                .get("srv_both")
+                .and_then(|s| s.aws_session_token.as_deref()),
+            Some("CAMEL-WINS")
+        );
+        let restored_b3 =
+            super::restored_import_secrets(&prep_b3.stored(), &prep_b3.provider_secrets);
+        for s in &prep_b3.stored() {
+            let red = super::redact_imported_server(s, &restored_b3);
+            let txt = red.to_string();
+            assert!(
+                !txt.contains("SNAKE-TOK-1")
+                    && !txt.contains("CAMEL-WINS")
+                    && !txt.contains("SNAKE-LOSES"),
+                "{txt}"
+            );
+            assert!(red["options"].get("sessionToken").is_none());
+            assert!(red["options"].get("session_token").is_none());
+        }
+        // Direct redact_imported_server call also strips snake_case defensively.
+        let direct_red = super::redact_imported_server(
+            &snake_srv,
+            &super::restored_import_secrets(&[], &std::collections::HashMap::new()),
+        );
+        assert!(direct_red["options"].get("session_token").is_none());
+
+        // B1: repeated ID in Overwrite mode -> second row is skipped, its inline token
+        // MUST NOT attach to the retained first row's ID.
+        let first_no_tok = crate::profile_export::ServerProfileExport {
+            id: "dup_id".to_string(),
+            name: "First".to_string(),
+            port: 443,
+            protocol: Some("s3".to_string()),
+            credential: Some("first-sec".to_string()),
+            options: Some(serde_json::json!({ "region": "eu-west-1" })),
+            ..Default::default()
+        };
+        let second_with_tok = crate::profile_export::ServerProfileExport {
+            id: "dup_id".to_string(),
+            name: "Second".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("second-sec".to_string()),
+            options: Some(serde_json::json!({
+                "region": "eu-west-1",
+                "sessionToken": "SKIPPED-DUP-TOKEN"
+            })),
+            ..Default::default()
+        };
+        let prep_skip = super::prepare_import(
+            &[first_no_tok.clone(), second_with_tok.clone()],
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert!(
+            prep_skip
+                .provider_secrets
+                .get("dup_id")
+                .and_then(|s| s.aws_session_token.as_ref())
+                .is_none(),
+            "skipped duplicate's inline token must never attach to retained profile id"
+        );
+        // Duplicate mode: second row gets its own new id and receives its own token.
+        let prep_dup = super::prepare_import(
+            &[first_no_tok.clone(), second_with_tok],
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Duplicate,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert_eq!(prep_dup.plan.len(), 2);
+        let second_id = &prep_dup.plan[1].id;
+        assert_ne!(second_id, "dup_id");
+        assert!(prep_dup
+            .provider_secrets
+            .get("dup_id")
+            .and_then(|s| s.aws_session_token.as_ref())
+            .is_none());
+        assert_eq!(
+            prep_dup
+                .provider_secrets
+                .get(second_id)
+                .and_then(|s| s.aws_session_token.as_deref()),
+            Some("SKIPPED-DUP-TOKEN")
+        );
+
+        // B2: full overwrite path clears `hasStoredSessionToken` when credential-enabled
+        // overwrite deletes the token, and keeps `true` when credential-free.
+        let existing_sts = serde_json::json!({
+            "id": "dup_id",
+            "name": "First",
+            "host": "",
+            "port": 443,
+            "username": "",
+            "protocol": "s3",
+            "options": { "region": "eu-west-1" },
+            "hasStoredCredential": true,
+            "hasStoredSessionToken": true
+        });
+        let prep_ow = super::prepare_import(
+            std::slice::from_ref(&first_no_tok),
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            std::slice::from_ref(&existing_sts),
+        );
+        let stored_ow = prep_ow.stored();
+        let writes_ow = super::import_secret_writes(&stored_ow, &prep_ow.provider_secrets);
+        assert!(writes_ow
+            .iter()
+            .any(|w| w.key == "aws_session_token_dup_id" && w.delete));
+        let restored_ow = super::restored_import_secrets(&stored_ow, &prep_ow.provider_secrets);
+        let redacted_ow = super::redact_imported_server(&stored_ow[0], &restored_ow);
+        let merged_ow = crate::profile_import_plan::overwrite_profile(&existing_sts, &redacted_ow);
+        assert_eq!(
+            merged_ow["hasStoredSessionToken"], false,
+            "credential-enabled S3 overwrite without token must clear hasStoredSessionToken"
+        );
+
+        let credless = crate::profile_export::ServerProfileExport {
+            credential: None,
+            ..first_no_tok
+        };
+        let prep_cl = super::prepare_import(
+            std::slice::from_ref(&credless),
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            std::slice::from_ref(&existing_sts),
+        );
+        let stored_cl = prep_cl.stored();
+        let writes_cl = super::import_secret_writes(&stored_cl, &prep_cl.provider_secrets);
+        assert!(writes_cl
+            .iter()
+            .all(|w| w.key != "aws_session_token_dup_id"));
+        let restored_cl = super::restored_import_secrets(&stored_cl, &prep_cl.provider_secrets);
+        let redacted_cl = super::redact_imported_server(&stored_cl[0], &restored_cl);
+        let merged_cl = crate::profile_import_plan::overwrite_profile(&existing_sts, &redacted_cl);
+        assert_eq!(
+            merged_cl["hasStoredSessionToken"], true,
+            "credential-free overwrite must preserve existing hasStoredSessionToken: true"
+        );
     }
 
     #[test]
@@ -35097,5 +35624,1091 @@ mod legacy_ftp_switch_during_batch_tests {
         assert_eq!(count(&log, 0, "NOOP"), 3);
         assert_eq!(count(&log, 0, "QUIT"), 1);
         assert_eq!(connections.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[cfg(test)]
+mod sts_import_rollback_tests {
+    //! Secondary-account STS tokens through the import commit: rollback and persistence.
+    //!
+    //! A1/A2: a forced failure AFTER a secondary account's
+    //! `aws_session_token_<id>` write (or delete) must run the import rollback:
+    //! the secondary partition goes back to its snapshot, the shared vault value
+    //! (the legacy owner's fallback) is unchanged, and the first account still
+    //! resolves its token.
+    //!
+    //! B2: a COMMITTED import is read back from the persisted profile list and
+    //! the owner-scoped token together, after each of two imports: a
+    //! credential-enabled overwrite without a token clears the stored
+    //! `hasStoredSessionToken` flag and removes the token; a credential-free
+    //! overwrite keeps both.
+    use super::*;
+    use crate::provider_commands::isolated_account_fixture::in_isolated_child;
+
+    /// [`VaultSecretSlots`] with one key whose write fails, to force the
+    /// import's rollback after the token write.
+    struct FailingVaultSlots<'a> {
+        inner: VaultSecretSlots<'a>,
+        fail_on: &'a str,
+    }
+
+    impl profile_import_plan::SecretSlots for FailingVaultSlots<'_> {
+        type Snapshot = user_partitions::CredentialSnapshot;
+
+        fn snapshot(
+            &self,
+            write: &profile_import_plan::SecretWrite,
+        ) -> Result<Self::Snapshot, String> {
+            self.inner.snapshot(write)
+        }
+
+        fn write(&self, write: &profile_import_plan::SecretWrite) -> Result<(), String> {
+            if write.key == self.fail_on {
+                return Err(format!("injected failure on {}", write.key));
+            }
+            self.inner.write(write)
+        }
+
+        fn restore(
+            &self,
+            write: &profile_import_plan::SecretWrite,
+            before: Self::Snapshot,
+        ) -> Result<(), String> {
+            self.inner.restore(write, before)
+        }
+    }
+
+    fn resolve_token(
+        store: &credential_store::CredentialStore,
+        user: Option<i64>,
+        profile_id: &str,
+    ) -> Option<String> {
+        crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+            store,
+            user,
+            &profile_loader::aws_session_token_vault_key(profile_id),
+        )
+        .unwrap()
+    }
+
+    /// Set up an isolated synthetic vault with two accounts: `first` is the
+    /// legacy owner (its token lives in the shared vault), `second` is a
+    /// secondary account (its token lives in its partition only).
+    fn two_account_vault() -> (
+        tempfile::TempDir,
+        credential_store::CredentialStore,
+        i64,
+        i64,
+    ) {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        credential_store::CredentialStore::clear_cache();
+        credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic sts rollback master",
+        )
+        .unwrap();
+        credential_store::CredentialStore::unlock_with_master(
+            "synthetic sts rollback master",
+            None,
+        )
+        .unwrap();
+        let store = credential_store::CredentialStore::from_cache().unwrap();
+        user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = user_partitions::open_or_init_cli().unwrap();
+        let first = user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("legacy owner")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second = user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .unwrap()
+            .id;
+        user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+        (dir, store, first, second)
+    }
+
+    fn restore_env(
+        previous_xdg: Option<std::ffi::OsString>,
+        previous_passphrase: Option<std::ffi::OsString>,
+    ) {
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        credential_store::CredentialStore::clear_cache();
+    }
+
+    /// A1/A2 rollback: a secondary account's `aws_session_token_<id>` write,
+    /// then a failing later write through `SecretSlots`; the rollback must put
+    /// the secondary partition back to its snapshot and leave the shared vault
+    /// (and the first account's resolution) untouched. Then the same with a
+    /// delete write.
+    #[test]
+    fn forced_failure_rolls_back_secondary_sts_write_and_delete_leaving_shared_vault() {
+        if !in_isolated_child(
+            "sts_import_rollback_tests::forced_failure_rolls_back_secondary_sts_write_and_delete_leaving_shared_vault",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (_dir, store, first, second) = two_account_vault();
+
+        let pid = "aws-sts-rb";
+        let key = profile_loader::aws_session_token_vault_key(pid);
+        // The legacy owner's shared fallback: vault plus its own partition.
+        user_partitions::store_active_credential_dual(&store, &key, "VAULT-STS-RB").unwrap();
+        // The secondary account's own token: its partition only.
+        user_partitions::store_imported_credential_for_user(
+            &store,
+            second,
+            &key,
+            Some("aws_session_token"),
+            "BOB-OLD-RB",
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_token(&store, Some(first), pid).as_deref(),
+            Some("VAULT-STS-RB")
+        );
+        assert_eq!(
+            resolve_token(&store, Some(second), pid).as_deref(),
+            Some("BOB-OLD-RB")
+        );
+        assert_eq!(store.get(&key).unwrap(), "VAULT-STS-RB");
+
+        // Phase 1: a WRITE of the secondary account's token, then a failing
+        // later write; the rollback runs.
+        let slots = FailingVaultSlots {
+            inner: VaultSecretSlots {
+                store: &store,
+                user: second,
+            },
+            fail_on: "server_injected_failure",
+        };
+        let writes = vec![
+            profile_import_plan::SecretWrite::new(
+                key.clone(),
+                Some("aws_session_token"),
+                "BOB-NEW-RB",
+            ),
+            profile_import_plan::SecretWrite::new("server_injected_failure".to_string(), None, "x"),
+        ];
+        let err = profile_import_plan::write_secrets_and_commit(&slots, writes, false, || {
+            Ok::<(), String>(())
+        })
+        .unwrap_err();
+        assert!(err.contains("server_injected_failure"), "{err}");
+        assert_eq!(
+            resolve_token(&store, Some(second), pid).as_deref(),
+            Some("BOB-OLD-RB"),
+            "the secondary partition must be back to its snapshot after the failed import"
+        );
+        assert_eq!(
+            store.get(&key).unwrap(),
+            "VAULT-STS-RB",
+            "the shared vault must be unchanged by the rollback of a private token write"
+        );
+        assert_eq!(
+            resolve_token(&store, Some(first), pid).as_deref(),
+            Some("VAULT-STS-RB"),
+            "the first account must still resolve its token after the rollback"
+        );
+
+        // Phase 2: a DELETE of the secondary account's token, then a failing
+        // later write; the rollback restores the partition row and leaves the
+        // shared vault alone.
+        let slots = FailingVaultSlots {
+            inner: VaultSecretSlots {
+                store: &store,
+                user: second,
+            },
+            fail_on: "server_injected_failure",
+        };
+        let writes = vec![
+            profile_import_plan::SecretWrite::delete(key.clone(), Some("aws_session_token")),
+            profile_import_plan::SecretWrite::new("server_injected_failure".to_string(), None, "x"),
+        ];
+        let err = profile_import_plan::write_secrets_and_commit(&slots, writes, false, || {
+            Ok::<(), String>(())
+        })
+        .unwrap_err();
+        assert!(err.contains("server_injected_failure"), "{err}");
+        assert_eq!(
+            resolve_token(&store, Some(second), pid).as_deref(),
+            Some("BOB-OLD-RB"),
+            "the deleted partition row must be restored by the rollback"
+        );
+        assert_eq!(
+            store.get(&key).unwrap(),
+            "VAULT-STS-RB",
+            "the shared vault must be unchanged by the rollback of a private token delete"
+        );
+        assert_eq!(
+            resolve_token(&store, Some(first), pid).as_deref(),
+            Some("VAULT-STS-RB"),
+            "the first account must still resolve its token after the delete rollback"
+        );
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+
+    /// B2 persisted end-to-end: two COMMITTED imports are each followed by a
+    /// read-back of the persisted profile list and the owner-scoped token
+    /// together. A credential-enabled overwrite without a token stores
+    /// `hasStoredSessionToken: false` and the token is gone; a credential-free
+    /// overwrite keeps the flag `true` and the token.
+    #[test]
+    fn committed_overwrite_import_persists_session_token_flag_and_token_together() {
+        if !in_isolated_child(
+            "sts_import_rollback_tests::committed_overwrite_import_persists_session_token_flag_and_token_together",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (dir, store, user, _second) = two_account_vault();
+
+        let pass = "synthetic sts e2e passphrase";
+        let server =
+            |id: &str, credential: Option<&str>| crate::profile_export::ServerProfileExport {
+                id: id.to_string(),
+                name: format!("STS {id}"),
+                host: "s3.e2e.example.com".to_string(),
+                port: 443,
+                username: "AKIAE2E".to_string(),
+                protocol: Some("s3".to_string()),
+                provider_id: Some("custom-s3".to_string()),
+                options: Some(serde_json::json!({ "region": "eu-west-1" })),
+                credential: credential.map(str::to_string),
+                ..Default::default()
+            };
+        let token_secrets = |id: &str, token: &str| {
+            std::collections::HashMap::from([(
+                id.to_string(),
+                crate::profile_export::ProviderSecrets {
+                    aws_session_token: Some(token.to_string()),
+                    ..Default::default()
+                },
+            )])
+        };
+        let run_import = |name: &str| {
+            import_server_profiles_blocking(
+                dir.path().join(name).to_str().unwrap().to_string(),
+                pass.to_string(),
+                profile_import_plan::ExistingProfileMode::Overwrite,
+                &profile_security::RelaxationPolicy::ResetAll,
+                None,
+                user,
+            )
+            .unwrap();
+        };
+        let persisted_flag = |id: &str| {
+            let (list, _revision) =
+                user_partitions::cli_read_active_profiles_at_revision(&store, user).unwrap();
+            list.iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
+                .and_then(|p| p.get("hasStoredSessionToken").cloned())
+                .unwrap_or(serde_json::Value::Null)
+        };
+
+        // Seed both profiles with a committed credential-enabled import that
+        // carries a session token: flag true, token resolvable.
+        crate::profile_export::export_profiles(
+            vec![server("aws-sts-e2e-a", Some("old-secret-a"))],
+            token_secrets("aws-sts-e2e-a", "E2E-TOKEN-A"),
+            pass,
+            &dir.path().join("seed-a.aeroftp"),
+        )
+        .unwrap();
+        crate::profile_export::export_profiles(
+            vec![server("aws-sts-e2e-b", Some("old-secret-b"))],
+            token_secrets("aws-sts-e2e-b", "E2E-TOKEN-B"),
+            pass,
+            &dir.path().join("seed-b.aeroftp"),
+        )
+        .unwrap();
+        run_import("seed-a.aeroftp");
+        run_import("seed-b.aeroftp");
+        assert_eq!(persisted_flag("aws-sts-e2e-a"), serde_json::json!(true));
+        assert_eq!(persisted_flag("aws-sts-e2e-b"), serde_json::json!(true));
+        assert_eq!(
+            resolve_token(&store, Some(user), "aws-sts-e2e-a").as_deref(),
+            Some("E2E-TOKEN-A")
+        );
+        assert_eq!(
+            resolve_token(&store, Some(user), "aws-sts-e2e-b").as_deref(),
+            Some("E2E-TOKEN-B")
+        );
+
+        // Import 1: credential-enabled overwrite WITHOUT a token.
+        crate::profile_export::export_profiles(
+            vec![server("aws-sts-e2e-a", Some("new-secret-a"))],
+            std::collections::HashMap::new(),
+            pass,
+            &dir.path().join("ow-a.aeroftp"),
+        )
+        .unwrap();
+        run_import("ow-a.aeroftp");
+        assert_eq!(
+            persisted_flag("aws-sts-e2e-a"),
+            serde_json::json!(false),
+            "a committed credential-enabled overwrite without a token must persist hasStoredSessionToken: false"
+        );
+        assert_eq!(
+            resolve_token(&store, Some(user), "aws-sts-e2e-a"),
+            None,
+            "the owner-scoped token must be gone after the committed import"
+        );
+        assert!(matches!(
+            store.get(&profile_loader::aws_session_token_vault_key(
+                "aws-sts-e2e-a"
+            )),
+            Err(credential_store::CredentialError::NotFound(_))
+        ));
+
+        // Import 2: credential-free overwrite.
+        crate::profile_export::export_profiles(
+            vec![server("aws-sts-e2e-b", None)],
+            std::collections::HashMap::new(),
+            pass,
+            &dir.path().join("ow-b.aeroftp"),
+        )
+        .unwrap();
+        run_import("ow-b.aeroftp");
+        assert_eq!(
+            persisted_flag("aws-sts-e2e-b"),
+            serde_json::json!(true),
+            "a committed credential-free overwrite must keep hasStoredSessionToken: true"
+        );
+        assert_eq!(
+            resolve_token(&store, Some(user), "aws-sts-e2e-b").as_deref(),
+            Some("E2E-TOKEN-B"),
+            "a credential-free overwrite must keep the owner-scoped token"
+        );
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+
+    /// Export bundles the token the connection actually uses: an explicit
+    /// inline `options.sessionToken` (camelCase, or snake_case fallback) wins
+    /// over a different vaulted token; without an inline token the owner-aware
+    /// vault token is exported; a profile flagged `hasStoredSessionToken: true`
+    /// with neither available fails closed instead of exporting an empty STS
+    /// profile.
+    #[test]
+    fn export_bundles_the_session_token_the_connection_uses() {
+        if !in_isolated_child(
+            "sts_import_rollback_tests::export_bundles_the_session_token_the_connection_uses",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (_dir, store, first, _second) = two_account_vault();
+
+        let pid = "aws-sts-precedence";
+        let key = profile_loader::aws_session_token_vault_key(pid);
+        user_partitions::store_active_credential_dual(&store, &key, "VAULT-OLD").unwrap();
+        let server = |options: serde_json::Value, flag: Option<bool>| {
+            crate::profile_export::ServerProfileExport {
+                id: pid.to_string(),
+                name: "STS precedence".to_string(),
+                host: "s3.example.com".to_string(),
+                port: 443,
+                username: "AKIAPREC".to_string(),
+                protocol: Some("s3".to_string()),
+                options: Some(options),
+                has_stored_session_token: flag,
+                ..Default::default()
+            }
+        };
+
+        // camelCase inline token wins over the vault token.
+        let out = collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(first),
+            &server(
+                serde_json::json!({ "sessionToken": "INLINE-NEW" }),
+                Some(true),
+            ),
+        )
+        .unwrap();
+        assert_eq!(out.aws_session_token.as_deref(), Some("INLINE-NEW"));
+
+        // snake_case inline token is the fallback and also wins.
+        let out = collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(first),
+            &server(
+                serde_json::json!({ "session_token": "SNAKE-NEW" }),
+                Some(true),
+            ),
+        )
+        .unwrap();
+        assert_eq!(out.aws_session_token.as_deref(), Some("SNAKE-NEW"));
+
+        // No inline token: the owner-aware vault token is exported.
+        let out = collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(first),
+            &server(serde_json::json!({ "region": "eu-west-1" }), Some(true)),
+        )
+        .unwrap();
+        assert_eq!(out.aws_session_token.as_deref(), Some("VAULT-OLD"));
+
+        // Flagged true but neither inline nor vaulted token exists: fail
+        // closed instead of exporting a broken STS profile.
+        let missing = crate::profile_export::ServerProfileExport {
+            id: "aws-sts-missing".to_string(),
+            name: "STS missing".to_string(),
+            host: "s3.example.com".to_string(),
+            port: 443,
+            username: "AKIAMISS".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({})),
+            has_stored_session_token: Some(true),
+            ..Default::default()
+        };
+        let err = collect_provider_secrets_for_server_for_user(&store, Some(first), &missing)
+            .err()
+            .expect("a flagged STS profile with no token anywhere must fail closed");
+        assert!(err.contains("session token is missing"), "{err}");
+
+        // Without the flag the same profile exports fine with no token.
+        let unflagged = crate::profile_export::ServerProfileExport {
+            has_stored_session_token: None,
+            ..missing.clone()
+        };
+        let out =
+            collect_provider_secrets_for_server_for_user(&store, Some(first), &unflagged).unwrap();
+        assert_eq!(out.aws_session_token, None);
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+
+    /// A secondary account exporting a profile with the SAME id as the legacy
+    /// owner's must not pull the legacy owner's shared vault fallback
+    /// (overlay password, Filen API key, ...) into its archive; the legacy
+    /// owner still exports its own shared fallback.
+    #[test]
+    fn a_secondary_account_export_never_pulls_the_legacy_owners_shared_profile_secrets() {
+        if !in_isolated_child(
+            "sts_import_rollback_tests::a_secondary_account_export_never_pulls_the_legacy_owners_shared_profile_secrets",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (_dir, store, first, second) = two_account_vault();
+
+        let pid = "shared-secret-pid";
+        store
+            .store(&format!("aerocrypt_overlay_pw_{pid}"), "LEGACY-OVERLAY-PW")
+            .unwrap();
+        store
+            .store(&format!("filen_api_key_{pid}"), "LEGACY-FILEN-KEY")
+            .unwrap();
+        let server = || crate::profile_export::ServerProfileExport {
+            id: pid.to_string(),
+            name: "Shared".to_string(),
+            host: "filen.io".to_string(),
+            port: 443,
+            username: "f@example.com".to_string(),
+            protocol: Some("filen".to_string()),
+            ..Default::default()
+        };
+
+        // The legacy owner: the shared vault fallback answers.
+        let out =
+            collect_provider_secrets_for_server_for_user(&store, Some(first), &server()).unwrap();
+        assert_eq!(
+            out.aerocrypt_overlay_pw.as_deref(),
+            Some("LEGACY-OVERLAY-PW"),
+            "the legacy owner exports its own shared overlay password"
+        );
+        assert_eq!(
+            out.filen_api_key.as_deref(),
+            Some("LEGACY-FILEN-KEY"),
+            "the legacy owner exports its own shared Filen key"
+        );
+
+        // The secondary account with the SAME profile id: nothing leaks.
+        let out =
+            collect_provider_secrets_for_server_for_user(&store, Some(second), &server()).unwrap();
+        assert_eq!(
+            out.aerocrypt_overlay_pw, None,
+            "a secondary account must not receive the legacy overlay password"
+        );
+        assert_eq!(
+            out.filen_api_key, None,
+            "a secondary account must not receive the legacy Filen key"
+        );
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+
+    /// A backup whose typed `awsSessionToken` is blank/whitespace-only is
+    /// refused BEFORE planning or writing anything: the stored
+    /// `hasStoredSessionToken` flag, the vaulted token and the stored password
+    /// of the existing profile all survive untouched. Both the preview and the
+    /// committing import refuse it.
+    #[test]
+    fn a_blank_typed_session_token_is_refused_and_preserves_flag_token_and_password() {
+        if !in_isolated_child(
+            "sts_import_rollback_tests::a_blank_typed_session_token_is_refused_and_preserves_flag_token_and_password",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (dir, store, user, _second) = two_account_vault();
+
+        let pass = "synthetic blank token passphrase";
+        let server = |credential: Option<&str>| crate::profile_export::ServerProfileExport {
+            id: "aws-blank".to_string(),
+            name: "Blank".to_string(),
+            host: "s3.blank.example.com".to_string(),
+            port: 443,
+            username: "AKIABLANK".to_string(),
+            protocol: Some("s3".to_string()),
+            provider_id: Some("custom-s3".to_string()),
+            credential: credential.map(str::to_string),
+            ..Default::default()
+        };
+        let secrets = |token: &str| {
+            std::collections::HashMap::from([(
+                "aws-blank".to_string(),
+                crate::profile_export::ProviderSecrets {
+                    aws_session_token: Some(token.to_string()),
+                    ..Default::default()
+                },
+            )])
+        };
+        let run_import = |name: &str| {
+            import_server_profiles_blocking(
+                dir.path().join(name).to_str().unwrap().to_string(),
+                pass.to_string(),
+                profile_import_plan::ExistingProfileMode::Overwrite,
+                &profile_security::RelaxationPolicy::ResetAll,
+                None,
+                user,
+            )
+        };
+        let persisted_flag = || {
+            let (list, _revision) =
+                user_partitions::cli_read_active_profiles_at_revision(&store, user).unwrap();
+            list.iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some("aws-blank"))
+                .and_then(|p| p.get("hasStoredSessionToken").cloned())
+                .unwrap_or(serde_json::Value::Null)
+        };
+
+        // Seed with a committed credential-enabled import carrying a real
+        // token: flag true, token and password stored.
+        crate::profile_export::export_profiles(
+            vec![server(Some("old-secret"))],
+            secrets("REAL-TOKEN"),
+            pass,
+            &dir.path().join("seed.aeroftp"),
+        )
+        .unwrap();
+        run_import("seed.aeroftp").unwrap();
+        assert_eq!(persisted_flag(), serde_json::json!(true));
+        assert_eq!(
+            resolve_token(&store, Some(user), "aws-blank").as_deref(),
+            Some("REAL-TOKEN")
+        );
+
+        // The malicious bundle: same profile, replacement credentials, but a
+        // whitespace-only typed token.
+        crate::profile_export::export_profiles(
+            vec![server(Some("new-secret"))],
+            secrets("   "),
+            pass,
+            &dir.path().join("blank.aeroftp"),
+        )
+        .unwrap();
+
+        // The preview refuses it before touching anything.
+        let preview_err = preview_server_profiles(
+            dir.path().join("blank.aeroftp").to_str().unwrap(),
+            pass,
+            profile_import_plan::ExistingProfileMode::Overwrite,
+            &profile_security::RelaxationPolicy::ResetAll,
+            &[],
+        )
+        .expect_err("the preview must refuse a blank typed session token");
+        assert!(
+            preview_err.contains("awsSessionToken") && preview_err.contains("blank"),
+            "unexpected preview error: {preview_err}"
+        );
+
+        // The committing import refuses it too, before any write.
+        let err = run_import("blank.aeroftp")
+            .expect_err("the import must refuse a blank typed session token");
+        assert!(
+            err.contains("awsSessionToken") && err.contains("blank"),
+            "unexpected import error: {err}"
+        );
+
+        // Nothing changed: flag still true, token still the real one, password
+        // still the old one.
+        assert_eq!(persisted_flag(), serde_json::json!(true));
+        assert_eq!(
+            resolve_token(&store, Some(user), "aws-blank").as_deref(),
+            Some("REAL-TOKEN")
+        );
+        assert_eq!(
+            user_partitions::resolve_credential_for_user(&store, user, "server_aws-blank")
+                .unwrap()
+                .map(|z| z.to_string())
+                .as_deref(),
+            Some("old-secret")
+        );
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+}
+
+#[cfg(test)]
+mod export_account_binding_tests {
+    //! A credential-enabled export is bound to the account the caller read the
+    //! profile list under: a switch between that read and the export is
+    //! refused with ACCOUNT_CHANGED and writes no file, a same-account export
+    //! succeeds, and a no-account legacy export reads the legacy keys only.
+    use super::*;
+    use crate::provider_commands::isolated_account_fixture::in_isolated_child;
+    use serde_json::json;
+
+    fn two_account_vault() -> (
+        tempfile::TempDir,
+        credential_store::CredentialStore,
+        i64,
+        i64,
+    ) {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        credential_store::CredentialStore::clear_cache();
+        credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic export binding master",
+        )
+        .unwrap();
+        credential_store::CredentialStore::unlock_with_master(
+            "synthetic export binding master",
+            None,
+        )
+        .unwrap();
+        let store = credential_store::CredentialStore::from_cache().unwrap();
+        user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = user_partitions::open_or_init_cli().unwrap();
+        let first = user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second = user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .unwrap()
+            .id;
+        user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+        (dir, store, first, second)
+    }
+
+    fn restore_env(
+        previous_xdg: Option<std::ffi::OsString>,
+        previous_passphrase: Option<std::ffi::OsString>,
+    ) {
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        credential_store::CredentialStore::clear_cache();
+    }
+
+    fn sample_servers() -> String {
+        json!([{
+            "id": "srv-bind",
+            "name": "Bind",
+            "host": "files.example.com",
+            "port": 22,
+            "username": "user",
+            "protocol": "sftp"
+        }])
+        .to_string()
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn export_is_bound_to_the_account_the_list_was_read_under() {
+        if !in_isolated_child(
+            "export_account_binding_tests::export_is_bound_to_the_account_the_list_was_read_under",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (dir, store, first, second) = two_account_vault();
+
+        // Distinct secrets per account so a mix-up is visible: the first
+        // account's partition holds the password, the second's another one.
+        user_partitions::store_credential_for_user(
+            &store,
+            first,
+            "server_srv-bind",
+            "password",
+            "first-account-pw",
+        )
+        .unwrap();
+        user_partitions::store_credential_for_user(
+            &store,
+            second,
+            "server_srv-bind",
+            "password",
+            "second-account-pw",
+        )
+        .unwrap();
+
+        let servers = sample_servers();
+
+        // Same account: the export succeeds and writes the file, and the
+        // credential in it is the first account's.
+        let same_file = dir.path().join("same.aeroftp");
+        let meta = export_server_profiles_core(
+            servers.clone(),
+            "export-file-password".to_string(),
+            true,
+            same_file.to_string_lossy().to_string(),
+            Some(first),
+        )
+        .await
+        .expect("same-account export must succeed");
+        assert!(meta.has_credentials);
+        assert!(same_file.exists());
+        let (imported, _secrets, _meta) =
+            profile_export::import_profiles(&same_file, "export-file-password")
+                .expect("the same-account export must decrypt");
+        assert_eq!(imported[0].credential.as_deref(), Some("first-account-pw"));
+
+        // A switch to the second account between the list read and the
+        // export: the export is refused and writes NO file. (Without the
+        // account comparison this call would succeed and write the second
+        // account's secret beside the first account's list, so this pin
+        // fails if the comparison is removed.)
+        {
+            let conn = user_partitions::open_or_init_cli().unwrap();
+            user_partitions::set_active_user(&conn, second).unwrap();
+        }
+        let switched_file = dir.path().join("switched.aeroftp");
+        let err = export_server_profiles_core(
+            servers.clone(),
+            "export-file-password".to_string(),
+            true,
+            switched_file.to_string_lossy().to_string(),
+            Some(first),
+        )
+        .await
+        .err()
+        .expect("an export whose list was read under another account must be refused");
+        assert_eq!(err, user_partitions::ACCOUNT_CHANGED);
+        assert!(
+            !switched_file.exists(),
+            "a refused export must not write a file"
+        );
+
+        // A request carrying no account while an account is active is
+        // refused the same way.
+        let none_file = dir.path().join("none.aeroftp");
+        let err = export_server_profiles_core(
+            servers.clone(),
+            "export-file-password".to_string(),
+            true,
+            none_file.to_string_lossy().to_string(),
+            None,
+        )
+        .await
+        .err()
+        .expect("a no-account request under an active account must be refused");
+        assert_eq!(err, user_partitions::ACCOUNT_CHANGED);
+        assert!(!none_file.exists());
+
+        // Legacy pin: with no active account at all, a no-account request
+        // reads the legacy keys only and exports them.
+        {
+            let conn = user_partitions::open_or_init_cli().unwrap();
+            conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                .unwrap();
+        }
+        store.store("server_srv-bind", "legacy-vault-pw").unwrap();
+        let legacy_file = dir.path().join("legacy.aeroftp");
+        let meta = export_server_profiles_core(
+            servers.clone(),
+            "export-file-password".to_string(),
+            true,
+            legacy_file.to_string_lossy().to_string(),
+            None,
+        )
+        .await
+        .expect("a no-account legacy export must succeed");
+        assert!(meta.has_credentials);
+        let (imported, _secrets, _meta) =
+            profile_export::import_profiles(&legacy_file, "export-file-password")
+                .expect("the legacy export must decrypt");
+        assert_eq!(imported[0].credential.as_deref(), Some("legacy-vault-pw"));
+
+        // ...and the moment an account appears, the same no-account request
+        // is refused instead of reading a partition.
+        {
+            let conn = user_partitions::open_or_init_cli().unwrap();
+            user_partitions::set_active_user(&conn, first).unwrap();
+        }
+        let appeared_file = dir.path().join("appeared.aeroftp");
+        let err = export_server_profiles_core(
+            servers,
+            "export-file-password".to_string(),
+            true,
+            appeared_file.to_string_lossy().to_string(),
+            None,
+        )
+        .await
+        .err()
+        .expect("a no-account request must fail closed once an account appeared");
+        assert_eq!(err, user_partitions::ACCOUNT_CHANGED);
+        assert!(!appeared_file.exists());
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+
+    /// An explicit `--user` selection exports THAT account even while another
+    /// account is active: the list was read under the explicit account, so the
+    /// active-match refusal must not apply, and the exported credential is the
+    /// selected account's.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn an_explicit_user_binding_exports_that_account_while_another_is_active() {
+        if !in_isolated_child(
+            "export_account_binding_tests::an_explicit_user_binding_exports_that_account_while_another_is_active",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (dir, store, _first, second) = two_account_vault();
+        user_partitions::store_credential_for_user(
+            &store,
+            second,
+            "server_srv-bind",
+            "password",
+            "second-account-pw",
+        )
+        .unwrap();
+
+        // The first account is active; the export is explicitly bound to the
+        // second one and must succeed with the second account's credential.
+        let file = dir.path().join("explicit.aeroftp");
+        let meta = export_server_profiles_core_with_policy(
+            sample_servers(),
+            "export-file-password".to_string(),
+            true,
+            file.to_string_lossy().to_string(),
+            ExportAccountBinding::ExplicitUser(second),
+        )
+        .await
+        .expect("an explicit-user export must succeed while another account is active");
+        assert!(meta.has_credentials);
+        let (imported, _secrets, _meta) =
+            profile_export::import_profiles(&file, "export-file-password")
+                .expect("the explicit-user export must decrypt");
+        assert_eq!(imported[0].credential.as_deref(), Some("second-account-pw"));
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+
+    /// Owner-aware password resolution in the export: a secondary account with
+    /// no private password row must never export the legacy owner's shared
+    /// fallback password, while the legacy owner still exports its own
+    /// fallback.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_secondary_account_never_exports_the_legacy_owner_fallback_password() {
+        if !in_isolated_child(
+            "export_account_binding_tests::a_secondary_account_never_exports_the_legacy_owner_fallback_password",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (dir, store, first, second) = two_account_vault();
+        // Only the legacy shared vault row exists; neither account has a
+        // private partition row for this profile.
+        store
+            .store("server_srv-bind", "legacy-fallback-pw")
+            .unwrap();
+
+        // Secondary account: the legacy fallback must NOT leak into its export.
+        let second_file = dir.path().join("second.aeroftp");
+        export_server_profiles_core_with_policy(
+            sample_servers(),
+            "export-file-password".to_string(),
+            true,
+            second_file.to_string_lossy().to_string(),
+            ExportAccountBinding::ExplicitUser(second),
+        )
+        .await
+        .expect("the secondary export itself succeeds");
+        let (imported, _secrets, _meta) =
+            profile_export::import_profiles(&second_file, "export-file-password").unwrap();
+        assert_eq!(
+            imported[0].credential, None,
+            "a secondary account with no private row must not export the legacy fallback"
+        );
+
+        // Legacy owner: its own fallback still exports.
+        let first_file = dir.path().join("first.aeroftp");
+        export_server_profiles_core_with_policy(
+            sample_servers(),
+            "export-file-password".to_string(),
+            true,
+            first_file.to_string_lossy().to_string(),
+            ExportAccountBinding::ExplicitUser(first),
+        )
+        .await
+        .expect("the legacy owner export succeeds");
+        let (imported, _secrets, _meta) =
+            profile_export::import_profiles(&first_file, "export-file-password").unwrap();
+        assert_eq!(
+            imported[0].credential.as_deref(),
+            Some("legacy-fallback-pw"),
+            "the legacy owner still exports its own fallback"
+        );
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+
+    /// A credential-enabled export with no unlocked vault fails BEFORE writing
+    /// anything (a backup that looks complete but cannot reconnect must never
+    /// be produced), and writes no file; a credential-free export still works
+    /// while locked.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_credential_export_without_an_unlocked_vault_fails_and_writes_nothing() {
+        if !in_isolated_child(
+            "export_account_binding_tests::a_credential_export_without_an_unlocked_vault_fails_and_writes_nothing",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        credential_store::CredentialStore::clear_cache();
+        assert!(
+            credential_store::CredentialStore::from_cache().is_none(),
+            "precondition: no vault in cache"
+        );
+
+        let locked_file = dir.path().join("locked.aeroftp");
+        let err = export_server_profiles_core_with_policy(
+            sample_servers(),
+            "export-file-password".to_string(),
+            true,
+            locked_file.to_string_lossy().to_string(),
+            ExportAccountBinding::MatchActive(None),
+        )
+        .await
+        .err()
+        .expect("a credential-enabled export without a vault must fail");
+        assert!(
+            err.contains("Vault is locked or unavailable"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            !locked_file.exists(),
+            "a refused export must not create the destination file"
+        );
+
+        // Credential-free export while locked still works.
+        let plain_file = dir.path().join("plain.aeroftp");
+        let meta = export_server_profiles_core_with_policy(
+            sample_servers(),
+            "export-file-password".to_string(),
+            false,
+            plain_file.to_string_lossy().to_string(),
+            ExportAccountBinding::MatchActive(None),
+        )
+        .await
+        .expect("a credential-free export works while the vault is locked");
+        assert!(!meta.has_credentials);
+        assert!(plain_file.exists());
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+}
+
+/// The one inline-S3-session-token selector shared by the connection option
+/// flattening and the backup export: nonblank camelCase wins, snake_case is
+/// the fallback, a blank preferred value does not hide a usable fallback, and
+/// anything else is no token.
+#[cfg(test)]
+mod inline_session_token_selector_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_nonblank_camel_case_token_wins_over_snake_case() {
+        let opts = json!({"sessionToken": "CAMEL", "session_token": "SNAKE"});
+        assert_eq!(
+            inline_s3_session_token(Some(&opts)).as_deref(),
+            Some("CAMEL")
+        );
+    }
+
+    #[test]
+    fn a_blank_preferred_token_falls_back_to_a_usable_snake_case_one() {
+        let opts = json!({"sessionToken": "   ", "session_token": " SNAKE "});
+        assert_eq!(
+            inline_s3_session_token(Some(&opts)).as_deref(),
+            Some("SNAKE")
+        );
+        let all_blank = json!({"sessionToken": "", "session_token": "  "});
+        assert_eq!(inline_s3_session_token(Some(&all_blank)), None);
+    }
+
+    #[test]
+    fn absent_or_malformed_options_carry_no_token() {
+        assert_eq!(inline_s3_session_token(None), None);
+        assert_eq!(inline_s3_session_token(Some(&json!([]))), None);
+        assert_eq!(inline_s3_session_token(Some(&json!({"other": "x"}))), None);
+        let non_string = json!({"sessionToken": 42});
+        assert_eq!(inline_s3_session_token(Some(&non_string)), None);
     }
 }

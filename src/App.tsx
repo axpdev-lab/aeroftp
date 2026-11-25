@@ -522,6 +522,7 @@ import { updateAppSettings } from './utils/appSettings';
 import { notifyVaultReady, secureGetWithFallback } from './utils/secureStorage';
 import {
   loadSavedServerProfiles,
+  loadSavedServerProfilesWithAccount,
   mergeSavedServerProfile,
   storeSavedServerProfiles,
   recordProfileConnectFailure,
@@ -1350,6 +1351,9 @@ const App: React.FC = () => {
   const [showMcpDialog, setShowMcpDialog] = useState(false);
   const [showExportImport, setShowExportImport] = useState(false);
   const [exportImportServers, setExportImportServers] = useState<ServerProfile[]>([]);
+  // The account exportImportServers was read under, captured in that read; the
+  // export sends it so the backend refuses (ACCOUNT_CHANGED) on a switch.
+  const [exportImportAccountId, setExportImportAccountId] = useState<number | null>(null);
   // Optional starting mode + preset bridge-config file for the Export/Import
   // dialog (set by AeroFile "Import to AeroFTP"); reset whenever it closes.
   const [exportImportInitialMode, setExportImportInitialMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | undefined>(undefined);
@@ -4622,9 +4626,12 @@ const App: React.FC = () => {
   // recognized config file (reuses the dialog's identify+route logic).
   const openBridgeImportForFile = useCallback(async (filePath: string) => {
     try {
-      setExportImportServers(await loadSavedServerProfiles());
+      const read = await loadSavedServerProfilesWithAccount();
+      setExportImportServers(read.profiles);
+      setExportImportAccountId(read.userId ?? null);
     } catch {
       setExportImportServers([]);
+      setExportImportAccountId(null);
     }
     setExportImportInitialMode('bridge-import');
     setExportImportBridgeFile(filePath);
@@ -19930,9 +19937,12 @@ const App: React.FC = () => {
           onOpenSettings={() => setShowSettingsPanel(true)}
           onShowExportImport={async () => {
             try {
-              setExportImportServers(await loadSavedServerProfiles());
+              const read = await loadSavedServerProfilesWithAccount();
+              setExportImportServers(read.profiles);
+              setExportImportAccountId(read.userId ?? null);
             } catch {
               setExportImportServers([]);
+              setExportImportAccountId(null);
             }
             setShowExportImport(true);
           }}
@@ -20822,21 +20832,38 @@ const App: React.FC = () => {
         {showExportImport && (
           <ExportImportDialog
             servers={exportImportServers}
+            accountId={exportImportAccountId}
             initialMode={exportImportInitialMode}
             initialBridgeFilePath={exportImportBridgeFile ?? undefined}
-            onImport={async (newServers, expectedUserId) => {
+            onImport={async (newServers, expectedUserId, removeKeys) => {
               // Bridge imports may have replaced a profile in the persisted
               // list; the dialog's opening snapshot is no longer authoritative.
               // The dialog closes itself (onClose) once its result has been
               // read, or stays open on a warning that must be seen.
               const accountBefore = accountChangeGeneration();
-              const merged = await appendImportedProfiles(newServers, expectedUserId);
+              const merged = await appendImportedProfiles(newServers, expectedUserId, removeKeys);
               // A switch meanwhile brings its own re-read: this list is the previous account's.
-              if (accountChangeGeneration() === accountBefore) setExportImportServers(merged);
+              // The list and the account it was stored under are updated TOGETHER,
+              // in one update: an export must never pair one account's list with
+              // another account's id. An unknown account (undefined) retains the
+              // current id.
+              if (accountChangeGeneration() === accountBefore) {
+                setExportImportServers(merged);
+                if (expectedUserId !== undefined) setExportImportAccountId(expectedUserId ?? null);
+              }
               setServersRefreshKey(k => k + 1);
             }}
-            onProfilesStored={(stored) => {
-              setExportImportServers(stored);
+            onProfilesStored={() => {
+              // The .aeroftp import stored list and secrets under the account
+              // active during the write; re-read list AND account from one
+              // scoped read so the pair is coherent. If that read fails, the
+              // account is unknown and the current pair is retained.
+              const accountBefore = accountChangeGeneration();
+              void loadSavedServerProfilesWithAccount().then(read => {
+                if (accountChangeGeneration() !== accountBefore) return;
+                setExportImportServers(read.profiles);
+                setExportImportAccountId(read.userId ?? null);
+              }).catch(() => { /* account unknown: retain the current list and account */ });
               setServersRefreshKey(k => k + 1);
             }}
             onClose={() => {
