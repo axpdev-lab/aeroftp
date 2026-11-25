@@ -476,7 +476,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'tigris', icon: 'tigris.png', docsPath: 'providers/tigris' },
     { logoId: 'fastly', icon: 'fastly.png', docsPath: 'providers/fastly-object-storage' },
     { logoId: 'neon', icon: 'neon.png', docsPath: 'providers/neon' },
-    { logoId: 'coritan', icon: 'coritan.png', docsPath: 'providers/coritan' },
+    { logoId: 'coritan', icon: 'coritan.png', docsPath: 'providers/aws-s3' },
     { logoId: 'minio', icon: 'minio.png', docsPath: 'providers/minio' },
     { logoId: 'yandex-storage', icon: 'yandexcloud.png', docsPath: 'providers/yandex-object-storage' },
     { logoId: 's3drive', icon: 's3drive.png', docsPath: 'providers/s3drive' },

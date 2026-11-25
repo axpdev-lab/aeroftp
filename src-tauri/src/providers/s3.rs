@@ -1041,6 +1041,22 @@ fn names_zero_length(headers: &reqwest::header::HeaderMap) -> bool {
         .is_some_and(|value| value.trim() == "0")
 }
 
+/// A single strong ETag: the value is one quoted string, `"..."`, whose
+/// inner part is non-empty, holds no further quote and no control
+/// characters. `If-Match` compares strong tags only, so a weak tag
+/// (`W/"..."`), an empty tag (`""`), a lone quote and a header that lists
+/// several tags (`"a", "b"`) are all rejected: none of them names exactly
+/// the one object the validating HEAD saw.
+fn is_single_strong_etag(value: &str) -> bool {
+    let Some(inner) = value
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+    else {
+        return false;
+    };
+    !inner.is_empty() && !inner.contains('"') && !inner.chars().any(|c| c.is_control())
+}
+
 impl S3Provider {
     fn baseline_path(&self) -> Option<std::path::PathBuf> {
         #[cfg(test)]
@@ -2539,7 +2555,7 @@ impl S3Provider {
                 let etag = headers
                     .get(reqwest::header::ETAG)
                     .and_then(|value| value.to_str().ok())?;
-                if etag.starts_with('W') || !(etag.starts_with('"') && etag.ends_with('"')) {
+                if !is_single_strong_etag(etag) {
                     return None;
                 }
                 Some(etag.to_string())
@@ -2575,6 +2591,13 @@ impl S3Provider {
                  the destination holds only the marker copy"
             ))),
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(key.to_string())),
+            // Like an unanswered request, a 5xx may already have deleted the
+            // object server-side: only the 412 confirms preservation, so a
+            // server error is reported as unconfirmed, never as "kept".
+            status if status.is_server_error() => Err(ProviderError::Other(format!(
+                "deleting {key} is unconfirmed: the server answered {status}, so it may \
+                 already have deleted it; inspect both folders before retrying"
+            ))),
             status => Err(ProviderError::ServerError(format!(
                 "Delete failed with status: {}",
                 status
@@ -2594,7 +2617,15 @@ impl S3Provider {
 
     /// Copy after the caller has prepared the source. Rename also classifies
     /// virtual folders after preparation, without starting a second wait.
-    async fn copy_prepared_source(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+    /// `record_validation` binds the marker ETag only for rename/move flows,
+    /// whose follow-up delete consumes the entry; a plain copy leaves the map
+    /// untouched so a later rename is never bound to a stale validation.
+    async fn copy_prepared_source(
+        &mut self,
+        from: &str,
+        to: &str,
+        record_validation: bool,
+    ) -> Result<(), ProviderError> {
         let from_key = from.trim_start_matches('/');
         let to_key = to.trim_start_matches('/');
 
@@ -2642,9 +2673,14 @@ impl S3Provider {
                             // this validation: the DELETE carries the ETag
                             // as If-Match, so content written to the marker
                             // after this HEAD is refused (412) and preserved
-                            // instead of deleted uncopied.
-                            self.marker_source_validations
-                                .insert(from_key.to_string(), etag);
+                            // instead of deleted uncopied. A plain copy does
+                            // not record: its source is never deleted, and an
+                            // unconsumed entry would bind a later rename of
+                            // the same key to a stale ETag.
+                            if record_validation {
+                                self.marker_source_validations
+                                    .insert(from_key.to_string(), etag);
+                            }
                             Ok(())
                         }
                         None => Err(failure.error),
@@ -2672,6 +2708,24 @@ impl S3Provider {
             source_mtime,
         )
         .await
+    }
+
+    /// `record_validation` is true for the directory-rename loop, whose
+    /// copies are each followed by a delete of the source key.
+    async fn server_side_copy_recorded(
+        &mut self,
+        from: &str,
+        to: &str,
+        record_validation: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        if self.config.filen_desktop_bridge {
+            self.prepare_file_move(from).await?;
+        }
+        self.copy_prepared_source(from, to, record_validation).await
     }
 
     async fn verify_copy_target_exists(&self, to: &str) -> Result<(), ProviderError> {
@@ -2836,7 +2890,7 @@ impl S3Provider {
                 "[S3] Tigris rename copy failed, trying a plain copy: {}",
                 rename_failure.error
             );
-            if let Err(copy_error) = self.copy_prepared_source(from_key, to_key).await {
+            if let Err(copy_error) = self.copy_prepared_source(from_key, to_key, true).await {
                 // The rename may have worked and only its response got lost:
                 // then the source is gone and the plain copy finds nothing.
                 // The destination settles it (the caller already listed the
@@ -3041,7 +3095,7 @@ impl S3Provider {
                 );
                 return Ok(());
             }
-            self.copy_prepared_source(from, to).await?;
+            self.copy_prepared_source(from, to, true).await?;
             self.verify_copy_target_exists(to).await?;
             self.delete_rename_source(from).await?;
             info!("Renamed file (copy+delete) {} to {}", from, to);
@@ -3064,8 +3118,12 @@ impl S3Provider {
                         Err(e) => Err(e),
                     }
                 } else {
-                    self.server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
-                        .await
+                    self.server_side_copy_recorded(
+                        &format!("/{}", old_key),
+                        &format!("/{}", new_key),
+                        true,
+                    )
+                    .await
                 };
                 if let Err(e) = step {
                     // The copies made so far stay under the destination, so a
@@ -8023,14 +8081,7 @@ impl StorageProvider for S3Provider {
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-
-        if self.config.filen_desktop_bridge {
-            self.prepare_file_move(from).await?;
-        }
-        self.copy_prepared_source(from, to).await
+        self.server_side_copy_recorded(from, to, false).await
     }
 
     // Shaped-graph multipart trait wiring.
@@ -14046,6 +14097,9 @@ mod tests {
         /// A directory-backed backend can rotate the marker's tag when a
         /// child key is deleted; the double then does the same.
         child_delete_rotates_marker_etag: bool,
+        /// A conditional DELETE (one carrying If-Match) answers 500, as a
+        /// backend may do after it already applied the delete.
+        fail_marker_delete: bool,
     }
 
     impl Default for MarkerDouble {
@@ -14057,6 +14111,7 @@ mod tests {
                 head_marker_etag: Some("\"marker-v1\"".to_string()),
                 initial_delete_marker_etag: "\"marker-v1\"".to_string(),
                 child_delete_rotates_marker_etag: false,
+                fail_marker_delete: false,
             }
         }
     }
@@ -14071,6 +14126,7 @@ mod tests {
             head_marker_etag,
             initial_delete_marker_etag,
             child_delete_rotates_marker_etag,
+            fail_marker_delete,
         } = double;
         use std::sync::{Arc, Mutex};
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -14084,6 +14140,7 @@ mod tests {
                 let seen = Arc::clone(&seen);
                 let head_etag = head_marker_etag.clone();
                 let rotate = child_delete_rotates_marker_etag;
+                let fail_delete = fail_marker_delete;
                 let current_etag = Arc::clone(&current_etag);
                 async move {
                     let path = req.uri().path().to_string();
@@ -14192,7 +14249,11 @@ mod tests {
                             // S3 conditional delete: If-Match is compared with
                             // the object's current ETag, and a mismatch is 412.
                             let current = current_etag.lock().unwrap().clone();
-                            if if_match.as_deref().is_some_and(|tag| tag != current) {
+                            // A conditional delete the backend fails with a
+                            // 5xx may already have been applied server-side.
+                            if fail_delete && if_match.is_some() {
+                                reply(500, String::new())
+                            } else if if_match.as_deref().is_some_and(|tag| tag != current) {
                                 reply(
                                     412,
                                     "<Error><Code>PreconditionFailed</Code>\
@@ -14265,6 +14326,12 @@ mod tests {
                 .any(|r| r.starts_with("DELETE /test-bucket/src/a.txt if-match")),
             "{log:?}"
         );
+        // The rename consumed the recorded validation with its delete.
+        assert!(
+            provider.marker_source_validations.is_empty(),
+            "{:?}",
+            provider.marker_source_validations
+        );
     }
 
     /// The fallback only follows a refused copy: a backend that copies
@@ -14302,6 +14369,23 @@ mod tests {
         assert!(!log.iter().any(|r| r.starts_with("DELETE")), "{log:?}");
     }
 
+    /// Only one strong quoted ETag validates a marker: a weak tag, an empty
+    /// tag, a lone quote and a header listing several tags all fail, because
+    /// `If-Match` compares strong tags and none of them names the one object
+    /// the validating HEAD saw.
+    #[test]
+    fn only_a_single_strong_etag_validates() {
+        assert!(is_single_strong_etag("\"marker-v1\""));
+        assert!(is_single_strong_etag("\"a\""));
+        assert!(!is_single_strong_etag("W/\"marker-v1\""));
+        assert!(!is_single_strong_etag("\"\""));
+        assert!(!is_single_strong_etag("\""));
+        assert!(!is_single_strong_etag("\"a\", \"b\""));
+        assert!(!is_single_strong_etag("\"a\"b\""));
+        assert!(!is_single_strong_etag("marker-v1"));
+        assert!(!is_single_strong_etag("\"a\tb\""));
+    }
+
     /// Only a `Content-Length` of exactly 0 proves a marker empty: a
     /// missing, unreadable or other length does not.
     #[test]
@@ -14324,8 +14408,9 @@ mod tests {
 
     /// A marker double on a raw socket, for the one reply axum cannot give:
     /// hyper writes `Content-Length: 0` on every HEAD reply that names no
-    /// length. HEAD of a key ending in `/` answers 200 with no length at all;
-    /// a copy of such a key is refused like the axum double refuses it.
+    /// length. HEAD of a key ending in `/` answers 200 with no length at all
+    /// but an ETag; a copy of such a key is refused like the axum double
+    /// refuses it.
     async fn provider_for_lengthless_marker_double(
     ) -> (S3Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
         use std::sync::{Arc, Mutex};
@@ -14392,9 +14477,11 @@ mod tests {
                                     .to_string(),
                             ),
                             ("HEAD", _) if path.ends_with('/') => {
+                                // No Content-Length, but an ETag: this fixture
+                                // pins the length check, not the ETag check.
                                 stream
                                     .get_mut()
-                                    .write_all(b"HTTP/1.1 200 OK\r\n\r\n")
+                                    .write_all(b"HTTP/1.1 200 OK\r\nETag: \"marker-v1\"\r\n\r\n")
                                     .await
                                     .unwrap();
                                 continue;
@@ -14452,6 +14539,13 @@ mod tests {
             "{:?}",
             head.headers()
         );
+        // The double names an ETag, so this fixture proves the length check
+        // and not the ETag check.
+        assert!(
+            head.headers().get(reqwest::header::ETAG).is_some(),
+            "{:?}",
+            head.headers()
+        );
         log.lock().unwrap().clear();
         let result = provider.rename("/src", "/dst").await;
         let log = log.lock().unwrap().clone();
@@ -14498,6 +14592,14 @@ mod tests {
         let log = log.lock().unwrap().clone();
         assert!(puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
         assert!(!log.iter().any(|r| r.starts_with("DELETE")), "{log:?}");
+        // A plain copy never records a validation: nothing deletes its
+        // source, and an unconsumed entry would bind a later rename of the
+        // same key to a stale ETag.
+        assert!(
+            provider.marker_source_validations.is_empty(),
+            "{:?}",
+            provider.marker_source_validations
+        );
     }
 
     /// The fallback marker PUT is signed with the copy operation's configured
@@ -14605,6 +14707,30 @@ mod tests {
                 "{head_etag:?}: {log:?}"
             );
         }
+    }
+
+    /// A conditional DELETE the server answers with a 5xx may already have
+    /// deleted the object: the rename reports the deletion as unconfirmed,
+    /// never as "not deleted".
+    #[tokio::test]
+    async fn a_server_error_on_the_marker_delete_is_reported_unconfirmed() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            fail_marker_delete: true,
+            ..MarkerDouble::default()
+        })
+        .await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the conditional marker delete answered 500");
+        let log = log.lock().unwrap().clone();
+        assert!(err.to_string().contains("unconfirmed"), "{err}");
+        assert!(!err.to_string().contains("not deleted"), "{err}");
+        assert!(
+            log.contains(&"DELETE /test-bucket/src/ if-match=\"marker-v1\"".to_string()),
+            "{log:?}"
+        );
     }
 
     /// A raw-socket marker double whose DELETE is never answered: the socket

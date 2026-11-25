@@ -140,7 +140,7 @@ AeroFTP organizes integrations on three tiers. The figures below are generated i
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/neon"><img src="public/icons/providers/grid/neon.png" width="36" alt="Neon Object Storage" /></a><br><sub>Neon Object Storage</sub></td>
   </tr>
   <tr>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/coritan"><img src="public/icons/providers/grid/coritan.png" width="36" alt="Coritan" /></a><br><sub>Coritan</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/aws-s3"><img src="public/icons/providers/grid/coritan.png" width="36" alt="Coritan" /></a><br><sub>Coritan</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/minio"><img src="public/icons/providers/grid/minio.png" width="36" alt="MinIO" /></a><br><sub>MinIO</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/yandex-object-storage"><img src="public/icons/providers/grid/yandexcloud.png" width="36" alt="Yandex Object Storage" /></a><br><sub>Yandex Object Storage</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/s3drive"><img src="public/icons/providers/grid/s3drive.png" width="36" alt="S3Drive" /></a><br><sub>S3Drive</sub></td>
