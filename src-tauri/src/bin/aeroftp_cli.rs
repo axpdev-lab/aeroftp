@@ -43552,16 +43552,6 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
             println!();
         }
 
-        if !warnings.is_empty() {
-            println!("Warnings ({}):", warnings.len());
-            for w in &warnings {
-                let name = w.get("name").and_then(|x| x.as_str()).unwrap_or("?");
-                let reason = w.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
-                println!("  {} : {}", name, reason);
-            }
-            println!();
-        }
-
         if !skipped.is_empty() {
             println!("Skipped ({}):", skipped.len());
             for s in &skipped {
