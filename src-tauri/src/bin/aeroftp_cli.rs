@@ -44078,6 +44078,18 @@ async fn cmd_export_rclone(
             return 4;
         }
     };
+    // The legacy blob fallback leaves the list's owning account unknown
+    // (None): refuse the credential-bearing export rather than let the
+    // injectors treat None as the active account and write its tokens under
+    // profiles the list may not belong to.
+    let Some(export_user) = export_user else {
+        print_error(
+            format,
+            "profile list provenance is unknown (legacy blob fallback); refusing a credential-bearing export",
+            4,
+        );
+        return 4;
+    };
     let servers_json = serde_json::Value::Array(profiles_list);
     let selectors = parse_profile_selectors(profiles);
 
@@ -44097,7 +44109,7 @@ async fn cmd_export_rclone(
 
     let collected = match collect_export_scaffold(
         &store,
-        export_user,
+        Some(export_user),
         &servers_json,
         selectors.as_deref(),
         "rclone",
@@ -44128,7 +44140,7 @@ async fn cmd_export_rclone(
         if let Err(reason) = ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
             &mut options,
             &store,
-            export_user,
+            Some(export_user),
             &p.protocol,
             &p.id,
         ) {
@@ -44138,21 +44150,21 @@ async fn cmd_export_rclone(
         ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
             &mut options,
             &store,
-            export_user,
+            Some(export_user),
             &p.protocol,
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_proton_export_options(
             &mut options,
             &store,
-            export_user,
+            Some(export_user),
             &p.protocol,
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_onedrive_export_options(
             &mut options,
             &store,
-            export_user,
+            Some(export_user),
             &p.protocol,
             &p.id,
         );
@@ -44170,14 +44182,14 @@ async fn cmd_export_rclone(
             ftp_client_gui_lib::bridge_commands::ensure_zoho_rclone_root_folder(
                 &mut options,
                 &p.id,
-                export_user,
+                Some(export_user),
             )
             .await;
         }
         ftp_client_gui_lib::bridge_commands::inject_rclone_crypt_export_options(
             &mut options,
             &store,
-            export_user,
+            Some(export_user),
             &p.id,
             p.overlay.as_ref(),
         );
@@ -44265,6 +44277,17 @@ async fn cmd_export_winscp(
             return 4;
         }
     };
+    // The legacy blob fallback leaves the list's owning account unknown
+    // (None): refuse the credential-bearing export rather than read secrets
+    // under an account the list may not belong to.
+    let Some(list_account) = list_account else {
+        print_error(
+            format,
+            "profile list provenance is unknown (legacy blob fallback); refusing a credential-bearing export",
+            4,
+        );
+        return 4;
+    };
     let servers_json = serde_json::Value::Array(profiles_list);
     let selectors = parse_profile_selectors(profiles);
 
@@ -44274,7 +44297,7 @@ async fn cmd_export_winscp(
 
     let collected = match collect_export_scaffold(
         &store,
-        list_account,
+        Some(list_account),
         &servers_json,
         selectors.as_deref(),
         "winscp",
@@ -44376,6 +44399,17 @@ async fn cmd_export_filezilla(
             return 4;
         }
     };
+    // The legacy blob fallback leaves the list's owning account unknown
+    // (None): refuse the credential-bearing export rather than read secrets
+    // under an account the list may not belong to.
+    let Some(list_account) = list_account else {
+        print_error(
+            format,
+            "profile list provenance is unknown (legacy blob fallback); refusing a credential-bearing export",
+            4,
+        );
+        return 4;
+    };
     let servers_json = serde_json::Value::Array(profiles_list);
     let selectors = parse_profile_selectors(profiles);
 
@@ -44385,7 +44419,7 @@ async fn cmd_export_filezilla(
 
     let mut collected = match collect_export_scaffold(
         &store,
-        list_account,
+        Some(list_account),
         &servers_json,
         selectors.as_deref(),
         "filezilla",
@@ -44508,12 +44542,23 @@ async fn cmd_export_bridge(
             return 4;
         }
     };
+    // The legacy blob fallback leaves the list's owning account unknown
+    // (None): refuse the credential-bearing export rather than read secrets
+    // under an account the list may not belong to.
+    let Some(list_account) = list_account else {
+        print_error(
+            format,
+            "profile list provenance is unknown (legacy blob fallback); refusing a credential-bearing export",
+            4,
+        );
+        return 4;
+    };
     let servers_json = serde_json::Value::Array(profiles_list);
     let selectors = parse_profile_selectors(profiles);
 
     let collected = match collect_export_scaffold(
         &store,
-        list_account,
+        Some(list_account),
         &servers_json,
         selectors.as_deref(),
         src,
@@ -44561,7 +44606,7 @@ async fn cmd_export_bridge(
     // The session-token read uses the account captured with the profile list
     // above, the same one the password read went through: a `--user` export
     // must not pair one account's access key with the other's session token.
-    let scoped_uid = list_account;
+    let scoped_uid = Some(list_account);
     let mut unreadable: Vec<(String, String)> = Vec::new();
     macro_rules! run_export {
         ($ty:ident, $f:expr) => {{
@@ -88735,6 +88780,97 @@ mod tests {
         assert_child_finishes_in(
             root.path(),
             "tests::the_crypt_migration_writes_under_the_captured_account_across_a_switch",
+            &[
+                (CHILD, "1"),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
+            ],
+        );
+    }
+
+    /// When the partition list read fails and the loader serves the legacy
+    /// `config_server_profiles` blob, the owning account is unknown (`None`):
+    /// a credential-bearing rclone export must then refuse (exit 4, no file)
+    /// instead of letting the injectors treat `None` as the active account
+    /// and stamp its OAuth token onto a profile the list may not belong to.
+    #[test]
+    fn rclone_export_refuses_when_the_list_fell_back_to_the_legacy_blob() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_EXPORT_LEGACY_FALLBACK_CHILD";
+        if std::env::var(CHILD).is_ok() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                use ftp_client_gui_lib::user_partitions as up;
+                let cli = test_cli();
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let active = up::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("active account")
+                    .id;
+                // A healthy OAuth token in the ACTIVE account's partition: if
+                // the export wrongly treated `None` as the active account,
+                // this token would be injected into the export.
+                up::store_credential_for_user(
+                    &store,
+                    active,
+                    "oauth_googledrive_srv-legacy",
+                    "oauth",
+                    "ACTIVE-ACCOUNT-TOKEN",
+                )
+                .unwrap();
+                // The legacy blob: one OAuth profile, which needs no password
+                // and so would receive the token on a credential-bearing export.
+                store
+                    .store(
+                        "config_server_profiles",
+                        &serde_json::json!([{
+                            "id": "srv-legacy",
+                            "name": "legacy-drive",
+                            "protocol": "googledrive",
+                            "host": "drive.google.com",
+                            "port": 443,
+                            "username": "u",
+                        }])
+                        .to_string(),
+                    )
+                    .unwrap();
+                // Break the partition list read: a stored row whose blob does
+                // not decrypt fails the list read, so from here on the loader
+                // falls back to the legacy blob and reports unknown provenance.
+                let conn = up::open_or_init_cli().unwrap();
+                conn.execute_batch(&format!(
+                    "INSERT INTO server_profiles(user_id, profile_uid, dedup_key, name, \
+                     encrypted_blob, nonce, created_at, updated_at) VALUES ({active}, \
+                     'srv-broken', 'srv-broken', 'broken', x'0011', x'0022', 0, 0);"
+                ))
+                .unwrap();
+                drop(conn);
+
+                let (profiles, account) =
+                    load_active_user_profiles_with_account(&cli, &store).unwrap();
+                assert!(account.is_none(), "the legacy fallback must report None");
+                assert_eq!(profiles[0]["id"], "srv-legacy");
+
+                let dir = tempfile::TempDir::new().unwrap();
+                let out = dir.path().join("rclone.conf");
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let code = rt.block_on(cmd_export_rclone(
+                    Some(out.to_string_lossy().into_owned()),
+                    None,
+                    false,
+                    &cli,
+                    OutputFormat::Text,
+                ));
+                assert_eq!(
+                    code, 4,
+                    "a credential-bearing export must be refused on unknown provenance, got {code}"
+                );
+                assert!(!out.exists(), "no export file may be written");
+            });
+            return;
+        }
+        let root = crate::isolated_cli::root();
+        assert_child_finishes_in(
+            root.path(),
+            "tests::rclone_export_refuses_when_the_list_fell_back_to_the_legacy_blob",
             &[
                 (CHILD, "1"),
                 ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
