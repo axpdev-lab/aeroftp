@@ -8843,7 +8843,11 @@ http_proxy =
     #[test]
     fn consumed_key_table_covers_every_map_remote_arm_and_detects_a_new_read() {
         let body = source_fn_body("fn map_remote(");
-        let arms = regex::Regex::new(r#"(?m)^\s*"([^"]+)"\s*=>"#).unwrap();
+        // Only the backend match's own arms (exactly 8 spaces): a nested
+        // match arm (the hosted-Nextcloud host recovery inside the webdav
+        // arm) is not a backend arm and must not absorb the key reads that
+        // follow it into its span.
+        let arms = regex::Regex::new(r#"(?m)^ {8}"([^"]+)"\s*=>"#).unwrap();
         let reads = regex::Regex::new(
             r#"(?:get_str|get_password|get_plain_secret|get_aeroftp_plain_secret|get_port)\(\s*"([^"]+)"|remote\.get\(\s*"([^"]+)"\)"#,
         )
