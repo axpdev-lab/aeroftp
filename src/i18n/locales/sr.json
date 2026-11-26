@@ -2435,6 +2435,7 @@
             "discoverNeon": "Neon Object Storage: S3-компатибилно складиште за сваку грану пројекта (5 GB бесплатно по пројекту)",
             "discoverPuter": "Puter облачна меморија преко WebDAV-а (25 MB бесплатно, без картице)",
             "discoverLifetimeCloud": "Складиште LifetimeCloud путем WebDAV-а (1 GB бесплатно, без картице)",
+            "discoverCoritan": "Coritan Object Storage: складиште компатибилно са S3 у 6 региона (10 GB бесплатно, није потребна картица)",
             "discoverMurena": "Murena Workspace (1 GB бесплатно, базирано на Nextcloud, EU)"
         },
         "shortcuts": {

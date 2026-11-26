@@ -43,7 +43,10 @@ IONOS S3, Alibaba OSS, Tencent COS, Qiniu Kodo, Google Cloud Storage, and generi
 custom S3. Fastly Object Storage exports to rclone as `provider = Fastly`,
 which needs rclone 1.74.0 or newer (older versions reject the name), and is
 recognized on import from that token or from a `.object.fastlystorage.app`
-endpoint. Murena
+endpoint. Coritan Object Storage has no rclone token: it exports as
+`provider = Other` with its endpoint (port 7337 included) and its stored
+region, on rclone's path-style default, and is recognized on import from a
+`coritan.com` endpoint, whose region label fills a missing region. Murena
 Workspace exports as `vendor = nextcloud`, like the other Nextcloud-based
 presets. WebDAV vendors (Nextcloud, ownCloud, and custom WebDAV for
 SharePoint / Fastmail / Koofr-dav) likewise ride WebDAV.
@@ -156,7 +159,49 @@ way: an importer reads whatever connection types it recognizes in the file.)
   and skip filesystem, GCS, Azure and OAuth remotes.
 - **OpenSSH, PuTTY, AWS CLI, mc and s3cmd** are metadata or single-protocol
   bridges: SSH and PuTTY carry no secret, while AWS CLI, mc and s3cmd are
-  S3-only credential files.
+  S3-only credential files. AWS files are read as the AWS CLI reads them:
+  `[DEFAULT]` fallback values, `[profile "name"]` and `[default]` in `config`,
+  `=` or `:`, sub-sections, verbatim section names in `credentials`, static
+  credentials selected as an atomic per-file set (shared credentials ahead of
+  config without mixing keys or tokens across files), and the `s3` endpoint of
+  a `services` section ahead of `endpoint_url`; endpoints carrying URL userinfo
+  or query parameters are skipped, and a file the AWS CLI refuses (a section or
+  key declared twice, or a malformed line) is refused. Profiles without a
+  non-empty access key are reported as skipped, naming what they use instead (a
+  role, SSO, `credential_process`), and profiles with an access key but no
+  `aws_secret_access_key` are skipped. A profile with static keys and
+  `role_arn` or SSO settings imports with those keys and a warning because the
+  AWS CLI would sign in as another identity; unapplied settings (`ca_bundle`,
+  FIPS, dual-stack, accelerate) also emit a warning. Imported STS session
+  tokens are moved into the encrypted vault under owner-aware per-user storage
+  and redacted from profile options, sharing the import vault-write cap with
+  passwords; connecting or exporting a profile marked with a stored session
+  token fails closed if its token cannot be read. `credential_cache` is an AWS
+  CLI cache choice for assume-role, not a static credential. Export serializes
+  concurrent writes to the same destination directory using a private lock
+  under AeroFTP's own data root, stages both `0600` (owner-ACL on Windows) temp
+  files before touching either target, plans both outputs together, preserves
+  path-prefixed S3 endpoints, persists `config` before `credentials` (attempting
+  to roll back active or side-file `config` or side-file `credentials` writes
+  when they still match what was just published, preserving external edits it
+  detects, though it cannot exclude a lockless external writer editing the file
+  between revalidation and restoration or removal and rollback itself can fail,
+  so check the reported rollback status before using the pair or retrying the
+  export), and replaces an existing `config` or `credentials` file only when
+  its typed line-2 marker carries both a filename-derived binding ID for the
+  target credentials entry and a matching SHA-256 digest of the file body.
+  Older AeroFTP exports carrying the previous unbound credentials marker are
+  preserved as non-matching files, so re-exporting writes a new inactive side
+  pair instead of replacing them. If either destination is a user file, a
+  file `aws configure` edited, a pre-marker legacy AeroFTP export, another
+  credentials pair's `config`, a symlink, or a directory, both active targets
+  stay untouched, the complete pair goes to the first absent or AeroFTP-owned
+  `.aeroftp` side files at write time with manual-merge warnings, and the
+  export reports the actual written credentials path.
+  A profile name with a space, tab or `'` is written as `[profile "name"]`; one
+  with `"` or `\` is skipped when a config section is needed. When
+  `aeroftp-cli export aws` runs without `--output`, it writes into a private
+  `0700` temporary directory.
 
 ---
 

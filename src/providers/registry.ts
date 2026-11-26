@@ -965,6 +965,50 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://manage.fastly.com/resources/object-storage',
     },
     {
+        id: 'coritan',
+        name: 'Coritan Object Storage',
+        description: 'S3-compatible object storage, path-style on port 7337 (10 GB free, no card)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Cloud',
+        color: '#1E5AA8',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'Coritan dashboard → Object Storage → Access keys → Access key ID' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'Shown once when the access key is created' },
+            { ...COMMON_FIELDS.bucket, helpText: 'Coritan dashboard → Object Storage → Buckets → Bucket name. A bucket answers only at the endpoint of its own region: pick the region it was created in.' },
+            {
+                key: 'region',
+                label: 'Region',
+                type: 'select',
+                required: true,
+                // The regions whose endpoint https://s3.<region>.coritan.com:7337
+                // answered as an S3 server (anonymous request refused with 403,
+                // valid certificate) on 2026-11-16; Coritan publishes no region
+                // list, and its wildcard DNS sends any other label to 127.0.0.1.
+                // Port 443 was closed on all six. Coritan accepts any region name
+                // in the SigV4 scope, so the code is also the signing region.
+                // coritanRegions.test.ts pins the list.
+                options: [
+                    { value: 'fra', label: 'Frankfurt (fra)' },
+                    { value: 'lhr', label: 'London (lhr)' },
+                    { value: 'iad', label: 'Virginia (iad)' },
+                    { value: 'pdx', label: 'Oregon (pdx)' },
+                    { value: 'sin', label: 'Singapore (sin)' },
+                    { value: 'bom', label: 'Mumbai (bom)' },
+                ],
+                group: 'server',
+            },
+        ],
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        healthCheckUrl: 'https://s3.fra.coritan.com:7337/',
+        helpUrl: 'https://www.coritan.com/docs/object-storage/',
+        signupUrl: 'https://www.coritan.com/storage/object-storage',
+    },
+    {
         id: 'storj',
         name: 'Storj',
         description: 'Decentralized S3-compatible cloud storage',
@@ -2467,10 +2511,15 @@ const S3_INTERNAL_ENDPOINT_SUFFIX = '-internal';
 const S3_NON_REGION_LABELS = ['accelerate', 'accelerate-overseas'];
 
 const regionFromS3Template = (template: string, endpoint: string): string | undefined => {
-    const withoutScheme = (v: string) => v.replace(/^https?:\/\//i, '');
-    const [prefix, suffix, ...rest] = withoutScheme(template).split('{region}');
+    // The host alone, of the template as of the endpoint: a template that
+    // names its port (`s3.{region}.coritan.com:7337`) kept the port in its
+    // suffix while the endpoint's port was cut, so no endpoint ever matched.
+    // The same rule as region_from_s3_template in Rust, down to its ASCII-only
+    // lowercase: a Kelvin sign does not fold to `k` there.
+    const hostOf = (v: string) => v.trim().replace(/^https?:\/\//i, '').split(/[/?#]/)[0].split(':')[0];
+    const [prefix, suffix, ...rest] = hostOf(template).split('{region}');
     if (suffix === undefined || rest.length || prefix.includes('{') || suffix.includes('{')) return undefined;
-    const host = withoutScheme(endpoint.trim()).split(/[/?#]/)[0].split(':')[0].toLowerCase();
+    const host = hostOf(endpoint).replace(/[A-Z]/g, c => c.toLowerCase());
     if (!host.startsWith(prefix) || !host.endsWith(suffix)) return undefined;
     // An internal endpoint names its region with a suffix and an accelerate
     // endpoint names none (Greptile on #1525); the same lists as

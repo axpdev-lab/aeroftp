@@ -4,14 +4,14 @@
   "counts": {
     "transport_protocols": 8,
     "native_integrations": 26,
-    "presets": 53,
-    "presets_over_transport": 49,
-    "connection_forms": 58,
+    "presets": 54,
+    "presets_over_transport": 50,
+    "connection_forms": 59,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 62,
-    "connection_methods": 76,
-    "catalog_services": 85
+    "providers": 63,
+    "connection_methods": 77,
+    "catalog_services": 86
   },
   "transport_protocols": [
     "ftp",
@@ -71,6 +71,7 @@
       "amazon-s3",
       "backblaze",
       "cloudflare-r2",
+      "coritan",
       "digitalocean-spaces",
       "fastly",
       "filebase",
@@ -129,7 +130,7 @@
   ],
   "catalog_categories": {
     "protocols": 8,
-    "object-storage": 25,
+    "object-storage": 26,
     "webdav": 22,
     "cloud-storage": 21,
     "media-services": 5,
@@ -196,6 +197,12 @@
       "id": "cloudme",
       "protocols": [
         "webdav"
+      ]
+    },
+    {
+      "id": "coritan",
+      "protocols": [
+        "s3"
       ]
     },
     {

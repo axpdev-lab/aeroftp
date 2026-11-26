@@ -32,6 +32,9 @@ const PROVIDER_ID_TO_SLUG: Record<string, string> = {
     tigris: 'tigris',
     fastly: 'fastly-object-storage',
     'neon-s3': 'neon',
+    // The Coritan docs page is pending a docs PR; until it lands the tile
+    // links to the live AWS S3 page.
+    coritan: 'aws-s3',
     minio: 'minio',
     'oracle-cloud': 'oracle-cloud',
     'google-cloud-storage': 'google-cloud-storage',

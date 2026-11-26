@@ -89,6 +89,7 @@ const S3_PRESET_IDS = new Set<string>([
     'tigris',
     'fastly',
     'neon-s3',
+    'coritan',
 ]);
 
 /** Lowercase, trim, strip scheme, userinfo, www., path, query and fragment. */

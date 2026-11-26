@@ -2435,6 +2435,7 @@
             "discoverNeon": "Neon Object Storage: প্রতিটি প্রজেক্ট ব্রাঞ্চের জন্য S3-এর সাথে সামঞ্জস্যপূর্ণ স্টোরেজ (প্রতি প্রজেক্টে 5 GB ফ্রি)",
             "discoverPuter": "Puter ক্লাউড স্টোরেজ WebDAV-এর মাধ্যমে (25 MB ফ্রি, কোনো কার্ড লাগে না)",
             "discoverLifetimeCloud": "WebDAV-এর মাধ্যমে LifetimeCloud স্টোরেজ (1 GB ফ্রি, কার্ড ছাড়া)",
+            "discoverCoritan": "Coritan Object Storage: ৬টি অঞ্চলে S3-সামঞ্জস্যপূর্ণ স্টোরেজ (10 GB বিনামূল্যে, কার্ড লাগবে না)",
             "discoverMurena": "Murena Workspace (1 GB বিনামূল্যে, Nextcloud-ভিত্তিক, EU)"
         },
         "shortcuts": {

@@ -2435,6 +2435,7 @@
             "discoverNeon": "Neon Object Storage: armazenamento compatível com S3 por ramificação de projeto (5 GB grátis por projeto)",
             "discoverPuter": "Armazenamento em nuvem Puter via WebDAV (25 MB grátis, sem cartão)",
             "discoverLifetimeCloud": "Armazenamento LifetimeCloud via WebDAV (1 GB grátis, sem cartão)",
+            "discoverCoritan": "Coritan Object Storage: armazenamento compatível com S3 em 6 regiões (10 GB grátis, sem cartão)",
             "discoverMurena": "Murena Workspace (1 GB grátis, baseado em Nextcloud, EU)"
         },
         "shortcuts": {

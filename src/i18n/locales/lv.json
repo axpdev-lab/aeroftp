@@ -2435,6 +2435,7 @@
             "discoverNeon": "Neon Object Storage: ar S3 saderīga krātuve katram projekta zaram (5 GB bez maksas par projektu)",
             "discoverPuter": "Puter mākoņdatu krātuve caur WebDAV (25 MB bez maksas, bez kartes)",
             "discoverLifetimeCloud": "LifetimeCloud krātuve, izmantojot WebDAV (1 GB bez maksas, bez kartes)",
+            "discoverCoritan": "Coritan Object Storage: ar S3 saderīga krātuve 6 reģionos (10 GB bez maksas, karte nav nepieciešama)",
             "discoverMurena": "Murena Workspace (1 GB bez maksas, Nextcloud bāzēts, EU)"
         },
         "shortcuts": {

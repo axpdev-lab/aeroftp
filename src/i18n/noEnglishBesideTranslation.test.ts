@@ -311,7 +311,7 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     'src/components/Preview/controls/WebGLVisualizer.tsx': ['GL'],
     // Provider names as logo alt text.
     'src/components/ProviderLogos.tsx': [
-        'Koofr', 'OpenDrive', 'Filebase', 'Tigris', 'Fastly', 'Neon', 'Puter', 'Yandex Disk', 'Proton Drive', 'Jianguoyun', 'PixelUnion', 'Twake Drive',
+        'Koofr', 'OpenDrive', 'Filebase', 'Tigris', 'Fastly', 'Coritan', 'Neon', 'Puter', 'Yandex Disk', 'Proton Drive', 'Jianguoyun', 'PixelUnion', 'Twake Drive',
         'DriveHQ', 'FileLu', 'Felicloud', 'S3Drive', 'Blomp', 'AWS', 'MinIO', 'Quotaless', 'Hetzner', 'ASPnix',
         'ImageKit', 'Uploadcare', 'Cloudinary', 'IBM Cloud', 'Mail.ru Cloud', 'LifetimeCloud', 'Murena',
     ],
@@ -321,7 +321,7 @@ const JSX_NEUTRAL: Record<string, string[]> = {
         'MEGA (MEGAcmd)', 'Filen', 'Internxt', 'kDrive', 'Jottacloud', 'FileLu', 'Twake Drive', 'Koofr', 'OpenDrive',
         'Yandex Disk', '4shared', 'GitHub', 'GitLab', 'Immich', 'PixelUnion', 'Google Photos', 'ImageKit',
         'Uploadcare', 'Cloudinary', 'Amazon Web Services (AWS)', 'Backblaze B2', 'Cloudflare R2', 'Wasabi',
-        'IDrive e2', 'Filebase', 'Tigris', 'Fastly Object Storage', 'Neon', 'Storj', 'DigitalOcean Spaces', 'Oracle Cloud', 'Alibaba OSS', 'Tencent COS',
+        'IDrive e2', 'Filebase', 'Tigris', 'Fastly Object Storage', 'Coritan Object Storage', 'Neon', 'Storj', 'DigitalOcean Spaces', 'Oracle Cloud', 'Alibaba OSS', 'Tencent COS',
         'FileLu S5', 'MEGA S4 Object Storage', 'MinIO', 'CloudMe', 'Puter', 'DriveHQ', 'Koofr (WebDAV)', 'Jianguoyun',
         'InfiniCloud', 'Seafile', 'FileLu WebDAV', 'Nextcloud', 'Felicloud', 'Murena Workspace', 'LifetimeCloud', 'Hetzner Storage Box', 'Blomp', 'Drime',
     ],

@@ -3000,6 +3000,8 @@ pub(crate) fn relocate_secret_kind(credential_key: &str) -> &'static str {
         "aerocrypt_overlay_config"
     } else if credential_key.starts_with("filen_api_key_") {
         "filen_api_key"
+    } else if credential_key.starts_with("aws_session_token_") {
+        "aws_session_token"
     } else if credential_key.starts_with("onedrive_drive_id_") {
         "onedrive_drive_id"
     } else if credential_key.starts_with("onedrive_drive_type_") {
@@ -4125,6 +4127,21 @@ fn mirror_into_partition(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    #[cfg(test)]
+    if PARTITION_WRITE_REFUSED.with(std::cell::Cell::get) {
+        return Err("Write credential to partition: refused".to_string());
+    }
+    mirror_into_partition_inner(conn, store, user_id, credential_id, credential_type, secret)
+}
+
+fn mirror_into_partition_inner(
+    conn: &Connection,
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
     let refused = match set_user_credential_for(
         conn,
@@ -4232,6 +4249,22 @@ pub fn resolve_credential_for_user_owner_aware(
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user_owner_aware(&conn, store, user_id, credential_id)
+}
+
+/// Read `credential_id` for a caller that captured NO active account: the
+/// legacy vault keys only, never a per-user partition, and refused with
+/// [`ACCOUNT_CHANGED`] when an account has become active by the time of the
+/// read. A switch between the capture and the read must not silently move the
+/// read into the new account's partition (the same hole as a caller that
+/// re-reads the active account at read time).
+pub fn resolve_legacy_only_credential_checked(
+    store: &CredentialStore,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    if cli_get_active_user(store)?.is_some() {
+        return Err(ACCOUNT_CHANGED.to_string());
+    }
+    resolve_credential_for_user(store, LEGACY_ONLY_ACCOUNT, credential_id)
 }
 
 /// Owners of a profile-bound credential, including a profile whose first
@@ -4538,23 +4571,34 @@ pub fn store_imported_credential_for_user(
     set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, secret)
 }
 
-/// Remove an imported credential from both the user's partition and the vault.
-/// Both deletes must succeed or the import commit stops before writing profiles.
+/// Remove an imported credential from `user_id`'s partition, and also from the
+/// shared vault unless it is a private token type owned only by a secondary
+/// account (so a secondary account never deletes the legacy owner's shared
+/// fallback). Both deletes must succeed or the import commit stops before
+/// writing profiles.
 pub fn delete_imported_credential_for_user(
     store: &CredentialStore,
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
-    let before_vault = get_optional_secret(store, credential_id)?;
+    let private_only =
+        private_token_user(Some(user_id), relocate_secret_kind(credential_id))?.is_some();
+    let before_vault = if private_only {
+        None
+    } else {
+        get_optional_secret(store, credential_id)?
+    };
     let mut conn = open_or_init_cli()?;
     let _session = hold_user_session(&conn, user_id);
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential delete: {e}"))?;
     delete_user_credential_for(&tx, user_id, credential_id)?;
-    store
-        .delete(credential_id)
-        .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    if !private_only {
+        store
+            .delete(credential_id)
+            .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    }
     if let Err(e) = tx.commit() {
         let cause = format!("Commit credential delete: {e}");
         if let Some(prev) = before_vault {
@@ -4648,12 +4692,47 @@ pub fn restore_credential_op_for_user(
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential restore: {e}"))?;
-    let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
-    let vault = get_optional_secret(store, credential_id)?;
+    let effective_kind = credential_type.unwrap_or_else(|| relocate_secret_kind(credential_id));
+    let private_only = private_token_user(Some(user_id), effective_kind)?.is_some();
     let write_op = if written_delete {
         SecretWrite::delete(credential_id.to_string(), None)
     } else {
         SecretWrite::new(credential_id.to_string(), None, written)
+    };
+    let partition = match get_user_credential_for(&tx, &root_key, user_id, credential_id) {
+        Ok(value) => value,
+        Err(partition_err) => {
+            // Session lost after the snapshot: the partition cannot be read or
+            // restored now, but the shared vault does not need the partition DEK
+            // and must not keep the new value. Restore the vault slot from the
+            // snapshot, then report the partition failure alongside it. The
+            // transaction rolls back on drop; nothing was written to it.
+            drop(tx);
+            if !private_only {
+                let vault = get_optional_secret(store, credential_id)?;
+                match rollback_action_for_write(
+                    vault.as_ref().map(|v| v.as_str()),
+                    &write_op,
+                    before.vault.as_ref().map(|v| v.as_str()),
+                ) {
+                    RollbackAction::Leave => {}
+                    RollbackAction::Restore(value) => store
+                        .store(credential_id, value)
+                        .map_err(|e| format!("Restore credential in vault: {e}"))?,
+                    RollbackAction::Delete => store
+                        .delete(credential_id)
+                        .map_err(|e| format!("Delete credential from vault: {e}"))?,
+                }
+            }
+            return Err(format!(
+                "Restore credential in partition: {partition_err}; the shared vault slot was restored from the snapshot"
+            ));
+        }
+    };
+    let vault = if private_only {
+        None
+    } else {
+        get_optional_secret(store, credential_id)?
     };
     // The partition first: until the commit it can still go back by itself, so a
     // failure here or in the vault leaves both places holding what they held.
@@ -4675,11 +4754,15 @@ pub fn restore_credential_op_for_user(
         }
         RollbackAction::Delete => delete_user_credential_for(&tx, user_id, credential_id)?,
     }
-    let vault_action = rollback_action_for_write(
-        vault.as_ref().map(|v| v.as_str()),
-        &write_op,
-        before.vault.as_ref().map(|v| v.as_str()),
-    );
+    let vault_action = if private_only {
+        RollbackAction::Leave
+    } else {
+        rollback_action_for_write(
+            vault.as_ref().map(|v| v.as_str()),
+            &write_op,
+            before.vault.as_ref().map(|v| v.as_str()),
+        )
+    };
     let vault_changed = vault_action != RollbackAction::Leave;
     match vault_action {
         RollbackAction::Leave => {}
@@ -4758,6 +4841,9 @@ fn unmirror_deleted_credential(user_id: i64, credential_id: &str) -> Result<(), 
 thread_local! {
     /// The partition refuses the delete of a refresh chain.
     pub(crate) static PARTITION_DELETE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// The partition mirror refuses the write of a credential, simulating a
+    /// dual write that fails halfway (vault written, partition not).
+    pub(crate) static PARTITION_WRITE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// [`delete_active_credential_dual`] with the account lookup and the unmirror
@@ -4869,9 +4955,9 @@ pub fn unmirror_active_credential(credential_id: &str) {
     }
 }
 
-/// Token types that belong to one user only: OAuth tokens and Jottacloud
-/// refresh chains.
-const PRIVATE_TOKEN_TYPES: [&str; 2] = ["oauth", "jottacloud_refresh"];
+/// Token types that belong to one user only: OAuth tokens, Jottacloud
+/// refresh chains, and AWS STS session tokens.
+const PRIVATE_TOKEN_TYPES: [&str; 3] = ["oauth", "jottacloud_refresh", "aws_session_token"];
 
 /// The user whose tokens of `credential_type` must stay in its own partition:
 /// anyone but the legacy owner. Written to the shared vault, a token would be

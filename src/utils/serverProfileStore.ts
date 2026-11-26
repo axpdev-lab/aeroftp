@@ -36,6 +36,26 @@ const canUseLegacyProfileFallback = (error: unknown): boolean => {
     );
 };
 
+/**
+ * A CONFIRMED legacy store is one the backend says has no accounts
+ * (NO_ACTIVE_USER) or an old backend without the partition commands
+ * (`unknown command` / `not found` / `failed to invoke` / missing Tauri
+ * internals). Anything else is UNAVAILABLE, not legacy: STORE_NOT_READY and
+ * USER_LOCKED mean the active account's partition could not be read, so an
+ * account-aware read that falls back on them would silently return a legacy
+ * list with no `userId` even though an active account exists.
+ */
+export const isConfirmedLegacyProfileFallback = (error: unknown): boolean => {
+    const message = String(error ?? '');
+    return (
+        message.includes('NO_ACTIVE_USER') ||
+        message.includes('unknown command') ||
+        message.includes('not found') ||
+        message.includes('failed to invoke') ||
+        message.includes('window.__TAURI_INTERNALS__')
+    );
+};
+
 const loadLegacySavedServerProfiles = async (): Promise<ServerProfile[]> => {
     const vaultProfiles = await secureGet<ServerProfile[]>(SAVED_SERVERS_ACCOUNT);
     if (vaultProfiles !== null) return vaultProfiles;
@@ -123,6 +143,30 @@ export const loadSavedServerProfilesStrict = async (): Promise<ServerProfile[]> 
 };
 
 /**
+ * `loadSavedServerProfiles` plus the account the list was read under, captured
+ * in the SAME read. An export sends `userId` with its `serversJson`, and the
+ * backend refuses the export (ACCOUNT_CHANGED, no file written) when the
+ * active account changed since that read, so one account's profile metadata
+ * can never be paired with another account's secrets. `userId` is absent for
+ * a pre-multi-user install, whose list comes from the legacy store.
+ */
+export const loadSavedServerProfilesWithAccount = async (): Promise<SavedProfilesRead> => {
+    try {
+        await seedLegacyLocalProfilesForPartitionMigration();
+        const scoped = await loadActiveServerProfilesScoped();
+        return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
+    } catch (error) {
+        // Only a CONFIRMED legacy store falls back: STORE_NOT_READY / USER_LOCKED
+        // are unavailable reads, and returning the legacy list with no userId
+        // would pair it with an active account that exists after all.
+        if (!isConfirmedLegacyProfileFallback(error)) {
+            throw error;
+        }
+        return { profiles: await loadLegacySavedServerProfiles() };
+    }
+};
+
+/**
  * A saved-profile list read for a read-modify-write, with the account it was
  * read from. `userId` is absent when the list came from the legacy store,
  * which has no accounts.
@@ -155,7 +199,15 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
         const scoped = await loadActiveServerProfilesScoped();
         return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
     } catch (error) {
-        if (!canUseLegacyProfileFallback(error)) throw error;
+        // A CONFIRMED legacy store is one the backend says has no accounts
+        // (NO_ACTIVE_USER) or an old backend without the partition commands.
+        // An owner read that failed for any other reason (vault locked,
+        // partition unreachable: STORE_NOT_READY, USER_LOCKED) is UNAVAILABLE,
+        // not legacy: returning it with no userId would let a write proceed as
+        // if the legacy store were confirmed and later trip a false
+        // account-changed refusal. It throws instead: the caller reports a
+        // retryable failure and nothing is written.
+        if (!isConfirmedLegacyProfileFallback(error)) throw error;
         const legacy = await loadLegacySavedServerProfiles();
         if (legacy.length > 0) return { profiles: legacy, revision: LEGACY_STORE_REVISION + JSON.stringify(legacy) };
         throw error;
@@ -340,6 +392,33 @@ export const reloadRestoredServerProfiles = async (): Promise<ServerProfile[]> =
     const profiles = await loadSavedServerProfilesStrict();
     announceStoredServerProfiles(profiles, accountBefore);
     return profiles;
+};
+
+/**
+ * [`reloadRestoredServerProfiles`] plus the account the list was read under, in
+ * the SAME read, so a view can store the pair as one coherent snapshot: the
+ * list and its account never come from two reads that an account switch could
+ * have split. Strict like the list-only reload: an unreachable partition is a
+ * failure, not an empty list.
+ */
+export const reloadRestoredServerProfilesWithAccount = async (): Promise<SavedProfilesRead> => {
+    const accountBefore = accountChangeGeneration();
+    try {
+        await seedLegacyLocalProfilesForPartitionMigration();
+        const scoped = await loadActiveServerProfilesScoped();
+        announceStoredServerProfiles(scoped.profiles, accountBefore);
+        return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
+    } catch (error) {
+        // Only a CONFIRMED legacy store falls back here too: STORE_NOT_READY /
+        // USER_LOCKED are unavailable reads, not a legacy answer.
+        if (!isConfirmedLegacyProfileFallback(error)) {
+            throw error;
+        }
+        const legacy = await loadLegacySavedServerProfiles();
+        if (legacy.length === 0 && !String(error ?? '').includes('NO_ACTIVE_USER')) throw error;
+        announceStoredServerProfiles(legacy, accountBefore);
+        return { profiles: legacy };
+    }
 };
 
 /**

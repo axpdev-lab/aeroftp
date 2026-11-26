@@ -2435,6 +2435,7 @@
             "discoverNeon": "Neon Object Storage: S3-compatibele opslag per projectbranch (5 GB gratis per project)",
             "discoverPuter": "Puter-cloudopslag via WebDAV (25 MB gratis, zonder kaart)",
             "discoverLifetimeCloud": "LifetimeCloud-opslag via WebDAV (1 GB gratis, geen kaart)",
+            "discoverCoritan": "Coritan Object Storage: S3-compatibele opslag in 6 regio's (10 GB gratis, geen kaart vereist)",
             "discoverMurena": "Murena Workspace (1 GB gratis, Nextcloud-gebaseerd, EU)"
         },
         "shortcuts": {

@@ -720,6 +720,31 @@
     ]
   },
   {
+    "company": "Coritan",
+    "logoId": "coritan",
+    "country": "US",
+    "freeGb": 10,
+    "freeNote": null,
+    "freeRequiresCard": false,
+    "regions": [
+      "DE",
+      "GB",
+      "US",
+      "SG",
+      "IN"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "coritan",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "IBM Cloud Object Storage",
     "logoId": "ibm-cos",
     "country": "US",
