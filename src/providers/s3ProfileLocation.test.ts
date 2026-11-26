@@ -148,6 +148,14 @@ describe('signing region read back from an explicit endpoint', () => {
         ['fastly', 'eu-central-1.object.fastlystorage.app', 'eu-central-1'],
         ['fastly', 'https://JP-CENTRAL-1.object.fastlystorage.app:443', 'jp-central-1'],
         ['fastly', 'https://bucket.eu-west-1.object.fastlystorage.app', undefined],
+        // Coritan: the template carries a port, and the endpoint may carry
+        // it, a path, or neither. A bucket subdomain is not a region.
+        ['coritan', 'https://s3.sin.coritan.com:7337', 'sin'],
+        ['coritan', 's3.lhr.coritan.com:7337/bucket', 'lhr'],
+        ['coritan', 'https://S3.BOM.coritan.com', 'bom'],
+        ['coritan', 'https://bucket.s3.fra.coritan.com:7337', undefined],
+        // Read as Rust reads it: a Kelvin sign is not ASCII and does not fold to `k`.
+        ['coritan', 'https://s3.fra\u212a.coritan.com:7337', undefined],
     ];
     it.each(cases)('%s %s -> %s', (preset, endpoint, readBack) => {
         // Through both explicit forms: stored endpoint option and host. A host

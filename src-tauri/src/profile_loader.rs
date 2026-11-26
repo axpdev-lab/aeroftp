@@ -617,17 +617,22 @@ fn region_from_s3_template(template: &str, endpoint: &str) -> Option<String> {
             })
             .map_or(value, |scheme| &value[scheme.len()..])
     }
-    let template = without_scheme(template);
+    // The host alone, of the template as of the endpoint: a template that
+    // names its port (`s3.{region}.coritan.com:7337`) kept the port in its
+    // suffix while the endpoint's port was cut, so no endpoint ever matched.
+    fn host_of(value: &str) -> Option<&str> {
+        without_scheme(value.trim())
+            .split(['/', '?', '#'])
+            .next()?
+            .split(':')
+            .next()
+    }
+    let template = host_of(template)?;
     let (prefix, suffix) = template.split_once("{region}")?;
     if prefix.contains('{') || suffix.contains('{') {
         return None;
     }
-    let host = without_scheme(endpoint.trim())
-        .split(['/', '?', '#'])
-        .next()?
-        .split(':')
-        .next()?
-        .to_ascii_lowercase();
+    let host = host_of(endpoint)?.to_ascii_lowercase();
     let region = host.strip_prefix(prefix)?.strip_suffix(suffix)?;
     // Labels a vendor puts where the region goes that are not one (Greptile on
     // #1525): an internal endpoint (`oss-cn-hangzhou-internal.aliyuncs.com`)
@@ -1074,6 +1079,36 @@ mod tests {
     }
 
     #[test]
+    fn coritan_preset_resolves_region_path_style_and_endpoint_with_port() {
+        // Coritan: `https://s3.{region}.coritan.com:7337`, path-style,
+        // Frankfurt by default. The port is part of the template, and an
+        // endpoint with that port still gives its region back.
+        let mut extra = HashMap::new();
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("coritan"), "");
+        assert_eq!(endpoint.as_deref(), Some("https://s3.fra.coritan.com:7337"));
+        assert_eq!(extra.get("region").map(String::as_str), Some("fra"));
+        assert_eq!(extra.get("path_style").map(String::as_str), Some("true"));
+
+        let mut explicit = HashMap::new();
+        explicit.insert("region".to_string(), "sin".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut explicit, Some("coritan"), "");
+        assert_eq!(endpoint.as_deref(), Some("https://s3.sin.coritan.com:7337"));
+
+        // A profile that stores only the endpoint signs for its region.
+        let mut imported = HashMap::new();
+        apply_s3_profile_defaults(
+            &mut imported,
+            Some("coritan"),
+            "https://s3.lhr.coritan.com:7337",
+        );
+        assert_eq!(imported.get("region").map(String::as_str), Some("lhr"));
+        assert_eq!(
+            imported.get(S3_REGION_SOURCE_META_KEY).map(String::as_str),
+            Some("endpoint")
+        );
+    }
+
+    #[test]
     fn tigris_preset_resolves_static_endpoint_auto_region_and_virtual_host() {
         // Static endpoint, no template: the manifest default is the only
         // source, region is the fixed `auto`, addressing is virtual-host.
@@ -1313,6 +1348,15 @@ mod tests {
                 "HTTPS://s3.eu-central-2.wasabisys.com",
                 Some("eu-central-2"),
             ),
+            // Coritan: the template carries a port, and the endpoint may carry
+            // it, a path, or neither. A bucket subdomain is not a region.
+            ("coritan", "https://s3.sin.coritan.com:7337", Some("sin")),
+            ("coritan", "s3.lhr.coritan.com:7337/bucket", Some("lhr")),
+            ("coritan", "https://S3.BOM.coritan.com", Some("bom")),
+            ("coritan", "https://bucket.s3.fra.coritan.com:7337", None),
+            // Same table as the TS side: a Kelvin sign is not ASCII and does
+            // not fold to `k`.
+            ("coritan", "https://s3.fra\u{212a}.coritan.com:7337", None),
         ] {
             assert_eq!(
                 s3_region_from_endpoint(preset, endpoint).as_deref(),

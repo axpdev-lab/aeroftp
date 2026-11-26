@@ -1329,9 +1329,13 @@ fn map_remote(
             // whose own default (and the preset's) is `auto`, and on Fastly,
             // where the region is the label of the endpoint host (the signing
             // region must equal it) and the preset's default is `eu-central-1`.
+            // Coritan has no rclone token, so its remote is `Other` with the
+            // endpoint: the region is the endpoint's label, else the preset's,
+            // never an `us-east-1` its region list does not hold.
             let region = match get_str("region") {
                 Some(region)
-                    if !matches!(provider_id, "tigris" | "fastly") || !region.trim().is_empty() =>
+                    if !matches!(provider_id, "tigris" | "fastly" | "coritan")
+                        || !region.trim().is_empty() =>
                 {
                     region.to_string()
                 }
@@ -1340,14 +1344,24 @@ fn map_remote(
                     crate::profile_loader::s3_region_from_endpoint("fastly", &endpoint)
                         .unwrap_or_else(|| "eu-central-1".to_string())
                 }
+                _ if provider_id == "coritan" => {
+                    let mut preset = HashMap::new();
+                    crate::profile_loader::apply_s3_profile_defaults(
+                        &mut preset,
+                        Some("coritan"),
+                        &endpoint,
+                    );
+                    preset
+                        .remove("region")
+                        .unwrap_or_else(|| "us-east-1".to_string())
+                }
                 _ => "us-east-1".to_string(),
             };
 
             // Build S3 endpoint host
             let host = if !endpoint.is_empty() {
-                endpoint
-                    .trim_start_matches("https://")
-                    .trim_start_matches("http://")
+                http_scheme_of(&endpoint)
+                    .map_or(endpoint.as_str(), |(_, rest)| rest)
                     .trim_end_matches('/')
                     .to_string()
             } else if provider_id == "amazon-s3" {
@@ -1373,7 +1387,13 @@ fn map_remote(
             options.insert("region".into(), serde_json::Value::String(region));
             if let Some(ep) = get_str("endpoint") {
                 if !ep.is_empty() {
-                    options.insert("endpoint".into(), serde_json::Value::String(ep.to_string()));
+                    // A scheme in any case is stored lowercase: the S3 client
+                    // strips only `https://` / `http://` for virtual-hosted URLs.
+                    let ep = http_scheme_of(ep).map_or_else(
+                        || ep.to_string(),
+                        |(scheme, rest)| format!("{scheme}{rest}"),
+                    );
+                    options.insert("endpoint".into(), serde_json::Value::String(ep));
                 }
             }
             // Path-style access (common for non-AWS)
@@ -2674,6 +2694,28 @@ enum AuthorityPrefix<'a> {
 /// Split an RFC 3986 scheme prefix (`scheme://`) or scheme-relative `//` off
 /// an authority-bearing URL/host string so userinfo detection and WebDAV URL
 /// parsing share the exact same scheme/authority boundary rules.
+/// `raw` split at an `http://` or `https://` scheme written in any case: the
+/// scheme lowercased, the rest as written. `None` when it names neither.
+/// Import and export read schemes through this one helper, so
+/// `HTTPS://S3.IAD.CORITAN.COM:7337` is neither kept in a host nor given a
+/// second scheme.
+fn http_scheme_of(raw: &str) -> Option<(&'static str, &str)> {
+    ["https://", "http://"].into_iter().find_map(|scheme| {
+        raw.get(..scheme.len())
+            .filter(|head| head.eq_ignore_ascii_case(scheme))
+            .map(|_| (scheme, &raw[scheme.len()..]))
+    })
+}
+
+/// `raw` as an http(s) URL: a scheme in any case is written lowercase, a bare
+/// host is given `https://`.
+fn with_http_scheme(raw: &str) -> String {
+    match http_scheme_of(raw) {
+        Some((scheme, rest)) => format!("{scheme}{rest}"),
+        None => format!("https://{raw}"),
+    }
+}
+
 fn split_authority_prefix(trimmed: &str) -> AuthorityPrefix<'_> {
     if let Some(pos) = trimmed.find("://") {
         let scheme = &trimmed[..pos];
@@ -4662,8 +4704,8 @@ fn imagekit_public_key(options: Option<&serde_json::Value>) -> Option<&str> {
 /// bare id lives under `ik.imagekit.io`.
 fn imagekit_rclone_endpoint(id: &str) -> String {
     let id = id.trim().trim_end_matches('/');
-    if id.starts_with("https://") || id.starts_with("http://") {
-        id.to_string()
+    if http_scheme_of(id).is_some() {
+        with_http_scheme(id)
     } else {
         format!("https://ik.imagekit.io/{}", id.trim_start_matches('/'))
     }
@@ -4757,13 +4799,7 @@ fn swift_auth_url(server: &RcloneExportServer) -> Option<String> {
     if raw.is_empty() {
         return None;
     }
-    Some(
-        if raw.starts_with("http://") || raw.starts_with("https://") {
-            raw.to_string()
-        } else {
-            format!("https://{raw}")
-        },
-    )
+    Some(with_http_scheme(raw))
 }
 
 /// Whether a Swift profile is Blomp: its preset id, or an auth host under
@@ -5965,13 +6001,7 @@ pub fn export_rclone(
                 });
 
                 if let Some(endpoint) = resolved_endpoint {
-                    let endpoint = endpoint.trim_end_matches('/');
-                    let endpoint =
-                        if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
-                            endpoint.to_string()
-                        } else {
-                            format!("https://{}", endpoint)
-                        };
+                    let endpoint = with_http_scheme(endpoint.trim_end_matches('/'));
                     body.push_str(&format!("endpoint = {}\n", endpoint));
 
                     // Local self-signed bridges (Filen Desktop S3 at
@@ -6007,7 +6037,7 @@ pub fn export_rclone(
                 // The Fastly provider already implies path-style, but the choice
                 // is written out so an older profile and a newer rclone agree;
                 // a stored choice wins.
-                if let Some(region) = fastly_region {
+                if let Some(region) = &fastly_region {
                     if !region_written {
                         body.push_str(&format!("region = {region}\n"));
                     }
@@ -6015,6 +6045,17 @@ pub fn export_rclone(
                         "force_path_style = {}\n",
                         path_style_option.unwrap_or(true)
                     ));
+                }
+
+                // rclone defaults `force_path_style` to true, so a profile of
+                // any other provider (Coritan, generic S3) that stored
+                // virtual-host addressing says so, or the round trip turns
+                // it back into path-style.
+                if provider_id != "tigris"
+                    && fastly_region.is_none()
+                    && path_style_option == Some(false)
+                {
+                    body.push_str("force_path_style = false\n");
                 }
 
                 // Bucket reconciliation. The s3 backend has no `bucket` config
@@ -6080,7 +6121,8 @@ pub fn export_rclone(
                 // certain WebDAV presets. In that case we MUST NOT prepend
                 // another scheme or the URL becomes `https://https://...`
                 // and rclone refuses to dial.
-                let url = if host.starts_with("http://") || host.starts_with("https://") {
+                let url = if http_scheme_of(host).is_some() {
+                    let host = with_http_scheme(host);
                     if effective_base.is_empty() && raw_host.ends_with('/') {
                         format!("{}/", host)
                     } else {
@@ -9666,6 +9708,153 @@ endpoint = https://s3.filebase.io
             .find(|s| s.name == "plain-custom")
             .expect("plain-custom remote");
         assert_eq!(plain.provider_id.as_deref(), Some("custom-s3"));
+    }
+
+    #[test]
+    fn test_import_rclone_coritan_remote_takes_the_region_of_its_endpoint() {
+        use std::io::Write;
+        // rclone has no Coritan token: the remote is `Other` with the endpoint
+        // and its port. The host map names the preset, and a missing or blank
+        // region is read from the endpoint, never left at `us-east-1`.
+        let conf = r#"
+[coritan-no-region]
+type = s3
+provider = Other
+access_key_id = AK
+secret_access_key = SK
+endpoint = https://s3.sin.coritan.com:7337
+force_path_style = true
+
+[coritan-blank-region]
+type = s3
+provider = Other
+access_key_id = AK
+secret_access_key = SK
+endpoint = s3.bom.coritan.com:7337
+region =
+
+[coritan-stored-region]
+type = s3
+provider = Other
+access_key_id = AK
+secret_access_key = SK
+endpoint = https://s3.lhr.coritan.com:7337
+region = custom-stored
+"#;
+        let tmp = std::env::temp_dir().join("aeroftp-test-rclone-coritan.conf");
+        {
+            let mut f = std::fs::File::create(&tmp).unwrap();
+            f.write_all(conf.as_bytes()).unwrap();
+        }
+        let result = import_rclone(&tmp).expect("should parse");
+        std::fs::remove_file(&tmp).ok();
+        for (name, region) in [
+            ("coritan-no-region", "sin"),
+            ("coritan-blank-region", "bom"),
+            // A stored region that differs from the endpoint's survives.
+            ("coritan-stored-region", "custom-stored"),
+        ] {
+            let server = result
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("{name} remote"));
+            assert_eq!(server.provider_id.as_deref(), Some("coritan"), "{name}");
+            let options = server.options.as_ref().expect("options");
+            assert_eq!(
+                options.get("region").and_then(|v| v.as_str()),
+                Some(region),
+                "{name}"
+            );
+            assert_eq!(
+                options.get("pathStyle").and_then(|v| v.as_bool()),
+                Some(true),
+                "{name}"
+            );
+        }
+    }
+
+    /// A Coritan remote whose endpoint scheme is written in capitals keeps
+    /// one scheme, its authority, the port, the preset and the region across
+    /// import, export and import, and a stored virtual-host addressing choice
+    /// survives the export, where rclone's default would turn it path-style.
+    #[test]
+    fn a_coritan_remote_round_trips_with_its_scheme_and_addressing() {
+        let conf = "[upper]\ntype = s3\nprovider = Other\naccess_key_id = AK\n\
+                    secret_access_key = SK\nendpoint = HTTPS://S3.IAD.CORITAN.COM:7337\n\n\
+                    [vhost]\ntype = s3\nprovider = Other\naccess_key_id = AK\n\
+                    secret_access_key = SK\nendpoint = https://s3.fra.coritan.com:7337\n\
+                    force_path_style = false\n";
+        let import = |conf: &str, tag: &str| {
+            let path = tmp_write(
+                conf,
+                &format!("aeroftp-test-coritan-{tag}-{}.conf", std::process::id()),
+            );
+            let result = import_rclone(&path).expect("import");
+            std::fs::remove_file(&path).ok();
+            result
+        };
+        let first = import(conf, "first");
+        let servers: Vec<RcloneExportServer> = first
+            .servers
+            .iter()
+            .map(|s| RcloneExportServer {
+                id: s.name.clone(),
+                name: s.name.clone(),
+                host: s.host.clone(),
+                port: s.port,
+                username: s.username.clone(),
+                protocol: s.protocol.clone(),
+                options: s.options.clone(),
+                provider_id: s.provider_id.clone(),
+            })
+            .collect();
+        let upper_in = first
+            .servers
+            .iter()
+            .find(|s| s.name == "upper")
+            .expect("upper");
+        assert_eq!(
+            upper_in.options.as_ref().and_then(|o| o.get("endpoint")),
+            Some(&serde_json::json!("https://S3.IAD.CORITAN.COM:7337"))
+        );
+        let (_, exported) = export_to_string(&servers, "coritan-round-trip");
+        let upper = section_of(&exported, "upper");
+        assert!(
+            upper.contains("endpoint = https://S3.IAD.CORITAN.COM:7337\n"),
+            "{exported}"
+        );
+        assert!(!exported.contains("https://HTTPS://"), "{exported}");
+        assert!(
+            section_of(&exported, "vhost").contains("force_path_style = false\n"),
+            "{exported}"
+        );
+        let second = import(&exported, "second");
+        for (name, region, path_style) in [("upper", "iad", true), ("vhost", "fra", false)] {
+            let back = second.servers.iter().find(|s| s.name == name).expect(name);
+            assert_eq!(back.provider_id.as_deref(), Some("coritan"), "{name}");
+            let options = back.options.as_ref().expect("options");
+            assert_eq!(
+                options.get("region").and_then(|v| v.as_str()),
+                Some(region),
+                "{name}"
+            );
+            assert_eq!(
+                options.get("pathStyle").and_then(|v| v.as_bool()),
+                Some(path_style),
+                "{name}"
+            );
+            assert!(
+                back.host.to_ascii_lowercase().contains(":7337"),
+                "{name}: {}",
+                back.host
+            );
+            assert!(
+                !back.host.to_ascii_lowercase().starts_with("https"),
+                "{name}: {}",
+                back.host
+            );
+        }
     }
 
     #[test]

@@ -25403,6 +25403,36 @@ mod tests {
     }
 
     #[test]
+    fn test_s3_provider_params_coritan_fetch_resolves_endpoint_with_port() {
+        // Coritan serves S3 on port 7337 only (443 is closed, Tier 0
+        // 2026-11-16): a Fetch with no endpoint gets the template host with
+        // that port, path-style, and the region it picked as signing region.
+        let coritan = |region: Option<&str>| {
+            let mut params = s3_params(None);
+            params.server = String::new();
+            params.port = None;
+            params.provider_id = Some("coritan".to_string());
+            params.region = region.map(String::from);
+            params.endpoint = None;
+            params.to_provider_config().unwrap()
+        };
+        for (region, host, signing) in [
+            (None, "https://s3.fra.coritan.com:7337", "fra"),
+            (Some("bom"), "https://s3.bom.coritan.com:7337", "bom"),
+        ] {
+            let config = coritan(region);
+            assert_eq!(
+                config.extra.get("endpoint").map(String::as_str),
+                Some(host),
+                "{region:?}"
+            );
+            let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
+            assert_eq!(s3.region, signing);
+            assert!(s3.path_style, "{region:?}");
+        }
+    }
+
+    #[test]
     fn test_s3_provider_params_absent_session_token() {
         let config = s3_params(None).to_provider_config().unwrap();
         assert!(!config.extra.contains_key("session_token"));

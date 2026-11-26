@@ -155,6 +155,17 @@ export const TigrisLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// Coritan: PNG brand mark, rendered as img like Fastly
+export const CoritanLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/coritan.png"
+        alt="Coritan"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // Fastly: PNG brand mark, rendered as img like Filebase and Tigris
 export const FastlyLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
@@ -648,6 +659,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'fastly': FastlyLogo,
     'neon': NeonLogo,
     'neon-s3': NeonLogo,
+    'coritan': CoritanLogo,
     'nextcloud': NextcloudLogo,
     'koofr': KoofrLogo,
     'opendrive': OpenDriveLogo,

@@ -521,6 +521,27 @@ describe('storageDedup', () => {
         expect(getStorageDedupKey(profiles[0])).toBe(getStorageDedupKey(profiles[1]));
     });
 
+    it('case 4e2: Coritan same access key in two regions counts one drive', () => {
+        // A Coritan access key is account-wide; the region is only the host label.
+        const profiles = [
+            make({
+                id: 'c1', protocol: 's3', providerId: 'coritan',
+                host: 'https://s3.fra.coritan.com:7337', port: 7337,
+                username: 'CORITANEXAMPLEKEY',
+                used: 1_000_000_000, total: 5_000_000_000,
+            }),
+            make({
+                id: 'c2', protocol: 's3', providerId: 'coritan',
+                host: 'https://s3.sin.coritan.com:7337', port: 7337,
+                username: 'CORITANEXAMPLEKEY',
+                used: 2_000_000_000, total: 5_000_000_000,
+            }),
+        ];
+        expect(aggregateByDedupKey(profiles).uniqueCount).toBe(1);
+        expect(getStorageDedupKey(profiles[0]).startsWith('s3:coritan:')).toBe(true);
+        expect(getStorageDedupKey(profiles[0])).toBe(getStorageDedupKey(profiles[1]));
+    });
+
     it('case 4f: a stored preset alias keys like its preset (counted once)', () => {
         // fastly-object-storage, backblaze-b2 and azure-blob are manifest
         // aliases: an old or hand-edited profile may carry them.

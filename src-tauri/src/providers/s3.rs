@@ -728,6 +728,12 @@ pub struct S3Provider {
     /// A GET of one of them can 404 until `rclone serve s3` finishes its
     /// write-back. Shared across clones of this provider.
     recent_markerless_uploads: Arc<std::sync::Mutex<HashMap<String, tokio::time::Instant>>>,
+    /// Marker sources whose refused CopyObject fell back to a marker PUT,
+    /// each with the ETag the validating HEAD named. A rename deletes such
+    /// a source only with that ETag as `If-Match`, so content written to the
+    /// source after the validation is refused (412) and preserved instead
+    /// of deleted uncopied.
+    marker_source_validations: HashMap<String, String>,
     #[cfg(test)]
     baseline_test_path: Option<PathBuf>,
     config: S3Config,
@@ -854,6 +860,36 @@ const TIGRIS_RENAME_UNKNOWN: u8 = 0;
 const TIGRIS_RENAME_HONORED: u8 = 1;
 /// The header was refused or ignored: renames use copy and delete.
 const TIGRIS_RENAME_REFUSED: u8 = 2;
+
+/// Whether a failed CopyObject is the one a filesystem-backed server gives
+/// for a folder marker: a source and a destination that are both markers
+/// (`folder/`), a source the caller just found with 0 bytes, and the answer
+/// 404 NoSuchKey. Coritan answers so for every key ending in `/`; anything
+/// else (another status, another code, a marker with content) is a real
+/// failure.
+fn marker_copy_refused_as_missing(
+    from_key: &str,
+    to_key: &str,
+    source_size: u64,
+    failure: &CopyFailure,
+) -> bool {
+    from_key.ends_with('/')
+        && to_key.ends_with('/')
+        && source_size == 0
+        && failure.status == Some(StatusCode::NOT_FOUND)
+        && failure.code.as_deref() == Some("NoSuchKey")
+}
+
+/// The `host` a presigned URL is signed for: what an HTTP client sends for
+/// it, the host and, when the URL names a port other than its scheme's
+/// default, that port (`url` reports no port for the default one).
+fn presigned_host(url: &url::Url) -> String {
+    let host = url.host_str().unwrap_or("");
+    match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_string(),
+    }
+}
 
 /// A single CopyObject that failed, with what the caller needs to tell a
 /// refusal of a request header from every other failure: the HTTP status the
@@ -994,6 +1030,46 @@ fn endpoint_has_userinfo(endpoint: &str) -> bool {
             .unwrap_or("")
             .contains('@'),
     }
+}
+
+/// Whether a reply names a length of exactly 0. A missing or unreadable
+/// `Content-Length` names nothing, so it proves no object empty.
+fn names_zero_length(headers: &reqwest::header::HeaderMap) -> bool {
+    headers
+        .get(reqwest::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.trim() == "0")
+}
+
+/// A single strong ETag: the value is one quoted string, `"..."`, whose
+/// inner part is non-empty, holds no further quote and no control
+/// characters. `If-Match` compares strong tags only, so a weak tag
+/// (`W/"..."`), an empty tag (`""`), a lone quote and a header that lists
+/// several tags (`"a", "b"`) are all rejected: none of them names exactly
+/// the one object the validating HEAD saw.
+fn is_single_strong_etag(value: &str) -> bool {
+    let Some(inner) = value
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+    else {
+        return false;
+    };
+    !inner.is_empty() && !inner.contains('"') && !inner.chars().any(|c| c.is_control())
+}
+
+/// The one strong ETag the headers name, verbatim (quotes included), or
+/// `None` when there is none or more than one `ETag` field. `HeaderMap::get`
+/// reads only the first field and ignores a repeated one; a repeated field
+/// does not name a single revision, so no marker PUT and no conditional
+/// delete may be bound to it.
+fn single_strong_etag(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    let mut fields = headers.get_all(reqwest::header::ETAG).iter();
+    let first = fields.next()?;
+    if fields.next().is_some() {
+        return None;
+    }
+    let value = first.to_str().ok()?;
+    is_single_strong_etag(value).then(|| value.to_string())
 }
 
 impl S3Provider {
@@ -1295,6 +1371,7 @@ impl S3Provider {
             connected: false,
             multipart_baselines: Arc::new(std::sync::Mutex::new(HashMap::new())),
             recent_markerless_uploads: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            marker_source_validations: HashMap::new(),
             #[cfg(test)]
             baseline_test_path: None,
             clock_offset_secs: 0,
@@ -2424,9 +2501,140 @@ impl S3Provider {
         }
     }
 
+    /// Write the zero-byte folder marker `marker` (`<folder>/`), tagged
+    /// `application/x-directory`: what `mkdir` writes, and what a folder copy
+    /// writes when the backend cannot copy a marker.
+    async fn put_folder_marker(&mut self, marker: &str) -> Result<(), ProviderError> {
+        let response = self
+            .s3_request_ext(
+                Method::PUT,
+                marker,
+                None,
+                None,
+                &[("content-type", S3_DIRECTORY_CONTENT_TYPE)],
+            )
+            .await?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
+            status => Err(ProviderError::ServerError(format!(
+                "mkdir marker PUT failed with status: {}",
+                status
+            ))),
+        }
+    }
+
+    /// The fallback marker PUT for a refused CopyObject: the same zero-byte
+    /// body as [`Self::put_folder_marker`], but signed with the copy
+    /// operation's configured upload headers (SSE-KMS and key id, storage
+    /// class, ACL), so a bucket policy that requires them accepts the
+    /// marker too. `mkdir` keeps the plain marker PUT.
+    async fn put_folder_marker_as_copy(&mut self, marker: &str) -> Result<(), ProviderError> {
+        let mut headers = HashMap::new();
+        self.append_upload_headers(&mut headers);
+        headers.insert(
+            "content-type".to_string(),
+            S3_DIRECTORY_CONTENT_TYPE.to_string(),
+        );
+        let extra: Vec<(&str, &str)> = headers
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let response = self
+            .s3_request_ext(Method::PUT, marker, None, None, &extra)
+            .await?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
+            status => Err(ProviderError::ServerError(format!(
+                "marker copy PUT failed with status: {}",
+                status
+            ))),
+        }
+    }
+
+    /// The ETag a HEAD names for `key` when the object exists and its
+    /// `Content-Length` is named as exactly 0: the proof a folder marker is
+    /// empty. [`Self::stat`] reads a missing or unreadable length as 0, which
+    /// proves nothing about the data the object holds, so a length that is
+    /// not named 0 yields `None`. `If-Match` compares strong tags only, so a
+    /// weak or missing ETag yields `None` too: without it no delete can be
+    /// bound to this validation.
+    async fn empty_marker_etag(&mut self, key: &str) -> Option<String> {
+        match self.s3_request(Method::HEAD, key, None, None).await {
+            Ok(response) if response.status() == StatusCode::OK => {
+                let headers = response.headers();
+                if !names_zero_length(headers) {
+                    return None;
+                }
+                Some(single_strong_etag(headers)?)
+            }
+            _ => None,
+        }
+    }
+
+    /// Delete `key` only while it is still the object the validating HEAD
+    /// named: the ETag goes as `If-Match` (S3 conditional delete), so a
+    /// write that landed on the key after the validation is answered 412
+    /// and the object is preserved with an incomplete-rename error instead
+    /// of being deleted uncopied. Only the 412 confirms preservation: an
+    /// unanswered DELETE may still have deleted server-side, so a transport
+    /// failure is reported as unconfirmed, never as "kept".
+    async fn delete_if_match(&mut self, key: &str, etag: &str) -> Result<(), ProviderError> {
+        let response = self
+            .s3_request_ext(Method::DELETE, key, None, None, &[("if-match", etag)])
+            .await
+            .map_err(|e| {
+                ProviderError::Other(format!(
+                    "deleting {key} is unconfirmed: the request failed before an answer \
+                     arrived ({e}); the server may already have deleted it, so inspect \
+                     both folders before retrying"
+                ))
+            })?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
+            StatusCode::PRECONDITION_FAILED => Err(ProviderError::Other(format!(
+                "rename source {key} changed after it was validated as an empty marker; \
+                 the conditional delete was refused (412), so it was not deleted and \
+                 the destination holds only the marker copy"
+            ))),
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(key.to_string())),
+            // Like an unanswered request, a 5xx may already have deleted the
+            // object server-side: only the 412 confirms preservation, so a
+            // server error is reported as unconfirmed, never as "kept".
+            status if status.is_server_error() => Err(ProviderError::Other(format!(
+                "deleting {key} is unconfirmed: the server answered {status}, so it may \
+                 already have deleted it; inspect both folders before retrying"
+            ))),
+            status => Err(ProviderError::ServerError(format!(
+                "Delete failed with status: {}",
+                status
+            ))),
+        }
+    }
+
+    /// The delete a rename runs on its source: bound to the validated marker
+    /// ETag when the copy fell back to a marker PUT, plain otherwise.
+    async fn delete_rename_source(&mut self, path: &str) -> Result<(), ProviderError> {
+        let key = path.trim_start_matches('/');
+        match self.marker_source_validations.remove(key) {
+            Some(etag) => self.delete_if_match(key, &etag).await,
+            None => self.delete(path).await,
+        }
+    }
+
     /// Copy after the caller has prepared the source. Rename also classifies
     /// virtual folders after preparation, without starting a second wait.
-    async fn copy_prepared_source(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+    /// `record_validation` binds the marker ETag only for rename/move flows,
+    /// whose follow-up delete consumes the entry; a plain copy leaves the map
+    /// untouched so a later rename is never bound to a stale validation.
+    async fn copy_prepared_source(
+        &mut self,
+        from: &str,
+        to: &str,
+        record_validation: bool,
+    ) -> Result<(), ProviderError> {
         let from_key = from.trim_start_matches('/');
         let to_key = to.trim_start_matches('/');
 
@@ -2441,7 +2649,54 @@ impl S3Provider {
         let source_size = source_meta.size;
 
         if !self.copy_via_multipart(source_size) {
-            return self.server_side_copy_single(from_key, to_key).await;
+            return match self
+                .copy_object_single_detailed(from_key, to_key, false)
+                .await
+            {
+                Ok(()) => Ok(()),
+                // Coritan keeps a folder marker as a real directory: HEAD
+                // finds `folder/` with 0 bytes, but CopyObject from it answers
+                // 404 NoSuchKey (Tier 0, 2026-11-16). The HEAD above already
+                // proved the source exists, so this 404 cannot mean a missing
+                // source, and a marker carries no data: write it the way
+                // `mkdir` does, with the copy operation's upload headers.
+                // Any other answer keeps the CopyObject result, and a backend
+                // that copies markers never reaches this arm. `stat` reads a
+                // missing Content-Length as 0, so the marker is rewritten only
+                // when HEAD names a length of exactly 0 and a strong ETag: an
+                // unknown length or no tag keeps the copy error, and the
+                // caller keeps the source.
+                Err(failure)
+                    if self.config.needs_dir_marker()
+                        && marker_copy_refused_as_missing(
+                            from_key,
+                            to_key,
+                            source_size,
+                            &failure,
+                        ) =>
+                {
+                    match self.empty_marker_etag(from_key).await {
+                        Some(etag) => {
+                            self.put_folder_marker_as_copy(to_key).await?;
+                            // Bind a later rename delete of the source to
+                            // this validation: the DELETE carries the ETag
+                            // as If-Match, so content written to the marker
+                            // after this HEAD is refused (412) and preserved
+                            // instead of deleted uncopied. A plain copy does
+                            // not record: its source is never deleted, and an
+                            // unconsumed entry would bind a later rename of
+                            // the same key to a stale ETag.
+                            if record_validation {
+                                self.marker_source_validations
+                                    .insert(from_key.to_string(), etag);
+                            }
+                            Ok(())
+                        }
+                        None => Err(failure.error),
+                    }
+                }
+                Err(failure) => Err(failure.error),
+            };
         }
 
         // T-DEBT-08: source > 5 GiB, single CopyObject would fail with
@@ -2462,6 +2717,24 @@ impl S3Provider {
             source_mtime,
         )
         .await
+    }
+
+    /// `record_validation` is true for the directory-rename loop, whose
+    /// copies are each followed by a delete of the source key.
+    async fn server_side_copy_recorded(
+        &mut self,
+        from: &str,
+        to: &str,
+        record_validation: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        if self.config.filen_desktop_bridge {
+            self.prepare_file_move(from).await?;
+        }
+        self.copy_prepared_source(from, to, record_validation).await
     }
 
     async fn verify_copy_target_exists(&self, to: &str) -> Result<(), ProviderError> {
@@ -2626,7 +2899,7 @@ impl S3Provider {
                 "[S3] Tigris rename copy failed, trying a plain copy: {}",
                 rename_failure.error
             );
-            if let Err(copy_error) = self.copy_prepared_source(from_key, to_key).await {
+            if let Err(copy_error) = self.copy_prepared_source(from_key, to_key, true).await {
                 // The rename may have worked and only its response got lost:
                 // then the source is gone and the plain copy finds nothing.
                 // The destination settles it (the caller already listed the
@@ -2685,6 +2958,8 @@ impl S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        // Validations from an earlier move must not bind this one's deletes.
+        self.marker_source_validations.clear();
 
         let from_trimmed = from.trim_matches('/');
         let to_trimmed = to.trim_matches('/');
@@ -2821,7 +3096,7 @@ impl S3Provider {
                     .await?;
                 self.verify_copy_target_exists(to).await?;
                 if outcome == TigrisRename::Copied {
-                    self.delete(from).await?;
+                    self.delete_rename_source(from).await?;
                 }
                 info!(
                     "Renamed file (Tigris rename, {:?}) {} to {}",
@@ -2829,9 +3104,9 @@ impl S3Provider {
                 );
                 return Ok(());
             }
-            self.copy_prepared_source(from, to).await?;
+            self.copy_prepared_source(from, to, true).await?;
             self.verify_copy_target_exists(to).await?;
-            self.delete(from).await?;
+            self.delete_rename_source(from).await?;
             info!("Renamed file (copy+delete) {} to {}", from, to);
         } else {
             // Directory rename: copy all objects to new prefix, then delete
@@ -2852,8 +3127,12 @@ impl S3Provider {
                         Err(e) => Err(e),
                     }
                 } else {
-                    self.server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
-                        .await
+                    self.server_side_copy_recorded(
+                        &format!("/{}", old_key),
+                        &format!("/{}", new_key),
+                        true,
+                    )
+                    .await
                 };
                 if let Err(e) = step {
                     // The copies made so far stay under the destination, so a
@@ -2873,18 +3152,45 @@ impl S3Provider {
             }
 
             // A delete that fails leaves the folder under both names: that is
-            // a failed rename, never a success.
+            // a failed rename, never a success. A marker whose copy fell
+            // back to a marker PUT is not in the batch: its delete carries
+            // the validated ETag as If-Match and runs FIRST, while that ETag
+            // is still the current one: on a directory-backed backend
+            // deleting a child can rotate the marker's tag, and deleting the
+            // marker after the children could then refuse (412) the rename's
+            // own cleanup. With this order, content written to the source
+            // after the validating HEAD is still refused (412) and kept.
             if !to_delete.is_empty() {
-                let originals: Vec<(String, Option<String>)> =
-                    to_delete.iter().map(|key| (key.clone(), None)).collect();
-                self.batch_delete_objects(&originals).await.map_err(|e| {
-                    ProviderError::Other(format!(
-                        "rename copied {} objects to {}, but deleting the originals failed, \
-                         so the folder now exists under both names: {e}",
-                        to_delete.len(),
-                        to
-                    ))
-                })?;
+                let mut originals: Vec<(String, Option<String>)> =
+                    Vec::with_capacity(to_delete.len());
+                let mut validated: Vec<(String, String)> = Vec::new();
+                for key in to_delete.iter() {
+                    match self.marker_source_validations.remove(key) {
+                        Some(etag) => validated.push((key.clone(), etag)),
+                        None => originals.push((key.clone(), None)),
+                    }
+                }
+                for (key, etag) in validated {
+                    self.delete_if_match(&key, &etag).await.map_err(|e| {
+                        ProviderError::Other(format!(
+                            "rename copied {} objects to {}, but deleting the validated marker \
+                             {} failed, so the rename is incomplete: {e}",
+                            to_delete.len(),
+                            to,
+                            key
+                        ))
+                    })?;
+                }
+                if !originals.is_empty() {
+                    self.batch_delete_objects(&originals).await.map_err(|e| {
+                        ProviderError::Other(format!(
+                            "rename copied {} objects to {}, but deleting the originals failed, \
+                             so the folder now exists under both names: {e}",
+                            to_delete.len(),
+                            to
+                        ))
+                    })?;
+                }
             }
 
             info!(
@@ -4658,19 +4964,10 @@ impl S3Provider {
         Ok(())
     }
 
-    /// Single-PUT server-side copy (`x-amz-copy-source` header). Used by
-    /// `server_side_copy` for sources ≤ 5 GiB. Caller must have already
-    /// validated `self.connected`.
-    ///
-    /// Issue #128 follow-up: `x-amz-copy-source` must be percent-encoded
-    /// the same way the destination URL is encoded under `build_url`,
-    /// otherwise SigV4 canonicalisation reconstructs a different wire
-    /// path from the (lenient) request and the bridge returns
-    /// `401 SignatureDoesNotMatch`. Filen Desktop's local S3 bridge is
-    /// strict about this: any space, emoji or RFC-3986 reserved char in
-    /// the source key triggered the mismatch on rename / move. AWS and
-    /// MinIO tolerated the unencoded form, which is why this went
-    /// unnoticed until the Filen reproduction.
+    /// A plain single CopyObject, for the tests that check its request. The
+    /// copy path calls [`Self::copy_object_single_detailed`] itself, which
+    /// keeps the status a marker fallback reads.
+    #[cfg(test)]
     async fn server_side_copy_single(
         &self,
         from_key: &str,
@@ -4680,6 +4977,7 @@ impl S3Provider {
     }
 
     /// [`Self::copy_object_single_detailed`] with the plain error.
+    #[cfg(test)]
     async fn copy_object_single(
         &self,
         from_key: &str,
@@ -4691,10 +4989,22 @@ impl S3Provider {
             .map_err(|failure| failure.error)
     }
 
-    /// [`Self::server_side_copy_single`], optionally with Tigris'
+    /// Single-PUT server-side copy (`x-amz-copy-source` header), used by
+    /// `server_side_copy` for sources ≤ 5 GiB, optionally with Tigris'
     /// `X-Tigris-Rename: true`, which makes the CopyObject a metadata-only
     /// move of the key inside the bucket. The header goes into the map before
-    /// signing like every other one (C1).
+    /// signing like every other one (C1). Caller must have already validated
+    /// `self.connected`.
+    ///
+    /// Issue #128 follow-up: `x-amz-copy-source` must be percent-encoded
+    /// the same way the destination URL is encoded under `build_url`,
+    /// otherwise SigV4 canonicalisation reconstructs a different wire
+    /// path from the (lenient) request and the bridge returns
+    /// `401 SignatureDoesNotMatch`. Filen Desktop's local S3 bridge is
+    /// strict about this: any space, emoji or RFC-3986 reserved char in
+    /// the source key triggered the mismatch on rename / move. AWS and
+    /// MinIO tolerated the unencoded form, which is why this went
+    /// unnoticed until the Filen reproduction.
     async fn copy_object_single_detailed(
         &self,
         from_key: &str,
@@ -7086,24 +7396,7 @@ impl StorageProvider for S3Provider {
         // empty-folder marker on gateways that alias "key/" to "key" and strip
         // the trailing slash (S3Drive): the marker carries x-directory, a real
         // zero-byte file carries its own/default type.
-        let marker = format!("{}/", trimmed);
-        let response = self
-            .s3_request_ext(
-                Method::PUT,
-                &marker,
-                None,
-                None,
-                &[("content-type", S3_DIRECTORY_CONTENT_TYPE)],
-            )
-            .await?;
-
-        match response.status() {
-            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
-            status => Err(ProviderError::ServerError(format!(
-                "mkdir marker PUT failed with status: {}",
-                status
-            ))),
-        }
+        self.put_folder_marker(&format!("{}/", trimmed)).await
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -7491,7 +7784,10 @@ impl StorageProvider for S3Provider {
             url::Url::parse(&url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
         refuse_rewritten_path(&url, &parsed)?;
 
-        let host = parsed.host_str().unwrap_or("");
+        // The host a browser sends for the link: with the port when the
+        // endpoint names one that is not its scheme's default (Coritan's
+        // :7337), or the server signs another host and refuses the link.
+        let host = presigned_host(&parsed);
         let raw_path = parsed.path();
 
         // M-13: the canonical URI is the wire path encoded once. `raw_path` is
@@ -7794,14 +8090,7 @@ impl StorageProvider for S3Provider {
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-
-        if self.config.filen_desktop_bridge {
-            self.prepare_file_move(from).await?;
-        }
-        self.copy_prepared_source(from, to).await
+        self.server_side_copy_recorded(from, to, false).await
     }
 
     // Shaped-graph multipart trait wiring.
@@ -12587,6 +12876,43 @@ mod tests {
         assert_eq!(S3Provider::new(config).unwrap().measurement_note(), None);
     }
 
+    /// Coritan serves S3 on port 7337 only (443 is closed, Tier 0
+    /// 2026-11-16): the endpoint the preset stamps carries that port, an
+    /// absent separate port does not drop it (`normalize_s3_endpoint` keeps
+    /// an explicit URL port), and `endpoint()` hands it to
+    /// `discover_buckets`, whose ListBuckets URL is `format!("{}/",
+    /// self.endpoint())`. A discovery request to 443 would be the failure
+    /// this pins against.
+    #[test]
+    fn coritan_endpoint_keeps_port_7337_for_bucket_discovery() {
+        let config = S3Config::from_provider_config(&super::super::ProviderConfig {
+            name: "coritan".to_string(),
+            provider_type: ProviderType::S3,
+            host: String::new(),
+            port: None,
+            username: Some("key".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra: std::collections::HashMap::from([
+                ("bucket".to_string(), "b".to_string()),
+                ("region".to_string(), "bom".to_string()),
+                (
+                    "endpoint".to_string(),
+                    "https://s3.bom.coritan.com:7337".to_string(),
+                ),
+                ("path_style".to_string(), "true".to_string()),
+            ]),
+        })
+        .unwrap();
+        assert_eq!(
+            config.endpoint.as_deref(),
+            Some("https://s3.bom.coritan.com:7337")
+        );
+        let provider = S3Provider::new(config).unwrap();
+        let discovery_url = format!("{}/", provider.endpoint().trim_end_matches('/'));
+        assert_eq!(discovery_url, "https://s3.bom.coritan.com:7337/");
+    }
+
     /// Filen's cache acknowledges PUT while HEAD and CopyObject still
     /// answer NoSuchKey. No source may be deleted until copying succeeds.
     async fn bridge_rename_fixture(
@@ -13742,6 +14068,938 @@ mod tests {
             .await
             .expect_err("an original is left behind");
         assert!(err.to_string().contains("both names"), "{err}");
+    }
+
+    /// An S3 double for renaming the folder `src` (the marker `src/` and
+    /// `src/a.txt`) to `dst`, logging every request as `METHOD path`, with
+    /// ` copy` appended to a PUT that carries `x-amz-copy-source`. When
+    /// `refuse_marker_copy`, a CopyObject from a key ending in `/` answers
+    /// 404 NoSuchKey, as Coritan does (Tier 0, 2026-11-16), while HEAD of
+    /// the same key answers 200 with 0 bytes.
+    async fn provider_for_marker_copy(
+        refuse_marker_copy: bool,
+        skip_dir_markers: bool,
+    ) -> (S3Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy,
+            skip_dir_markers,
+            ..MarkerDouble::default()
+        })
+        .await
+    }
+
+    /// How the marker double answers besides the refused copy.
+    struct MarkerDouble {
+        refuse_marker_copy: bool,
+        skip_dir_markers: bool,
+        /// The marker PUT (no copy source) answers 500.
+        fail_marker_put: bool,
+        /// The ETag HEAD names for a key ending in `/`; `None` names no tag,
+        /// a `W/"..."` value names a weak one, both of which must fail the
+        /// fallback validation.
+        head_marker_etag: Option<String>,
+        /// The ETag a conditional DELETE of a marker starts comparing
+        /// `If-Match` against; different from the HEAD value it simulates
+        /// content written to the marker after the validating HEAD, so the
+        /// delete answers 412 as S3's conditional delete does.
+        initial_delete_marker_etag: String,
+        /// A directory-backed backend can rotate the marker's tag when a
+        /// child key is deleted; the double then does the same.
+        child_delete_rotates_marker_etag: bool,
+        /// A conditional DELETE (one carrying If-Match) answers 500, as a
+        /// backend may do after it already applied the delete.
+        fail_marker_delete: bool,
+        /// HEAD of a slash key sends the ETag field twice, as a broken
+        /// server may; the validating check must refuse the repeated field.
+        duplicate_head_marker_etag: bool,
+    }
+
+    impl Default for MarkerDouble {
+        fn default() -> Self {
+            Self {
+                refuse_marker_copy: false,
+                skip_dir_markers: false,
+                fail_marker_put: false,
+                head_marker_etag: Some("\"marker-v1\"".to_string()),
+                initial_delete_marker_etag: "\"marker-v1\"".to_string(),
+                child_delete_rotates_marker_etag: false,
+                fail_marker_delete: false,
+                duplicate_head_marker_etag: false,
+            }
+        }
+    }
+
+    async fn provider_for_marker_double(
+        double: MarkerDouble,
+    ) -> (S3Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        let MarkerDouble {
+            refuse_marker_copy,
+            skip_dir_markers,
+            fail_marker_put,
+            head_marker_etag,
+            initial_delete_marker_etag,
+            child_delete_rotates_marker_etag,
+            fail_marker_delete,
+            duplicate_head_marker_etag,
+        } = double;
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        // The marker's current tag: a conditional DELETE compares If-Match
+        // against it, and deleting a child rotates it when the backend is
+        // directory-backed.
+        let current_etag: Arc<Mutex<String>> = Arc::new(Mutex::new(initial_delete_marker_etag));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                let head_etag = head_marker_etag.clone();
+                let rotate = child_delete_rotates_marker_etag;
+                let fail_delete = fail_marker_delete;
+                let duplicate_head_etag = duplicate_head_marker_etag;
+                let current_etag = Arc::clone(&current_etag);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let copy_source = req
+                        .headers()
+                        .get("x-amz-copy-source")
+                        .and_then(|v| v.to_str().ok())
+                        .map(String::from);
+                    let if_match = req
+                        .headers()
+                        .get("if-match")
+                        .and_then(|v| v.to_str().ok())
+                        .map(String::from);
+                    let sse = req
+                        .headers()
+                        .get("x-amz-server-side-encryption")
+                        .and_then(|v| v.to_str().ok())
+                        .map(String::from);
+                    let kms = req
+                        .headers()
+                        .get("x-amz-server-side-encryption-aws-kms-key-id")
+                        .and_then(|v| v.to_str().ok())
+                        .map(String::from);
+                    let mut entry = format!(
+                        "{} {path}{}",
+                        req.method(),
+                        if copy_source.is_some() { " copy" } else { "" }
+                    );
+                    if req.method() == "DELETE" {
+                        if let Some(tag) = &if_match {
+                            entry.push_str(&format!(" if-match={tag}"));
+                        }
+                    }
+                    if req.method() == "PUT"
+                        && copy_source.is_none()
+                        && (sse.is_some() || kms.is_some())
+                    {
+                        entry.push_str(&format!(
+                            " sse={} kms={}",
+                            sse.unwrap_or_default(),
+                            kms.unwrap_or_default()
+                        ));
+                    }
+                    seen.lock().unwrap().push(entry);
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let prefix = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "prefix")
+                        .map(|(_, v)| v.to_string());
+                    let reply = |status: u16, body: String| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .body(axum::body::Body::from(body))
+                            .unwrap()
+                    };
+                    match (req.method().as_str(), prefix.as_deref()) {
+                        ("GET", Some(prefix)) => {
+                            let keys: &[&str] = if prefix == "src/" {
+                                &["src/", "src/a.txt"]
+                            } else {
+                                &[]
+                            };
+                            let contents: String = keys
+                                .iter()
+                                .map(|k| format!("<Contents><Key>{k}</Key></Contents>"))
+                                .collect();
+                            reply(
+                                200,
+                                format!(
+                                    "<ListBucketResult><IsTruncated>false</IsTruncated>\
+                                     {contents}</ListBucketResult>"
+                                ),
+                            )
+                        }
+                        ("HEAD", _) => {
+                            let builder = axum::response::Response::builder()
+                                .status(200)
+                                .header("content-length", "0");
+                            let builder = match (&head_etag, path.ends_with('/')) {
+                                (Some(tag), true) => {
+                                    let builder = builder.header("etag", tag.as_str());
+                                    if duplicate_head_etag {
+                                        builder.header("etag", tag.as_str())
+                                    } else {
+                                        builder
+                                    }
+                                }
+                                _ => builder,
+                            };
+                            builder.body(axum::body::Body::empty()).unwrap()
+                        }
+                        ("POST", _) => reply(405, String::new()),
+                        ("PUT", _) if fail_marker_put && copy_source.is_none() => {
+                            reply(500, String::new())
+                        }
+                        ("PUT", _)
+                            if refuse_marker_copy
+                                && copy_source.as_deref().is_some_and(|s| s.ends_with('/')) =>
+                        {
+                            reply(
+                                404,
+                                "<Error><Code>NoSuchKey</Code>\
+                                 <Message>The specified key does not exist.</Message></Error>"
+                                    .to_string(),
+                            )
+                        }
+                        ("DELETE", _) => {
+                            // A directory-backed backend rotates the marker's
+                            // tag when a child key goes.
+                            if rotate && !path.ends_with('/') {
+                                *current_etag.lock().unwrap() = "\"marker-rotated\"".to_string();
+                            }
+                            // S3 conditional delete: If-Match is compared with
+                            // the object's current ETag, and a mismatch is 412.
+                            let current = current_etag.lock().unwrap().clone();
+                            // A conditional delete the backend fails with a
+                            // 5xx may already have been applied server-side.
+                            if fail_delete && if_match.is_some() {
+                                reply(500, String::new())
+                            } else if if_match.as_deref().is_some_and(|tag| tag != current) {
+                                reply(
+                                    412,
+                                    "<Error><Code>PreconditionFailed</Code>\
+                                     <Message>At least one of the pre-conditions you specified \
+                                      did not hold</Message></Error>"
+                                        .to_string(),
+                                )
+                            } else {
+                                reply(204, String::new())
+                            }
+                        }
+                        _ => reply(200, String::new()),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.config.skip_dir_markers = skip_dir_markers;
+        provider.connected = true;
+        (provider, log)
+    }
+
+    fn puts(log: &[String]) -> Vec<&str> {
+        log.iter()
+            .map(String::as_str)
+            .filter(|r| r.starts_with("PUT "))
+            .collect()
+    }
+
+    /// Coritan answers 404 NoSuchKey to a CopyObject from a folder marker,
+    /// so a rename of a folder made by mkdir failed with "Copy failed". The
+    /// destination marker is now written as mkdir writes it, the file is
+    /// still copied, and both originals are deleted.
+    #[tokio::test]
+    async fn folder_rename_writes_the_marker_a_server_refuses_to_copy() {
+        let (mut provider, log) = provider_for_marker_copy(true, false).await;
+        provider.rename("/src", "/dst").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        let mut put = puts(&log);
+        put.sort_unstable();
+        assert_eq!(
+            put,
+            [
+                "PUT /test-bucket/dst/",
+                "PUT /test-bucket/dst/ copy",
+                "PUT /test-bucket/dst/a.txt copy",
+            ],
+            "{log:?}"
+        );
+        for key in ["src/", "src/a.txt"] {
+            assert!(
+                log.iter()
+                    .any(|r| r.starts_with(&format!("DELETE /test-bucket/{key}")),),
+                "{log:?}"
+            );
+        }
+        // The marker source is deleted with the validated ETag as
+        // If-Match, so a write that lands on it after the validating HEAD
+        // is refused instead of deleted uncopied.
+        assert!(
+            log.contains(&"DELETE /test-bucket/src/ if-match=\"marker-v1\"".to_string()),
+            "{log:?}"
+        );
+        assert!(
+            !log.iter()
+                .any(|r| r.starts_with("DELETE /test-bucket/src/a.txt if-match")),
+            "{log:?}"
+        );
+        // The rename consumed the recorded validation with its delete.
+        assert!(
+            provider.marker_source_validations.is_empty(),
+            "{:?}",
+            provider.marker_source_validations
+        );
+    }
+
+    /// The fallback only follows a refused copy: a backend that copies
+    /// markers sends the requests it sent before, one CopyObject per key and
+    /// no marker PUT.
+    #[tokio::test]
+    async fn folder_rename_on_a_server_that_copies_markers_sends_only_copies() {
+        let (mut provider, log) = provider_for_marker_copy(false, false).await;
+        provider.rename("/src", "/dst").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        let mut put = puts(&log);
+        put.sort_unstable();
+        assert_eq!(
+            put,
+            [
+                "PUT /test-bucket/dst/ copy",
+                "PUT /test-bucket/dst/a.txt copy"
+            ],
+            "{log:?}"
+        );
+    }
+
+    /// A profile that writes no folder markers never gets one from the
+    /// fallback: the refused copy stays an error and nothing is deleted.
+    #[tokio::test]
+    async fn a_refused_marker_copy_without_dir_markers_stays_an_error() {
+        let (mut provider, log) = provider_for_marker_copy(true, true).await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the marker copy was refused");
+        assert!(err.to_string().contains("404"), "{err}");
+        let log = log.lock().unwrap().clone();
+        assert!(!puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
+        assert!(!log.iter().any(|r| r.starts_with("DELETE")), "{log:?}");
+    }
+
+    /// Only one strong quoted ETag validates a marker: a weak tag, an empty
+    /// tag, a lone quote and a header listing several tags all fail, because
+    /// `If-Match` compares strong tags and none of them names the one object
+    /// the validating HEAD saw.
+    #[test]
+    fn only_a_single_strong_etag_validates() {
+        assert!(is_single_strong_etag("\"marker-v1\""));
+        assert!(is_single_strong_etag("\"a\""));
+        assert!(!is_single_strong_etag("W/\"marker-v1\""));
+        assert!(!is_single_strong_etag("\"\""));
+        assert!(!is_single_strong_etag("\""));
+        assert!(!is_single_strong_etag("\"a\", \"b\""));
+        assert!(!is_single_strong_etag("\"a\"b\""));
+        assert!(!is_single_strong_etag("marker-v1"));
+        assert!(!is_single_strong_etag("\"a\tb\""));
+    }
+
+    /// The validating HEAD reads the ETag with `get_all`: a repeated field
+    /// is refused (it does not name one revision), a single strong tag is
+    /// returned verbatim, quotes included, for `If-Match`.
+    #[test]
+    fn only_one_etag_field_validates_and_it_is_kept_verbatim() {
+        use reqwest::header::{HeaderMap, HeaderValue, ETAG};
+        let with = |values: &[&str]| {
+            let mut headers = HeaderMap::new();
+            for value in values {
+                headers.append(ETAG, HeaderValue::from_str(value).unwrap());
+            }
+            headers
+        };
+        assert_eq!(single_strong_etag(&with(&[])), None);
+        assert_eq!(
+            single_strong_etag(&with(&["\"a\""])),
+            Some("\"a\"".to_string())
+        );
+        assert_eq!(
+            single_strong_etag(&with(&["\"marker-v1\""])),
+            Some("\"marker-v1\"".to_string())
+        );
+        assert_eq!(single_strong_etag(&with(&["W/\"a\""])), None);
+        assert_eq!(single_strong_etag(&with(&["\"a\", \"b\""])), None);
+        // A repeated field is refused even when both values are strong.
+        assert_eq!(single_strong_etag(&with(&["\"a\"", "\"a\""])), None);
+        assert_eq!(single_strong_etag(&with(&["\"a\"", "\"b\""])), None);
+    }
+
+    /// Only a `Content-Length` of exactly 0 proves a marker empty: a
+    /// missing, unreadable or other length does not.
+    #[test]
+    fn only_a_named_zero_length_proves_a_marker_empty() {
+        use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH};
+        let with = |value: HeaderValue| {
+            let mut headers = HeaderMap::new();
+            headers.insert(CONTENT_LENGTH, value);
+            headers
+        };
+        assert!(names_zero_length(&with(HeaderValue::from_static("0"))));
+        assert!(names_zero_length(&with(HeaderValue::from_static(" 0 "))));
+        assert!(!names_zero_length(&HeaderMap::new()));
+        assert!(!names_zero_length(&with(HeaderValue::from_static("4"))));
+        assert!(!names_zero_length(&with(HeaderValue::from_static("00x"))));
+        assert!(!names_zero_length(&with(
+            HeaderValue::from_bytes(b"\xff").unwrap()
+        )));
+    }
+
+    /// A marker double on a raw socket, for the one reply axum cannot give:
+    /// hyper writes `Content-Length: 0` on every HEAD reply that names no
+    /// length. HEAD of a key ending in `/` answers 200 with no length at all
+    /// but an ETag; a copy of such a key is refused like the axum double
+    /// refuses it.
+    async fn provider_for_lengthless_marker_double(
+    ) -> (S3Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let seen = Arc::clone(&seen);
+                tokio::spawn(async move {
+                    let mut stream = BufReader::new(socket);
+                    loop {
+                        let mut request_line = String::new();
+                        if stream.read_line(&mut request_line).await.unwrap_or(0) == 0 {
+                            return;
+                        }
+                        let mut parts = request_line.split_whitespace();
+                        let method = parts.next().unwrap_or("").to_string();
+                        let target = parts.next().unwrap_or("").to_string();
+                        let (mut length, mut copy_source) = (0usize, None::<String>);
+                        loop {
+                            let mut line = String::new();
+                            stream.read_line(&mut line).await.unwrap();
+                            let line = line.trim_end();
+                            if line.is_empty() {
+                                break;
+                            }
+                            if let Some((name, value)) = line.split_once(':') {
+                                match name.trim().to_ascii_lowercase().as_str() {
+                                    "content-length" => length = value.trim().parse().unwrap(),
+                                    "x-amz-copy-source" => {
+                                        copy_source = Some(value.trim().to_string())
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        let mut body = vec![0; length];
+                        stream.read_exact(&mut body).await.unwrap();
+                        let url = reqwest::Url::parse(&format!("http://h{target}")).unwrap();
+                        let path = url.path().to_string();
+                        let suffix = if copy_source.is_some() { " copy" } else { "" };
+                        seen.lock()
+                            .unwrap()
+                            .push(format!("{method} {path}{suffix}"));
+                        let prefix = url
+                            .query_pairs()
+                            .find(|(k, _)| k == "prefix")
+                            .map(|(_, v)| v.to_string());
+                        let (status, body) = match (method.as_str(), prefix.as_deref()) {
+                            ("GET", Some("src/")) => (
+                                "200 OK",
+                                "<ListBucketResult><IsTruncated>false</IsTruncated>\
+                                 <Contents><Key>src/</Key></Contents>\
+                                 <Contents><Key>src/a.txt</Key></Contents></ListBucketResult>"
+                                    .to_string(),
+                            ),
+                            ("GET", Some(_)) => (
+                                "200 OK",
+                                "<ListBucketResult><IsTruncated>false</IsTruncated>\
+                                 </ListBucketResult>"
+                                    .to_string(),
+                            ),
+                            ("HEAD", _) if path.ends_with('/') => {
+                                // No Content-Length, but an ETag: this fixture
+                                // pins the length check, not the ETag check.
+                                stream
+                                    .get_mut()
+                                    .write_all(b"HTTP/1.1 200 OK\r\nETag: \"marker-v1\"\r\n\r\n")
+                                    .await
+                                    .unwrap();
+                                continue;
+                            }
+                            ("PUT", _)
+                                if copy_source.as_deref().is_some_and(|s| s.ends_with('/')) =>
+                            {
+                                (
+                                    "404 Not Found",
+                                    "<Error><Code>NoSuchKey</Code>\
+                                     <Message>The specified key does not exist.</Message></Error>"
+                                        .to_string(),
+                                )
+                            }
+                            ("POST", _) => ("405 Method Not Allowed", String::new()),
+                            ("DELETE", _) => ("204 No Content", String::new()),
+                            _ => ("200 OK", String::new()),
+                        };
+                        let head = format!(
+                            "HTTP/1.1 {status}\r\nContent-Length: {}\r\n\r\n",
+                            if method == "HEAD" { 0 } else { body.len() }
+                        );
+                        let out = stream.get_mut();
+                        out.write_all(head.as_bytes()).await.unwrap();
+                        if method != "HEAD" {
+                            out.write_all(body.as_bytes()).await.unwrap();
+                        }
+                    }
+                });
+            }
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (provider, log)
+    }
+
+    /// A HEAD that names no length does not prove the marker empty: the
+    /// refused copy stays an error, no marker is written and nothing is
+    /// deleted, so a slash key that holds data keeps it.
+    #[tokio::test]
+    async fn marker_copy_requires_known_zero_length() {
+        let (mut provider, log) = provider_for_lengthless_marker_double().await;
+        // The double names no length, or this test proves nothing.
+        let endpoint = provider.config.endpoint.clone().unwrap();
+        let head = reqwest::Client::new()
+            .head(format!("{endpoint}/test-bucket/src/"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(head.status(), 200);
+        assert!(
+            head.headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .is_none(),
+            "{:?}",
+            head.headers()
+        );
+        // The double names an ETag, so this fixture proves the length check
+        // and not the ETag check.
+        assert!(
+            head.headers().get(reqwest::header::ETAG).is_some(),
+            "{:?}",
+            head.headers()
+        );
+        log.lock().unwrap().clear();
+        let result = provider.rename("/src", "/dst").await;
+        let log = log.lock().unwrap().clone();
+        // The copy of the marker was tried and refused, then nothing else.
+        assert!(
+            log.contains(&"PUT /test-bucket/dst/ copy".to_string()),
+            "{log:?}"
+        );
+        let err = result.expect_err(&format!(
+            "an unknown marker length keeps the copy error: {log:?}"
+        ));
+        assert!(err.to_string().contains("404"), "{err}");
+        assert!(!puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
+        assert!(!log.iter().any(|r| r.starts_with("DELETE")), "{log:?}");
+    }
+
+    /// A marker PUT that fails ends the rename before any source is deleted.
+    #[tokio::test]
+    async fn marker_fallback_put_failure_keeps_all_sources() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            fail_marker_put: true,
+            ..MarkerDouble::default()
+        })
+        .await;
+        provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the marker PUT failed");
+        let log = log.lock().unwrap().clone();
+        assert!(puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
+        assert!(!log.iter().any(|r| r.starts_with("DELETE")), "{log:?}");
+    }
+
+    /// A copy (not a rename) through the fallback writes the destination
+    /// marker and leaves the source where it is.
+    #[tokio::test]
+    async fn server_copy_marker_fallback_keeps_source() {
+        let (mut provider, log) = provider_for_marker_copy(true, false).await;
+        provider
+            .server_copy("/src/", "/dst/")
+            .await
+            .expect("marker copy");
+        let log = log.lock().unwrap().clone();
+        assert!(puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
+        assert!(!log.iter().any(|r| r.starts_with("DELETE")), "{log:?}");
+        // A plain copy never records a validation: nothing deletes its
+        // source, and an unconsumed entry would bind a later rename of the
+        // same key to a stale ETag.
+        assert!(
+            provider.marker_source_validations.is_empty(),
+            "{:?}",
+            provider.marker_source_validations
+        );
+    }
+
+    /// The fallback marker PUT is signed with the copy operation's configured
+    /// upload headers: a profile with SSE-KMS sends both SSE headers on the
+    /// marker PUT too, so a bucket policy that requires the key accepts it.
+    #[tokio::test]
+    async fn marker_fallback_put_carries_the_configured_sse_headers() {
+        let (mut provider, log) = provider_for_marker_copy(true, false).await;
+        provider.config.sse_mode = Some("aws:kms".to_string());
+        provider.config.sse_kms_key_id = Some("key-1".to_string());
+        provider.rename("/src", "/dst").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        assert!(
+            log.iter()
+                .any(|r| r == "PUT /test-bucket/dst/ sse=aws:kms kms=key-1"),
+            "{log:?}"
+        );
+    }
+
+    /// Content written to the marker after the validating HEAD is never
+    /// deleted uncopied: the rename's DELETE of the marker carries the
+    /// validated ETag as If-Match, the server answers 412, and the rename
+    /// fails with the source kept.
+    #[tokio::test]
+    async fn marker_changed_after_validation_is_not_deleted() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            // The object the server holds now has a different ETag than the
+            // one the validating HEAD named.
+            initial_delete_marker_etag: "\"marker-v2\"".to_string(),
+            ..MarkerDouble::default()
+        })
+        .await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the marker changed after validation");
+        let log = log.lock().unwrap().clone();
+        assert!(err.to_string().contains("refused (412)"), "{err}");
+        assert!(err.to_string().contains("not deleted"), "{err}");
+        assert!(err.to_string().contains("incomplete"), "{err}");
+        // The marker was still copied to the destination, and its delete was
+        // sent with the stale ETag and refused; the child's delete never ran.
+        assert!(puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
+        assert!(
+            log.contains(&"DELETE /test-bucket/src/ if-match=\"marker-v1\"".to_string()),
+            "{log:?}"
+        );
+        assert!(
+            !log.iter()
+                .any(|r| r.starts_with("DELETE /test-bucket/src/a.txt")),
+            "{log:?}"
+        );
+    }
+
+    /// On a directory-backed backend deleting a child key rotates the
+    /// marker's ETag. The rename deletes the validated marker FIRST, while
+    /// its tag is still the validated one, so its own cleanup is not
+    /// refused by the rotation.
+    #[tokio::test]
+    async fn marker_delete_runs_before_child_deletes_on_a_rotating_backend() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            child_delete_rotates_marker_etag: true,
+            ..MarkerDouble::default()
+        })
+        .await;
+        provider.rename("/src", "/dst").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        let marker_delete = log
+            .iter()
+            .position(|r| r == "DELETE /test-bucket/src/ if-match=\"marker-v1\"")
+            .expect("the marker delete carries the validated ETag");
+        let child_delete = log
+            .iter()
+            .position(|r| r.starts_with("DELETE /test-bucket/src/a.txt"))
+            .expect("the child delete ran");
+        assert!(marker_delete < child_delete, "{log:?}");
+    }
+
+    /// A HEAD that names no ETag, or only a weak one (`If-Match` compares
+    /// strong tags), does not validate the marker: the refused copy stays
+    /// an error, no marker PUT is written and nothing is deleted.
+    #[tokio::test]
+    async fn rename_without_a_strong_marker_etag_fails_without_put_or_delete() {
+        for head_etag in [None, Some("W/\"marker-v1\"".to_string())] {
+            let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+                refuse_marker_copy: true,
+                head_marker_etag: head_etag.clone(),
+                ..MarkerDouble::default()
+            })
+            .await;
+            let err = provider
+                .rename("/src", "/dst")
+                .await
+                .expect_err("no strong ETag, no fallback");
+            let log = log.lock().unwrap().clone();
+            assert!(err.to_string().contains("404"), "{head_etag:?}: {err}");
+            assert!(
+                !puts(&log).contains(&"PUT /test-bucket/dst/"),
+                "{head_etag:?}: {log:?}"
+            );
+            assert!(
+                !log.iter().any(|r| r.starts_with("DELETE")),
+                "{head_etag:?}: {log:?}"
+            );
+        }
+    }
+
+    /// A HEAD that repeats the ETag field does not validate the marker:
+    /// `get_all` sees both fields, so the refused copy stays an error, no
+    /// marker PUT is written and nothing is deleted.
+    #[tokio::test]
+    async fn a_repeated_etag_field_on_the_head_validates_nothing() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            duplicate_head_marker_etag: true,
+            ..MarkerDouble::default()
+        })
+        .await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("a repeated ETag field is not one strong tag");
+        let log = log.lock().unwrap().clone();
+        assert!(err.to_string().contains("404"), "{err}");
+        assert!(!puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
+        assert!(!log.iter().any(|r| r.starts_with("DELETE")), "{log:?}");
+    }
+
+    /// A single valid strong ETag is sent to the conditional delete
+    /// verbatim, quotes included: `If-Match: "a"`.
+    #[tokio::test]
+    async fn a_single_strong_etag_is_sent_verbatim_as_if_match() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            head_marker_etag: Some("\"a\"".to_string()),
+            // The object the server holds carries the same tag the HEAD named.
+            initial_delete_marker_etag: "\"a\"".to_string(),
+            ..MarkerDouble::default()
+        })
+        .await;
+        provider.rename("/src", "/dst").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        assert!(
+            log.contains(&"DELETE /test-bucket/src/ if-match=\"a\"".to_string()),
+            "{log:?}"
+        );
+    }
+
+    /// A conditional DELETE the server answers with a 5xx may already have
+    /// deleted the object: the rename reports the deletion as unconfirmed,
+    /// never as "not deleted".
+    #[tokio::test]
+    async fn a_server_error_on_the_marker_delete_is_reported_unconfirmed() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            fail_marker_delete: true,
+            ..MarkerDouble::default()
+        })
+        .await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the conditional marker delete answered 500");
+        let log = log.lock().unwrap().clone();
+        assert!(err.to_string().contains("unconfirmed"), "{err}");
+        assert!(!err.to_string().contains("not deleted"), "{err}");
+        assert!(
+            log.contains(&"DELETE /test-bucket/src/ if-match=\"marker-v1\"".to_string()),
+            "{log:?}"
+        );
+    }
+
+    /// A raw-socket marker double whose DELETE is never answered: the socket
+    /// is closed after the request, as when the server deleted the object
+    /// and the response was lost. The rename must report the deletion as
+    /// unconfirmed, not as preserved.
+    async fn provider_for_unanswered_delete_double(
+    ) -> (S3Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let seen = Arc::clone(&seen);
+                tokio::spawn(async move {
+                    let mut stream = BufReader::new(socket);
+                    loop {
+                        let mut request_line = String::new();
+                        if stream.read_line(&mut request_line).await.unwrap_or(0) == 0 {
+                            return;
+                        }
+                        let mut parts = request_line.split_whitespace();
+                        let method = parts.next().unwrap_or("").to_string();
+                        let target = parts.next().unwrap_or("").to_string();
+                        let (mut length, mut copy_source, mut if_match) =
+                            (0usize, None::<String>, None::<String>);
+                        loop {
+                            let mut line = String::new();
+                            stream.read_line(&mut line).await.unwrap();
+                            let line = line.trim_end();
+                            if line.is_empty() {
+                                break;
+                            }
+                            if let Some((name, value)) = line.split_once(':') {
+                                match name.trim().to_ascii_lowercase().as_str() {
+                                    "content-length" => length = value.trim().parse().unwrap(),
+                                    "x-amz-copy-source" => {
+                                        copy_source = Some(value.trim().to_string())
+                                    }
+                                    "if-match" => if_match = Some(value.trim().to_string()),
+                                    _ => {}
+                                }
+                            }
+                        }
+                        let mut body = vec![0; length];
+                        stream.read_exact(&mut body).await.unwrap();
+                        let url = reqwest::Url::parse(&format!("http://h{target}")).unwrap();
+                        let path = url.path().to_string();
+                        let mut suffix =
+                            String::from(if copy_source.is_some() { " copy" } else { "" });
+                        if let Some(tag) = &if_match {
+                            suffix.push_str(&format!(" if-match={tag}"));
+                        }
+                        seen.lock()
+                            .unwrap()
+                            .push(format!("{method} {path}{suffix}"));
+                        let prefix = url
+                            .query_pairs()
+                            .find(|(k, _)| k == "prefix")
+                            .map(|(_, v)| v.to_string());
+                        let answer = |status: &str, body: String, extra: &str| {
+                            format!(
+                                "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{extra}\r\n{body}",
+                                body.len()
+                            )
+                        };
+                        match (method.as_str(), prefix.as_deref()) {
+                            ("GET", Some(prefix)) => {
+                                let keys: &[&str] = if prefix == "src/" {
+                                    &["src/", "src/a.txt"]
+                                } else {
+                                    &[]
+                                };
+                                let contents: String = keys
+                                    .iter()
+                                    .map(|k| format!("<Contents><Key>{k}</Key></Contents>"))
+                                    .collect();
+                                let body = format!(
+                                    "<ListBucketResult><IsTruncated>false</IsTruncated>\
+                                     {contents}</ListBucketResult>"
+                                );
+                                let out = stream.get_mut();
+                                out.write_all(answer("200 OK", body, "").as_bytes())
+                                    .await
+                                    .unwrap();
+                            }
+                            ("HEAD", _) if path.ends_with('/') => {
+                                let out = stream.get_mut();
+                                out.write_all(
+                                    answer("200 OK", String::new(), "ETag: \"marker-v1\"\r\n")
+                                        .as_bytes(),
+                                )
+                                .await
+                                .unwrap();
+                            }
+                            ("PUT", _)
+                                if copy_source.as_deref().is_some_and(|s| s.ends_with('/')) =>
+                            {
+                                let body = "<Error><Code>NoSuchKey</Code>\
+                                            <Message>gone</Message></Error>"
+                                    .to_string();
+                                let out = stream.get_mut();
+                                out.write_all(answer("404 Not Found", body, "").as_bytes())
+                                    .await
+                                    .unwrap();
+                            }
+                            ("DELETE", _) => {
+                                // The server "deleted" but the answer is lost:
+                                // close the socket without responding.
+                                return;
+                            }
+                            _ => {
+                                // The marker PUT and the batch-delete POST answer.
+                                let status = if method == "POST" {
+                                    "405 Method Not Allowed"
+                                } else {
+                                    "200 OK"
+                                };
+                                let out = stream.get_mut();
+                                out.write_all(answer(status, String::new(), "").as_bytes())
+                                    .await
+                                    .unwrap();
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (provider, log)
+    }
+
+    /// A DELETE that the server answers by closing the connection (it may
+    /// already have deleted the object) is reported as unconfirmed, never
+    /// as "not deleted".
+    #[tokio::test]
+    async fn an_unanswered_marker_delete_is_reported_unconfirmed() {
+        let (mut provider, log) = provider_for_unanswered_delete_double().await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the marker delete was never answered");
+        let log = log.lock().unwrap().clone();
+        assert!(err.to_string().contains("unconfirmed"), "{err}");
+        assert!(!err.to_string().contains("not deleted"), "{err}");
+        assert!(
+            log.contains(&"DELETE /test-bucket/src/ if-match=\"marker-v1\"".to_string()),
+            "{log:?}"
+        );
+    }
+
+    #[test]
+    fn only_a_404_no_such_key_on_an_empty_marker_counts_as_a_refused_marker_copy() {
+        let failure = |status: Option<StatusCode>, code: Option<&str>| CopyFailure {
+            error: ProviderError::ServerError("Copy failed".to_string()),
+            status,
+            code: code.map(String::from),
+        };
+        let refused = failure(Some(StatusCode::NOT_FOUND), Some("NoSuchKey"));
+        assert!(marker_copy_refused_as_missing("a/", "b/", 0, &refused));
+        // A file, a marker copied onto a file, or a marker with content.
+        assert!(!marker_copy_refused_as_missing("a", "b", 0, &refused));
+        assert!(!marker_copy_refused_as_missing("a/", "b", 0, &refused));
+        assert!(!marker_copy_refused_as_missing("a/", "b/", 1, &refused));
+        // Another status, another code, no code, or no answer at all.
+        for other in [
+            failure(Some(StatusCode::FORBIDDEN), Some("NoSuchKey")),
+            failure(Some(StatusCode::NOT_FOUND), Some("NoSuchBucket")),
+            failure(Some(StatusCode::NOT_FOUND), None),
+            failure(None, Some("NoSuchKey")),
+        ] {
+            assert!(!marker_copy_refused_as_missing("a/", "b/", 0, &other));
+        }
     }
 
     #[tokio::test]
@@ -17595,6 +18853,41 @@ mod tests {
                 );
                 assert_eq!(signature, expected, "path_style={path_style} key={key:?}");
             }
+        }
+    }
+
+    /// A link is opened by a browser, which sends the endpoint's port in its
+    /// Host header (Coritan serves S3 on :7337 only): the link is signed for
+    /// that host and port, and a default port is not added.
+    #[tokio::test]
+    async fn share_link_signs_the_host_and_port_a_browser_sends() {
+        for (endpoint, host) in [
+            ("https://s3.fra.coritan.com:7337", "s3.fra.coritan.com:7337"),
+            ("https://s3.fra.coritan.com:443", "s3.fra.coritan.com"),
+        ] {
+            let mut provider = aws_doc_provider(true);
+            provider.config.endpoint = Some(endpoint.to_string());
+            let link = provider
+                .create_share_link(
+                    "/test.txt",
+                    ShareLinkOptions {
+                        expires_in_secs: Some(3600),
+                        password: None,
+                        permissions: None,
+                    },
+                )
+                .await
+                .expect("presign failed");
+            let (unsigned, signature) = link.url.rsplit_once("&X-Amz-Signature=").unwrap();
+            let parsed = url::Url::parse(unsigned).unwrap();
+            let expected = reference_sigv4(
+                "GET",
+                parsed.path(),
+                parsed.query().unwrap(),
+                &[("host", host)],
+                "UNSIGNED-PAYLOAD",
+            );
+            assert_eq!(signature, expected, "{endpoint}");
         }
     }
 
