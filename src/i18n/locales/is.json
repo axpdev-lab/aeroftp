@@ -2437,7 +2437,8 @@
             "discoverFastly": "Fastly Object Storage: S3-samhæfð geymsla á 12 svæðum (5 GB ókeypis, greiðslukort nauðsynlegt)",
             "discoverNeon": "Neon Object Storage: S3-samhæft geymslupláss fyrir hverja verkgrein (5 GB ókeypis á verk)",
             "discoverPuter": "Puter skýgeymsla í gegnum WebDAV (25 MB ókeypis, engin kort)",
-            "discoverLifetimeCloud": "LifetimeCloud geymsla í gegnum WebDAV (1 GB ókeypis, ekkert kort)"
+            "discoverLifetimeCloud": "LifetimeCloud geymsla í gegnum WebDAV (1 GB ókeypis, ekkert kort)",
+            "discoverCoritan": "Coritan Object Storage: S3-samhæfð geymsla á 6 svæðum (10 GB ókeypis, ekkert greiðslukort nauðsynlegt)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

@@ -2437,7 +2437,8 @@
             "discoverFastly": "Fastly Object Storage: S3-kompatibilis tárhely 12 régióban (5 GB ingyenes, kártya szükséges)",
             "discoverNeon": "Neon Object Storage: S3-kompatibilis tárhely projekti áganként (5 GB ingyen projektenként)",
             "discoverPuter": "Puter felhőalapú tároló WebDAV-on keresztül (25 MB ingyenes, kártya nélkül)",
-            "discoverLifetimeCloud": "LifetimeCloud tárhely WebDAV-on keresztül (1 GB ingyen, kártya nélkül)"
+            "discoverLifetimeCloud": "LifetimeCloud tárhely WebDAV-on keresztül (1 GB ingyen, kártya nélkül)",
+            "discoverCoritan": "Coritan Object Storage: S3-kompatibilis tárhely 6 régióban (10 GB ingyenes, kártya nélkül)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

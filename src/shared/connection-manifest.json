@@ -763,6 +763,17 @@
       "firstRegion": "eu-central-1"
     },
     {
+      "id": "coritan",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "fra",
+        "endpointTemplate": "https://s3.{region}.coritan.com:7337"
+      },
+      "firstRegion": "fra"
+    },
+    {
       "id": "storj",
       "protocol": "s3",
       "generic": false,

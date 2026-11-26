@@ -162,6 +162,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'tigris': 'protocol.discoverTigris',
     'fastly': 'protocol.discoverFastly',
     'neon-s3': 'protocol.discoverNeon',
+    'coritan': 'protocol.discoverCoritan',
     'yandex-storage': 'protocol.discoverYandexStorage',
     'digitalocean-spaces': 'protocol.discoverDigitalOceanSpaces',
     'oracle-cloud': 'protocol.discoverOracleCloud',
@@ -289,7 +290,7 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
                 // Row 4+: remaining
                 'digitalocean-spaces': 10, 'filelu-s3': 11, 'wasabi': 12,
                 'oracle-cloud': 13, 's3drive': 14, 'filen-desktop-s3': 15,
-                'filebase': 16, 'tigris': 17, 'fastly': 18,
+                'filebase': 16, 'tigris': 17, 'fastly': 18, 'coritan': 19,
                 // Asian providers
                 'alibaba-oss': 20, 'tencent-cos': 21, 'yandex-storage': 22,
                 // Trial-only / restricted signup: kept at the end

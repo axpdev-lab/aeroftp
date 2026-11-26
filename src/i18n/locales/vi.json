@@ -2437,7 +2437,8 @@
             "discoverFastly": "Fastly Object Storage: lưu trữ tương thích S3 tại 12 khu vực (miễn phí 5 GB, cần thẻ)",
             "discoverNeon": "Neon Object Storage: bộ lưu trữ tương thích S3 theo từng nhánh dự án (5 GB miễn phí cho mỗi dự án)",
             "discoverPuter": "Lưu trữ đám mây Puter qua WebDAV (25 MB miễn phí, không cần thẻ)",
-            "discoverLifetimeCloud": "Lưu trữ LifetimeCloud qua WebDAV (1 GB miễn phí, không cần thẻ)"
+            "discoverLifetimeCloud": "Lưu trữ LifetimeCloud qua WebDAV (1 GB miễn phí, không cần thẻ)",
+            "discoverCoritan": "Coritan Object Storage: lưu trữ tương thích S3 tại 6 khu vực (miễn phí 10 GB, không cần thẻ)"
         },
         "shortcuts": {
             "title": "Phím tắt",
