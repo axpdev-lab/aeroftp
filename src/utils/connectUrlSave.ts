@@ -47,7 +47,26 @@ export async function saveLaunchUrlProfile(
     };
     const stored = await storeSavedServerProfiles([...read.profiles, profile], false, read.userId, read.revision);
     if (secret) {
-        await invoke('store_credential', { account: `server_${id}`, password: secret });
+        try {
+            await invoke('store_credential', { account: `server_${id}`, password: secret });
+        } catch (error) {
+            // The profile write already landed: never leave a profile that
+            // claims a stored credential the vault refused (a retry would
+            // otherwise save a duplicate). Roll the new profile back out of
+            // a fresh read, best effort, then propagate the vault error.
+            try {
+                const fresh = await readSavedServerProfilesForWrite();
+                await storeSavedServerProfiles(
+                    fresh.profiles.filter((p) => p.id !== id),
+                    false,
+                    fresh.userId,
+                    fresh.revision,
+                );
+            } catch {
+                // best-effort rollback: the original vault error is reported
+            }
+            throw error;
+        }
     }
     return stored.find((p) => p.id === id) ?? profile;
 }

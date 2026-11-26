@@ -63,6 +63,27 @@ describe('saveLaunchUrlProfile', () => {
         expect(invoke).not.toHaveBeenCalledWith('store_credential', expect.anything());
     });
 
+    it('rolls the new profile back out when the vault credential write fails after the profile write landed', async () => {
+        let storedList: unknown[] = [];
+        storeProfiles.mockImplementation(async (profiles) => {
+            storedList = profiles as unknown[];
+            return profiles;
+        });
+        readForWrite
+            .mockResolvedValueOnce({ profiles: [], userId: 1, revision: 'r1' })
+            .mockImplementation(async () => ({ profiles: storedList as never, userId: 1, revision: 'r2' }));
+        invoke.mockRejectedValue(new Error('VAULT_LOCKED'));
+        await expect(saveLaunchUrlProfile(baseRequest, 'My server', 'hunter2')).rejects.toThrow('VAULT_LOCKED');
+        expect(invoke).toHaveBeenCalledTimes(1);
+        expect(storeProfiles).toHaveBeenCalledTimes(2);
+        const firstList = storeProfiles.mock.calls[0][0] as Array<{ id: string }>;
+        const newId = firstList[firstList.length - 1].id;
+        expect(newId).toMatch(/^srv_/);
+        const rollbackList = storeProfiles.mock.calls[1][0] as Array<{ id: string }>;
+        expect(rollbackList.some((p) => p.id === newId)).toBe(false);
+        expect(rollbackList).toEqual([]);
+    });
+
     it('fails closed when the vault read refuses (locked or account switched)', async () => {
         readForWrite.mockRejectedValue(new Error('STORE_NOT_READY'));
         await expect(saveLaunchUrlProfile(baseRequest, '', 'hunter2')).rejects.toThrow('STORE_NOT_READY');

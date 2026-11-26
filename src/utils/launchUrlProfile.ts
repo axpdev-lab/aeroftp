@@ -128,8 +128,11 @@ const awsRegionFromHost = (host: string): string | undefined => {
   return regional ? regional[1] : undefined;
 };
 
-/** The AWS host a region answers on: the global endpoint for `us-east-1`,
- *  else the regional one (`.com.cn` for the China regions). */
+/** The AWS host a region is matched by: the global endpoint for `us-east-1`,
+ *  else the regional one. China regions also answer on the `.com.cn` spelling;
+ *  that spelling is kept here only so `hostsMatch` reads both host spellings
+ *  of one region as the same endpoint (the backend itself builds
+ *  `s3.<region>.amazonaws.com`). */
 const awsHostForRegion = (region: string): string => {
   if (region === 'us-east-1') return 's3.amazonaws.com';
   return region.startsWith('cn-') ? `s3.${region}.amazonaws.com.cn` : `s3.${region}.amazonaws.com`;
@@ -160,9 +163,11 @@ const endpointHostPort = (endpoint: string | undefined): { host: string; port?: 
 
 /** The host and port an S3 side matches a launch URL by. A side whose `host`
  *  field is empty (the `amazon-s3` preset stores none, only a region and a
- *  bucket) or is the global AWS host resolves the way the backend does: its
- *  explicit endpoint's host, else the AWS host its region names, so a launch
- *  URL's regional host matches the profile and its secret is loaded (#1534). */
+ *  bucket) or is the global AWS host resolves through its explicit endpoint's
+ *  host, else the regional AWS host its region names (`s3.<region>.amazonaws.com`,
+ *  the host the backend builds when no endpoint is set; the `.com.cn` spelling
+ *  of a China region reads as the same region), so a launch URL's regional
+ *  host matches the profile and its secret is loaded (#1534). */
 const sideHostPort = (
   protocol: string,
   side: { host?: string; port?: number; options?: { endpoint?: string; region?: string } },
