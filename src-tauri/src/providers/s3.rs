@@ -1057,6 +1057,21 @@ fn is_single_strong_etag(value: &str) -> bool {
     !inner.is_empty() && !inner.contains('"') && !inner.chars().any(|c| c.is_control())
 }
 
+/// The one strong ETag the headers name, verbatim (quotes included), or
+/// `None` when there is none or more than one `ETag` field. `HeaderMap::get`
+/// reads only the first field and ignores a repeated one; a repeated field
+/// does not name a single revision, so no marker PUT and no conditional
+/// delete may be bound to it.
+fn single_strong_etag(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    let mut fields = headers.get_all(reqwest::header::ETAG).iter();
+    let first = fields.next()?;
+    if fields.next().is_some() {
+        return None;
+    }
+    let value = first.to_str().ok()?;
+    is_single_strong_etag(value).then(|| value.to_string())
+}
+
 impl S3Provider {
     fn baseline_path(&self) -> Option<std::path::PathBuf> {
         #[cfg(test)]
@@ -2552,13 +2567,7 @@ impl S3Provider {
                 if !names_zero_length(headers) {
                     return None;
                 }
-                let etag = headers
-                    .get(reqwest::header::ETAG)
-                    .and_then(|value| value.to_str().ok())?;
-                if !is_single_strong_etag(etag) {
-                    return None;
-                }
-                Some(etag.to_string())
+                Some(single_strong_etag(headers)?)
             }
             _ => None,
         }
@@ -14100,6 +14109,9 @@ mod tests {
         /// A conditional DELETE (one carrying If-Match) answers 500, as a
         /// backend may do after it already applied the delete.
         fail_marker_delete: bool,
+        /// HEAD of a slash key sends the ETag field twice, as a broken
+        /// server may; the validating check must refuse the repeated field.
+        duplicate_head_marker_etag: bool,
     }
 
     impl Default for MarkerDouble {
@@ -14112,6 +14124,7 @@ mod tests {
                 initial_delete_marker_etag: "\"marker-v1\"".to_string(),
                 child_delete_rotates_marker_etag: false,
                 fail_marker_delete: false,
+                duplicate_head_marker_etag: false,
             }
         }
     }
@@ -14127,6 +14140,7 @@ mod tests {
             initial_delete_marker_etag,
             child_delete_rotates_marker_etag,
             fail_marker_delete,
+            duplicate_head_marker_etag,
         } = double;
         use std::sync::{Arc, Mutex};
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -14141,6 +14155,7 @@ mod tests {
                 let head_etag = head_marker_etag.clone();
                 let rotate = child_delete_rotates_marker_etag;
                 let fail_delete = fail_marker_delete;
+                let duplicate_head_etag = duplicate_head_marker_etag;
                 let current_etag = Arc::clone(&current_etag);
                 async move {
                     let path = req.uri().path().to_string();
@@ -14220,7 +14235,14 @@ mod tests {
                                 .status(200)
                                 .header("content-length", "0");
                             let builder = match (&head_etag, path.ends_with('/')) {
-                                (Some(tag), true) => builder.header("etag", tag.as_str()),
+                                (Some(tag), true) => {
+                                    let builder = builder.header("etag", tag.as_str());
+                                    if duplicate_head_etag {
+                                        builder.header("etag", tag.as_str())
+                                    } else {
+                                        builder
+                                    }
+                                }
                                 _ => builder,
                             };
                             builder.body(axum::body::Body::empty()).unwrap()
@@ -14384,6 +14406,35 @@ mod tests {
         assert!(!is_single_strong_etag("\"a\"b\""));
         assert!(!is_single_strong_etag("marker-v1"));
         assert!(!is_single_strong_etag("\"a\tb\""));
+    }
+
+    /// The validating HEAD reads the ETag with `get_all`: a repeated field
+    /// is refused (it does not name one revision), a single strong tag is
+    /// returned verbatim, quotes included, for `If-Match`.
+    #[test]
+    fn only_one_etag_field_validates_and_it_is_kept_verbatim() {
+        use reqwest::header::{HeaderMap, HeaderValue, ETAG};
+        let with = |values: &[&str]| {
+            let mut headers = HeaderMap::new();
+            for value in values {
+                headers.append(ETAG, HeaderValue::from_str(value).unwrap());
+            }
+            headers
+        };
+        assert_eq!(single_strong_etag(&with(&[])), None);
+        assert_eq!(
+            single_strong_etag(&with(&["\"a\""])),
+            Some("\"a\"".to_string())
+        );
+        assert_eq!(
+            single_strong_etag(&with(&["\"marker-v1\""])),
+            Some("\"marker-v1\"".to_string())
+        );
+        assert_eq!(single_strong_etag(&with(&["W/\"a\""])), None);
+        assert_eq!(single_strong_etag(&with(&["\"a\", \"b\""])), None);
+        // A repeated field is refused even when both values are strong.
+        assert_eq!(single_strong_etag(&with(&["\"a\"", "\"a\""])), None);
+        assert_eq!(single_strong_etag(&with(&["\"a\"", "\"b\""])), None);
     }
 
     /// Only a `Content-Length` of exactly 0 proves a marker empty: a
@@ -14707,6 +14758,47 @@ mod tests {
                 "{head_etag:?}: {log:?}"
             );
         }
+    }
+
+    /// A HEAD that repeats the ETag field does not validate the marker:
+    /// `get_all` sees both fields, so the refused copy stays an error, no
+    /// marker PUT is written and nothing is deleted.
+    #[tokio::test]
+    async fn a_repeated_etag_field_on_the_head_validates_nothing() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            duplicate_head_marker_etag: true,
+            ..MarkerDouble::default()
+        })
+        .await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("a repeated ETag field is not one strong tag");
+        let log = log.lock().unwrap().clone();
+        assert!(err.to_string().contains("404"), "{err}");
+        assert!(!puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
+        assert!(!log.iter().any(|r| r.starts_with("DELETE")), "{log:?}");
+    }
+
+    /// A single valid strong ETag is sent to the conditional delete
+    /// verbatim, quotes included: `If-Match: "a"`.
+    #[tokio::test]
+    async fn a_single_strong_etag_is_sent_verbatim_as_if_match() {
+        let (mut provider, log) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            head_marker_etag: Some("\"a\"".to_string()),
+            // The object the server holds carries the same tag the HEAD named.
+            initial_delete_marker_etag: "\"a\"".to_string(),
+            ..MarkerDouble::default()
+        })
+        .await;
+        provider.rename("/src", "/dst").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        assert!(
+            log.contains(&"DELETE /test-bucket/src/ if-match=\"a\"".to_string()),
+            "{log:?}"
+        );
     }
 
     /// A conditional DELETE the server answers with a 5xx may already have
