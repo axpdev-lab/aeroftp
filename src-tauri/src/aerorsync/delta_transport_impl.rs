@@ -5416,7 +5416,7 @@ PY"#
     fn link_entry(name: &str, target: &str) -> crate::aerorsync::real_wire::FileListEntry {
         crate::aerorsync::real_wire::FileListEntry {
             flags: 1 << 13,
-            path: name.to_string(),
+            path: name.as_bytes().to_vec(),
             size: target.len() as i64,
             mtime: 1_700_000_000,
             mtime_nsec: Some(0),
@@ -5426,7 +5426,8 @@ PY"#
             gid: None,
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some(target.to_string()),
+            symlink_target: Some(target.as_bytes().to_vec()),
+            rdev: None,
             xattrs: None,
             acls: None,
         }
