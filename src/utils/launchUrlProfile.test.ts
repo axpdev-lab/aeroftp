@@ -150,6 +150,61 @@ describe('a launch URL and the sessions and profiles it can reuse', () => {
   });
 });
 
+describe('an AWS S3 profile with an empty host field matches a launch URL by its region host (#1534)', () => {
+  const awsProfile = (over: Partial<ServerProfile>): ServerProfile => ({
+    id: 'aws', name: 'AWS', protocol: 's3', host: '', port: 443, username: 'AKID',
+    providerId: 'amazon-s3',
+    options: { bucket: 'b1', region: 'eu-west-1' },
+    ...over,
+  } as ServerProfile);
+  const awsReq = (server: string, options?: OpenRequest['options'], over: Partial<OpenRequest> = {}): OpenRequest => ({
+    kind: 'remoteUrl', path: '', folder: '/', name: '', isDir: true,
+    protocol: 's3', server, username: 'AKID', options, ...over,
+  } as OpenRequest);
+
+  it('matches the regional host its region names, with or without ?region=', () => {
+    const profile = awsProfile({});
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b1', region: 'eu-west-1' }))).toBe(true);
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b1' }))).toBe(true);
+    expect(savedProfileMatchesLaunch(profile, awsReq('S3.EU-WEST-1.AMAZONAWS.COM', { bucket: 'b1' }))).toBe(true);
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.amazonaws.com', { bucket: 'b1', region: 'eu-west-1' }))).toBe(true);
+  });
+
+  it('matches a us-east-1 profile on the global host and on the us-east-1 spelling alike', () => {
+    const profile = awsProfile({ options: { bucket: 'b1', region: 'us-east-1' } });
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.amazonaws.com', { bucket: 'b1' }))).toBe(true);
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.us-east-1.amazonaws.com', { bucket: 'b1' }))).toBe(true);
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.amazonaws.com', { bucket: 'b1', region: 'us-east-1' }))).toBe(true);
+  });
+
+  it('never matches another region, bucket, access key, port, protocol or endpoint', () => {
+    const profile = awsProfile({});
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.eu-central-1.amazonaws.com', { bucket: 'b1', region: 'eu-central-1' }))).toBe(false);
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.amazonaws.com', { bucket: 'b1' }))).toBe(false);
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b2' }))).toBe(false);
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b1' }, { username: 'OTHER' }))).toBe(false);
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b1' }, { port: 9000 }))).toBe(false);
+    expect(savedProfileMatchesLaunch(awsProfile({ protocol: 'webdav' }), awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b1' }))).toBe(false);
+    expect(savedProfileMatchesLaunch(profile, awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b1', endpoint: 'https://minio.example.com' }))).toBe(false);
+  });
+
+  it('matches a profile that stores its endpoint with an empty host', () => {
+    const minio = awsProfile({ providerId: 'custom-s3', options: { bucket: 'b1', endpoint: 'https://minio.lan:9000' } });
+    expect(savedProfileMatchesLaunch(minio, awsReq('minio.lan', { bucket: 'b1' }, { port: 9000 }))).toBe(true);
+    expect(savedProfileMatchesLaunch(minio, awsReq('minio.lan', { bucket: 'b1' }))).toBe(false);
+    expect(savedProfileMatchesLaunch(minio, awsReq('other.lan', { bucket: 'b1' }, { port: 9000 }))).toBe(false);
+  });
+
+  it('reuses the open tab of the same AWS account, region and bucket', () => {
+    const session = { protocol: 's3', server: '', port: 443, username: 'AKID', password: 'x', options: { bucket: 'b1', region: 'eu-west-1' } } as ConnectionParams;
+    expect(openSessionMatchesLaunch(session, awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b1', region: 'eu-west-1' }))).toBe(true);
+    expect(openSessionMatchesLaunch(session, awsReq('s3.amazonaws.com', { bucket: 'b1', region: 'eu-west-1' }))).toBe(true);
+    expect(openSessionMatchesLaunch(session, awsReq('s3.eu-central-1.amazonaws.com', { bucket: 'b1', region: 'eu-central-1' }))).toBe(false);
+    expect(openSessionMatchesLaunch(session, awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b2' }))).toBe(false);
+    expect(openSessionMatchesLaunch(session, awsReq('s3.eu-west-1.amazonaws.com', { bucket: 'b1' }, { username: 'OTHER' }))).toBe(false);
+  });
+});
+
 describe('launchFolderToOpen', () => {
   it('opens the root a link asks for, like any other folder', () => {
     expect(launchFolderToOpen('/')).toBe('/');
