@@ -169,6 +169,7 @@ async fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated()
                 PASSWORD.into(),
                 false,
                 target,
+                None,
             )
             .await
             .unwrap();

@@ -836,6 +836,10 @@ pub(crate) mod tests {
 
     #[test]
     fn bulk_admits_relative_paths_and_keeps_glob_expanding_parents_on_single_file_lane() {
+        // Reads the process CWD: take the shared env lock like every other
+        // working-directory-reading test, so a test that changes the CWD
+        // cannot race this read.
+        let _env = crate::test_env::lock();
         let mut entry = entries(1).remove(0);
         entry.local_path = "file-0.txt".into();
         entry.remote_path = "/bulk/file-0.txt".into();

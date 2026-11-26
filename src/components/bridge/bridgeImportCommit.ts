@@ -8,6 +8,7 @@ import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../..
 /** A profile as `import_bridge_config` returns it, credentials redacted. */
 export interface ImportedServer {
     id: string;
+    fileIndex?: number;
     name: string;
     host: string;
     port: number;
@@ -22,6 +23,8 @@ export interface ImportedServer {
     hasStoredAeroCryptSalt?: boolean;
     /** The Filen CLI API key the backend moved into the vault (#230). */
     hasStoredFilenApiKey?: boolean;
+    /** The AWS STS session token the backend moved into the vault. */
+    hasStoredSessionToken?: boolean;
     /** The pre-reset host and options when `import_bridge_config` reset a relaxing option. */
     relaxedHost?: string;
     relaxedOptions?: Record<string, unknown>;
@@ -61,6 +64,7 @@ export const importedServerProfile = (
         hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword,
         hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt,
         hasStoredFilenApiKey: s.hasStoredFilenApiKey,
+        hasStoredSessionToken: s.hasStoredSessionToken,
     };
 };
 
@@ -78,26 +82,29 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
 
 /**
  * Persist imported profiles onto the vault's current contents and hand the
- * merged list back for the caller's local state.
+ * merged list back for the caller's local state. The removal of the profiles
+ * being replaced (`removeKeys`, keyed by `bridgeProfileKey`) and the append go
+ * out in THIS ONE write: the read, the account check and the write are a single
+ * account-bound operation, so a refusal (account switch, revision taken,
+ * duplicate id) leaves the vault exactly as it was and there is no half-applied
+ * replace to roll back.
  *
- * Two properties every import callback needs, and three of the four call sites
- * had both wrong. The vault is the only ground truth, read through
- * `readSavedServerProfilesForWrite` so that an empty result means an empty vault
- * and never a vault that could not be reached; it can be empty precisely
- * because `commitImportedServers` has just removed the profiles it is
- * replacing, and falling back to the component's own snapshot in that case puts
- * the replaced profile back next to its replacement. And a failed write has to
- * propagate, so `commitImportedServers` can restore the backup it took:
- * swallowing it reports a successful import over a vault that has already lost
- * them. The list handed back is the one stored: an imported profile whose
- * name another profile holds is stored with the first free " (1)", " (2)",
- * ... (`storeSavedServerProfiles`).
+ * The vault is the only ground truth, read through
+ * `readSavedServerProfilesForWrite`: an empty result means an empty vault,
+ * never a vault that could not be reached (an unavailable owner read throws
+ * there instead of arriving here as a false `null` legacy account). The list
+ * handed back is the one stored: an imported profile whose name another
+ * profile holds is stored with the first free " (1)", " (2)", ...
+ * (`storeSavedServerProfiles`).
  *
  * @param newServers the imported profiles.
- * @param expectedUserId the account a bridge import read before removing the
- *   profiles it updates (`null`: it read the legacy store, which has no account).
- *   Undefined skips the check. An account that is not this one is refused,
- *   including one that became active after a legacy read.
+ * @param expectedUserId the account a bridge import read before storing
+ *   (`null`: a confirmed legacy read, which has no account). Undefined skips
+ *   the check. An account that is not this one is refused, including one that
+ *   became active after a legacy read.
+ * @param removeKeys the `bridgeProfileKey`s of the existing profiles this
+ *   import replaces; they leave the list in the same write that adds
+ *   `newServers`.
  * @throws when the vault's active account is not `expectedUserId` (switched
  *   from another window during the import); when a profile to append has an id
  *   the vault already holds, or two profiles of this batch share one id; or when
@@ -107,66 +114,96 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
 export async function appendImportedProfiles(
     newServers: ServerProfile[],
     expectedUserId?: number | null,
+    removeKeys?: ReadonlySet<string>,
 ): Promise<ServerProfile[]> {
     const { profiles: current, userId, revision } = await readSavedServerProfilesForWrite();
+    // Undefined skips the check (older call sites); null is a CONFIRMED legacy
+    // read; a number is the captured owner. A locked or unreadable owner never
+    // reaches this comparison as null: readSavedServerProfilesForWrite throws
+    // for it, so an unavailable read is a failure here, not a false
+    // account-changed refusal.
     if (expectedUserId !== undefined && (userId ?? null) !== expectedUserId) {
         throw new Error('The active account changed during the import, so the profiles were not saved. Make the account you imported into the active one again and import the same file again.');
     }
-    // Nothing to store (every profile skipped): the list is not rewritten, so a
-    // write that could only fail cannot report a failed import.
-    if (newServers.length === 0) return current;
-    const currentIds = new Set(current.map(s => s.id));
+    const removing = removeKeys !== undefined && removeKeys.size > 0;
+    // Nothing to store (every profile skipped, nothing to replace): the list is
+    // not rewritten, so a write that could only fail cannot report a failed import.
+    if (newServers.length === 0 && !removing) return current;
+    const base = removing ? current.filter(s => !removeKeys.has(bridgeProfileKey(s))) : current;
+    const baseIds = new Set(base.map(s => s.id));
     const seen = new Set<string>();
     for (const server of newServers) {
         if (seen.has(server.id)) {
             throw new Error(`Two profiles of this import share the id ${server.id}, so nothing was written.`);
         }
-        if (currentIds.has(server.id)) {
+        if (baseIds.has(server.id)) {
             throw new Error(`Profile ${server.id} was saved by another window during the import, so nothing was written.`);
         }
         seen.add(server.id);
     }
-    return storeSavedServerProfiles([...current, ...newServers], false, userId, revision);
-}
-
-/** Put `removed` back into the list as it stands now, in `userId`'s account. Returns those put back under another name. */
-async function restoreRemovedProfiles(removed: ServerProfile[], userId: number | undefined): Promise<ServerProfile[]> {
-    if (removed.length === 0) return [];
-    const { profiles, userId: readUserId, revision } = await readSavedServerProfilesForWrite();
-    if (readUserId !== userId) throw new Error('The active account changed during the import.');
-    const held = new Set(profiles.map(s => s.id));
-    const stored = await storeSavedServerProfiles([...profiles, ...removed.filter(s => !held.has(s.id))], false, userId, revision);
-    // A name another profile took meanwhile stays with it: the one put back got " (1)".
-    return removed.filter(s => stored.some(p => p.id === s.id && p.name !== s.name));
+    return storeSavedServerProfiles([...base, ...newServers], false, userId, revision);
 }
 
 /**
- * Merge imported profiles into the active user's vault partition with
- * the same add-vs-update split and rollback semantics used by the
- * legacy rclone/WinSCP/FileZilla confirm handlers. Single source of
- * truth so every bridge source behaves identically.
+ * `commitImportedServers` bound to the account the scan wrote into: the
+ * callback receives `scanUserId` as its expected account, so a switch between
+ * the scan and the commit refuses the write instead of landing `hasStored*`
+ * flags that point at another account's vault partition. `undefined` means the
+ * scan could not read an owner (locked vault): unknown, so the scan check is
+ * skipped and the write below still carries its own account+revision check.
+ */
+export async function commitImportedServersForScan(
+    selected: ServerProfile[],
+    existingServerKeys: Set<string>,
+    scanUserId: number | null | undefined,
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null, removeKeys?: ReadonlySet<string>) => void | Promise<void>,
+): Promise<CommitOutcome> {
+    return commitImportedServers(
+        selected,
+        existingServerKeys,
+        (servers, expectedUserId, removeKeys) => onImport(servers, expectedUserId ?? scanUserId ?? null, removeKeys),
+        scanUserId,
+    );
+}
+
+/**
+ * Merge imported profiles into the active user's vault partition with the same
+ * add-vs-update split used by the legacy rclone/WinSCP/FileZilla confirm
+ * handlers. Single source of truth so every bridge source behaves identically.
+ *
+ * The replacement is ATOMIC: the profiles to remove and the imported ones are
+ * written in one account-bound write (inside `onImport` ->
+ * `appendImportedProfiles`), so a refused or failed write leaves the vault
+ * untouched; there is no separate removal write whose failure would need an
+ * unexecutable rollback after an account switch.
  */
 export async function commitImportedServers(
     selected: ServerProfile[],
     existingServerKeys: Set<string>,
-    onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>,
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null, removeKeys?: ReadonlySet<string>) => void | Promise<void>,
+    scanAccountId?: number | null,
 ): Promise<CommitOutcome> {
     const key = bridgeProfileKey;
     const added = selected.filter(s => !existingServerKeys.has(key(s)));
     const updated = selected.filter(s => existingServerKeys.has(key(s)));
 
-    // The whole replace path hangs off this read: it decides which profiles are
-    // removed, and it is the only copy that can be put back if the import then
-    // fails. Swallowing a failed read and carrying on imports against an unknown
-    // vault, skips the removal, and lands the replacement next to the profile it
-    // was meant to replace while reporting it as an update. A vault with no
-    // profiles yet reads as an empty list, not as a failure, so refusing here
-    // costs a first import nothing.
-    let backup: ServerProfile[];
-    let backupUserId: number | undefined;
-    let backupRevision: string | undefined;
+    // The scan account is validated BEFORE anything is written: a switch
+    // between the scan and this commit must refuse the whole replace, never
+    // remove under one account and append under another. Swallowing a failed
+    // read and carrying on imports against an unknown vault, and a vault with
+    // no profiles yet reads as an empty list, not as a failure, so refusing
+    // here costs a first import nothing.
+    let commitUserId: number | null;
     try {
-        ({ profiles: backup, userId: backupUserId, revision: backupRevision } = await readSavedServerProfilesForWrite());
+        const read = await readSavedServerProfilesForWrite();
+        if (scanAccountId !== undefined && (read.userId ?? null) !== (scanAccountId ?? null)) {
+            return {
+                added: 0,
+                updated: 0,
+                error: 'The active account changed since the scan, so nothing was removed or saved. Make the scanned account the active one again and import the same file again.',
+            };
+        }
+        commitUserId = read.userId ?? null;
     } catch {
         return {
             added: 0,
@@ -175,34 +212,18 @@ export async function commitImportedServers(
         };
     }
 
-    let removed: ServerProfile[] = [];
+    // One write carries both halves of the replace, bound to the one validated
+    // account: a switch in between refuses that write (ACCOUNT_CHANGED /
+    // PROFILES_CHANGED from the backend), and nothing was removed, so nothing
+    // needs rolling back.
+    const removeKeys = updated.length > 0 ? new Set(updated.map(key)) : undefined;
     try {
-        if (updated.length > 0 && backup.length > 0) {
-            const updatedKeys = new Set(updated.map(key));
-            const filtered = backup.filter(s => !updatedKeys.has(key(s)));
-            await storeSavedServerProfiles(filtered, false, backupUserId, backupRevision);
-            removed = backup.filter(s => updatedKeys.has(key(s)));
-        }
-        // Written for the account the removal above was made in: a switch in
-        // between refuses the write, and the rollback below restores that account.
-        await onImport([...updated, ...added], backupUserId ?? null);
-    } catch {
-        // "No changes were made" is a claim about the vault, so it may only be
-        // made when the rollback actually succeeded. A failed restore leaves the
-        // profiles this call removed gone, and saying nothing happened would
-        // send the user away from the one screen they need to look at.
-        // Only what this call removed goes back, into a list read now: the backup
-        // is old by this point, and writing it whole would undo what another
-        // window saved since.
-        const renamed = await restoreRemovedProfiles(removed, backupUserId).catch(() => null);
+        await onImport([...updated, ...added], commitUserId, removeKeys);
+    } catch (e) {
         return {
             added: 0,
             updated: 0,
-            error: renamed === null
-                ? 'Import failed, and the previous profiles could not be restored. Check My Servers before importing again.'
-                : renamed.length > 0
-                    ? `Import failed. The previous profiles were restored, but another profile took the name of ${renamed.map(s => s.name).join(', ')} meanwhile, so it was stored with a number. Check My Servers.`
-                    : 'Import failed. No changes were made.',
+            error: `Import failed. No changes were made. ${String(e ?? '')}`,
         };
     }
 

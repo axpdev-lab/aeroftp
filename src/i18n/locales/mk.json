@@ -2444,7 +2444,8 @@
             "discoverFastly": "Fastly Object Storage: складиште компатибилно со S3 во 12 региони (5 GB бесплатно, потребна е картичка)",
             "discoverNeon": "Neon Object Storage: складиште компатибилно со S3 по гранка на проект (5 GB бесплатно по проект)",
             "discoverPuter": "Puter облачно складиште преку WebDAV (25 MB бесплатно, без картичка)",
-            "discoverLifetimeCloud": "Складирање LifetimeCloud преку WebDAV (1 GB бесплатно, без картичка)"
+            "discoverLifetimeCloud": "Складирање LifetimeCloud преку WebDAV (1 GB бесплатно, без картичка)",
+            "discoverCoritan": "Coritan Object Storage: складиште компатибилно со S3 во 6 региони (10 GB бесплатно, не е потребна картичка)"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",

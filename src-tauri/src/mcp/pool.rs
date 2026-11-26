@@ -641,32 +641,51 @@ async fn create_provider_from_vault(
     create_provider_from_vault_with_reader(
         server_query,
         identity,
-        crate::user_partitions::mcp_list_active_server_profiles,
+        crate::user_partitions::mcp_list_server_profiles,
         crate::profile_security::strict_profiles_enabled(),
-        |store, key| {
-            crate::user_partitions::resolve_active_credential(store, key)
-                .ok()
-                .flatten()
-                .map(|s| s.to_string())
-                .unwrap_or_default()
-        },
+        vault_profile_password,
     )
     .await
+}
+
+/// The production password reader for [`create_provider_from_vault`]. A
+/// captured account reads its own partition only, with the same owner-aware
+/// legacy fallback the session-token path below uses, so a secondary account
+/// never receives the legacy owner's shared `server_<id>` row. A captured
+/// `None` reads the legacy keys only and fails closed when an account has
+/// appeared by the time of the read: the read must never follow a switch to
+/// another account.
+fn vault_profile_password(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+) -> Result<String, String> {
+    let resolved = match user_id {
+        Some(uid) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, key)
+        }
+        None => crate::user_partitions::resolve_legacy_only_credential_checked(store, key),
+    };
+    Ok(resolved?.map(|s| s.to_string()).unwrap_or_default())
 }
 
 async fn create_provider_from_vault_with_reader(
     server_query: &str,
     identity: Option<&str>,
-    read_profiles: impl FnOnce(&CredentialStore) -> Result<Vec<serde_json::Value>, String>,
+    read_profiles: impl FnOnce(&CredentialStore, Option<i64>) -> Result<Vec<serde_json::Value>, String>,
     strict: bool,
-    read_credential: impl FnOnce(&CredentialStore, &str) -> String,
+    read_credential: impl FnOnce(&CredentialStore, Option<i64>, &str) -> Result<String, String>,
 ) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
-    // MUV-5: active-user profiles (see resolve_profile_target). The transient
-    // env-passphrase unlock done inside also primes the session so the
-    // `resolve_active_credential` read below decrypts the per-user `server_<id>`.
-    let profiles = read_profiles(&store)?;
+    // MUV-5: capture the active user id ONCE before reading anything, so the
+    // profile list, the password and the session token all come from the same
+    // user partition even if the active account switches while this connect
+    // runs (the GUI can switch on another thread at any point). The transient
+    // env-passphrase unlock done inside `mcp_list_server_profiles` also primes
+    // the session so the per-user `server_<id>` row decrypts.
+    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+    let profiles = read_profiles(&store, user_id)?;
 
     let matched = find_unique_profile(&profiles, server_query)?;
     // The profile read again here is the one opened: it must still connect
@@ -697,15 +716,18 @@ async fn create_provider_from_vault_with_reader(
     // JSON object with {username, password, access_token, ...}. The S3 bucket
     // and provider-specific options live in the profile's `options` field, not
     // in the credential blob.
-    // MUV-5: per-user store (active user) with fallback to the legacy vault. The
-    // profile listing above already unlocked a passphrase account from
-    // AEROFTP_USER_PASSPHRASE, so this resolves its own `server_<id>` row;
-    // otherwise the dual-written vault copy still answers.
+    // MUV-5: per-user store of the account captured above, owner-aware like the
+    // session-token path below (the legacy vault answers only its owner). A
+    // captured `None` reads the legacy keys only and fails closed if an account
+    // appeared since the capture.
     // Strict mode holds here too: the read is never attempted for a relaxed
-    // saved profile when strict mode is active.
+    // saved profile when strict mode is active. The password reads through the
+    // user captured above, so it always comes from the same partition as the
+    // profile list and the session token below.
     let raw_cred = credential_after_strict_check(matched, strict, || {
-        read_credential(&store, &format!("server_{}", profile_id))
-    })?;
+        read_credential(&store, user_id, &format!("server_{}", profile_id))
+    })
+    .and_then(|inner| inner)?;
 
     let (mut resolved_username, mut password) = parse_server_credential(&raw_cred, username);
 
@@ -737,7 +759,6 @@ async fn create_provider_from_vault_with_reader(
         }
     };
 
-    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
     let scope = crate::profile_auth::AuthScope {
         store: &store,
         user_id,
@@ -770,7 +791,23 @@ async fn create_provider_from_vault_with_reader(
     // Provider options from the profile (bucket, region, endpoint, etc.): the
     // vault credential alone does not carry them, they live in
     // `profile.options`, with the per-protocol defaults applied on top.
-    let (extra, resolved_host) = profile_connection_extra(matched, provider_type, host);
+    let (mut extra, resolved_host) = profile_connection_extra(matched, provider_type, host);
+    let requires_stored_session_token = matched
+        .get("hasStoredSessionToken")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    crate::profile_loader::inject_vault_s3_session_token(
+        provider_type,
+        Some(profile_id),
+        requires_stored_session_token,
+        &mut extra,
+        |key| {
+            // The token must come from the SAME captured account as the
+            // password read above: a captured None is checked legacy-only and
+            // fails closed if an account became active between the two reads.
+            crate::profile_loader::resolve_vault_s3_session_token_captured(&store, user_id, key)
+        },
+    )?;
 
     let config = ProviderConfig {
         name: profile_name.to_string(),
@@ -809,7 +846,15 @@ mod tests {
     /// turn a security check off. The full vault path refuses them before any
     /// credential is read; non-strict mode keeps its existing behavior.
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn the_vault_connect_path_applies_strict_mode() {
+        // Hermetic: no reads from the real config dir, no leaked env.
+        let _env = crate::test_env::lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let env_dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", env_dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vault.db");
         let key = [0x24; 32];
@@ -834,13 +879,13 @@ mod tests {
             None,
             {
                 let profile = profile.clone();
-                move |_| Ok(vec![profile])
+                move |_, _| Ok(vec![profile])
             },
             true,
-            |_, key| {
+            |_, _, key| {
                 assert_eq!(key, "server_srv_relaxed");
                 read.set(true);
-                "fixture-secret".to_string()
+                Ok("fixture-secret".to_string())
             },
         )
         .await
@@ -855,8 +900,336 @@ mod tests {
         });
         assert_eq!(allowed.unwrap(), "fixture-secret");
         assert!(read.get());
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+    }
+
+    /// The profile list and the password must come from the SAME account: the
+    /// user id captured before the profile read is exactly the one the
+    /// credential read receives, so an account switch mid-connect cannot mix
+    /// one user's profile list with another user's password.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn the_vault_connect_path_reads_profiles_and_password_from_one_captured_user() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "mcp::pool::tests::the_vault_connect_path_reads_profiles_and_password_from_one_captured_user",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic pool user master").unwrap();
+        CredentialStore::unlock_with_master("synthetic pool user master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+
+        use std::cell::RefCell;
+        let seen = RefCell::new(Vec::new());
+        let profile = serde_json::json!({
+            "id": "srv_pool", "name": "lab", "host": "files.example.com",
+            "port": 22, "username": "user", "protocol": "sftp",
+        });
+        let result = create_provider_from_vault_with_reader(
+            "lab",
+            None,
+            {
+                let profile = profile.clone();
+                let seen = &seen;
+                move |_, user| {
+                    seen.borrow_mut().push(format!("profiles:{user:?}"));
+                    // Switch the active account to the second account INSIDE the
+                    // profile read: the credential read after it must still use
+                    // the account captured before this callback ran.
+                    let conn = crate::user_partitions::open_or_init_cli().unwrap();
+                    crate::user_partitions::set_active_user(&conn, second).unwrap();
+                    drop(conn);
+                    Ok(vec![profile])
+                }
+            },
+            false,
+            |_, user, key| {
+                seen.borrow_mut().push(format!("cred:{user:?}:{key}"));
+                Ok("fixture-secret".to_string())
+            },
+        )
+        .await;
+        let (_provider, name, proto, _deadline) = result.expect("the pool connect must build");
+        assert_eq!(name, "lab");
+        assert_eq!(proto, "SFTP");
+        assert_eq!(
+            seen.borrow().as_slice(),
+            [
+                format!("profiles:{:?}", Some(first)),
+                format!("cred:{:?}:server_srv_pool", Some(first)),
+            ],
+            "both reads must carry the user captured before the profile read"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
+
+    /// F9/R18 pins for the production password reader
+    /// [`vault_profile_password`]: a captured account reads its own partition
+    /// even after a switch (switch after owner capture, switch after profile
+    /// selection, no-switch control), a secondary account never falls back to
+    /// the legacy owner's shared vault row, and a captured `None` reads the
+    /// legacy keys only and fails closed once an account has appeared.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn the_password_read_is_bound_to_the_captured_account_and_never_cross_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "mcp::pool::tests::the_password_read_is_bound_to_the_captured_account_and_never_cross_account",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic pool reader master").unwrap();
+        CredentialStore::unlock_with_master("synthetic pool reader master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+        let switch_to_second = || {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+        };
+
+        // The first account is the legacy owner: its partition row and the
+        // shared vault both answer for it. The second account has no row.
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            first,
+            "server_srv_pool",
+            "password",
+            "pw-of-first",
+        )
+        .unwrap();
+        store.store("server_shared", "legacy-owner-pw").unwrap();
+
+        // No-switch control: captured first, active first.
+        assert_eq!(
+            vault_profile_password(&store, Some(first), "server_srv_pool").unwrap(),
+            "pw-of-first"
+        );
+
+        // Switch after owner capture (before the profile read): the captured
+        // id still drives the read, so the password stays the first
+        // account's and is not an error.
+        switch_to_second();
+        assert_eq!(
+            vault_profile_password(&store, Some(first), "server_srv_pool").unwrap(),
+            "pw-of-first",
+            "a switch after the capture must not move the password read"
+        );
+
+        // Switch after profile selection: same captured id at the credential
+        // read, same answer.
+        switch_to_second();
+        assert_eq!(
+            vault_profile_password(&store, Some(first), "server_srv_pool").unwrap(),
+            "pw-of-first",
+            "a switch after profile selection must not move the password read"
+        );
+
+        // R18: the secondary account has no partition row; the owner-aware
+        // reader must NOT fall back to the legacy owner's shared vault row.
+        assert_eq!(
+            vault_profile_password(&store, Some(second), "server_shared").unwrap(),
+            "",
+            "a secondary account must not receive the legacy owner's shared credential"
+        );
+        // The legacy owner itself still gets the shared fallback.
+        assert_eq!(
+            vault_profile_password(&store, Some(first), "server_shared").unwrap(),
+            "legacy-owner-pw"
+        );
+
+        // A captured None with an account now active fails closed.
+        let err = vault_profile_password(&store, None, "server_shared").unwrap_err();
+        assert!(
+            err.contains(crate::user_partitions::ACCOUNT_CHANGED),
+            "a captured None must fail closed once an account appeared: {err}"
+        );
+
+        // Captured None with no account at all reads the legacy keys only.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                .unwrap();
+        }
+        assert_eq!(
+            vault_profile_password(&store, None, "server_shared").unwrap(),
+            "legacy-owner-pw",
+            "with no account at capture the legacy keys are read"
+        );
+        // ...but the moment an account appears, the same None capture refuses.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_active_user(&conn, first).unwrap();
+        }
+        let err = vault_profile_password(&store, None, "server_shared").unwrap_err();
+        assert!(
+            err.contains(crate::user_partitions::ACCOUNT_CHANGED),
+            "legacy-only read must refuse once an account is active: {err}"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
     }
     use super::*;
+
+    /// F9 pin for the MCP token read: the S3 session token is resolved through
+    /// the SAME captured account as the password. A connect that captured no
+    /// account (legacy) and sees an account activate between the password read
+    /// and the token read fails closed with ACCOUNT_CHANGED instead of serving
+    /// the newly active account's token to a legacy caller.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn the_mcp_token_read_fails_closed_when_an_account_activates_between_password_and_token()
+    {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "mcp::pool::tests::the_mcp_token_read_fails_closed_when_an_account_activates_between_password_and_token",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic pool token master").unwrap();
+        CredentialStore::unlock_with_master("synthetic pool token master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        // The migrated CLI activates a default account; clear the active row
+        // so the connect captures no account (legacy).
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                .unwrap();
+        }
+        assert!(
+            crate::user_partitions::cli_get_active_user(&store)
+                .unwrap()
+                .is_none(),
+            "cleared active row must give the legacy capture"
+        );
+
+        let profile = serde_json::json!({
+            "id": "srv_sts_mcp", "name": "lab-s3", "host": "s3.example.com",
+            "port": 443, "username": "", "protocol": "s3",
+            "hasStoredSessionToken": true,
+            "options": {"bucket": "bkt", "region": "eu-west-1"},
+        });
+        let result = create_provider_from_vault_with_reader(
+            "lab-s3",
+            None,
+            {
+                let profile = profile.clone();
+                move |_, user| {
+                    assert!(
+                        user.is_none(),
+                        "the profile read carries the legacy capture"
+                    );
+                    Ok(vec![profile])
+                }
+            },
+            false,
+            |store, _user, key| {
+                assert_eq!(key, "server_srv_sts_mcp");
+                // An account activates AFTER the capture, during the password
+                // read and before the session-token read.
+                let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+                let root_key = store.derive_user_partition_wrapping_key();
+                let first = crate::user_partitions::create_user(
+                    &mut conn, &root_key, "First", None, None, None,
+                )
+                .unwrap()
+                .id;
+                crate::user_partitions::set_active_user(&conn, first).unwrap();
+                drop(conn);
+                Ok("fixture-secret".to_string())
+            },
+        )
+        .await;
+        let err = result
+            .err()
+            .expect("the token read must fail closed after the account activates");
+        assert!(
+            err.contains(crate::user_partitions::ACCOUNT_CHANGED),
+            "expected ACCOUNT_CHANGED from the captured-None token read, got: {err}"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
 
     /// `invalidate` removes an inserted probe. No vault is opened and no
     /// server is dialed. `with_provider` is not driven here:

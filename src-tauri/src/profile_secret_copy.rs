@@ -45,6 +45,8 @@ pub fn is_shared_vault_key(key: &str) -> bool {
 pub fn copied_secret_type(base: &str) -> Option<&'static str> {
     if crate::profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
         Some("oauth")
+    } else if base == "aws_session_token" {
+        Some("aws_session_token")
     } else if base == "proton_native_session" {
         Some("proton_native_session")
     } else if base == "jottacloud_refresh" {
@@ -345,6 +347,10 @@ mod tests {
         assert_eq!(copied_secret_type("oauth_dropbox"), Some("oauth"));
         assert_eq!(copied_secret_type("github_oauth"), Some("oauth"));
         assert_eq!(
+            copied_secret_type("aws_session_token"),
+            Some("aws_session_token")
+        );
+        assert_eq!(
             copied_secret_type("jottacloud_refresh"),
             Some("jottacloud_refresh")
         );
@@ -386,6 +392,7 @@ mod tests {
         for key in [
             "server_srv",
             "server_modes_srv",
+            "aws_session_token_srv",
             "oauth_google_srv",
             "jottacloud_refresh_srv",
             "aerocrypt_overlay_pw_srv",
@@ -394,5 +401,24 @@ mod tests {
         ] {
             assert!(!is_shared_vault_key(key), "{key}");
         }
+    }
+
+    #[test]
+    fn duplicating_an_sts_profile_copies_aws_session_token_under_the_target_id() {
+        let vault = Vault::new(&[
+            ("server", "secret-key"),
+            ("aws_session_token", "sts-token-123"),
+        ]);
+        let copied = vault.copy(&["server", "aws_session_token"]).unwrap();
+        assert_eq!(copied.get("server"), Some(&true));
+        assert_eq!(copied.get("aws_session_token"), Some(&true));
+        assert_eq!(
+            vault
+                .entries
+                .borrow()
+                .get(&format!("aws_session_token_{TARGET}"))
+                .map(String::as_str),
+            Some("sts-token-123")
+        );
     }
 }

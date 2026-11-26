@@ -274,6 +274,11 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       freeNote: 'per project', healthCheckUrl: 'https://neon.com',
       searchAliases: ['neon', 'neon tech', 'lakebase', 'aws.neon.tech'],
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'neon-s3', category: 'object-storage' }] },
+    // Plan card from the vendor page (checked 2026-11-16): 10 GB-month free, ordering needs no card.
+    { company: 'Coritan', logoId: 'coritan', countryCode: 'US', freeStorageGb: 10,
+      healthCheckUrl: 'https://s3.fra.coritan.com:7337/',
+      searchAliases: ['coritan', 'coritan s3', 'coritan object storage'],
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'coritan', category: 'object-storage' }] },
     { company: 'IBM Cloud Object Storage', parentCompany: 'IBM', logoId: 'ibm-cos', countryCode: 'US', freeStorageGb: null,
       freeNote: '12-month trial',
       healthCheckUrl: 'https://s3.eu-de.cloud-object-storage.appdomain.cloud',
@@ -471,6 +476,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'tigris', icon: 'tigris.png', docsPath: 'providers/tigris' },
     { logoId: 'fastly', icon: 'fastly.png', docsPath: 'providers/fastly-object-storage' },
     { logoId: 'neon', icon: 'neon.png', docsPath: 'providers/neon' },
+    { logoId: 'coritan', icon: 'coritan.png', docsPath: 'providers/aws-s3' },
     { logoId: 'minio', icon: 'minio.png', docsPath: 'providers/minio' },
     { logoId: 'yandex-storage', icon: 'yandexcloud.png', docsPath: 'providers/yandex-object-storage' },
     { logoId: 's3drive', icon: 's3drive.png', docsPath: 'providers/s3drive' },
@@ -728,6 +734,7 @@ const REGIONS_BY_LOGO: Record<string, string[]> = {
     'fastly': ['US', 'GB', 'FR', 'DE', 'IT', 'JP', 'AU'],
     // Neon Object Storage regions (eu-central-1, us-east-1/2, ap-southeast-1).
     'neon': ['US', 'DE', 'SG'],
+    'coritan': ['DE', 'GB', 'US', 'SG', 'IN'],
     'yandex-storage': ['RU'],
 };
 

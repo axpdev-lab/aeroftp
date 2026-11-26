@@ -16,6 +16,132 @@ pub const S3_ENDPOINT_SOURCE_META_KEY: &str = "_aeroftp_s3_endpoint_source";
 pub const S3_REGION_SOURCE_META_KEY: &str = "_aeroftp_s3_region_source";
 pub const S3_PATH_STYLE_SOURCE_META_KEY: &str = "_aeroftp_s3_path_style_source";
 
+/// Per-profile vault key for an imported AWS STS session token (AWS-11).
+/// Stored in the encrypted vault rather than `options.sessionToken` so the
+/// secret never crosses into the webview or plaintext profile metadata.
+pub fn aws_session_token_vault_key(profile_id: &str) -> String {
+    format!("aws_session_token_{profile_id}")
+}
+
+/// The inline S3 session token of `options` without stripping it: a
+/// non-empty camelCase `sessionToken` wins, snake_case `session_token` is
+/// the fallback (the same precedence as
+/// [`crate::extract_and_strip_inline_s3_session_token`]). Shared by the
+/// backup export, the bridge export injection and the agent connect path,
+/// so every surface resolves a conflicting pair identically instead of
+/// depending on map iteration order.
+pub fn inline_s3_session_token(options: Option<&serde_json::Value>) -> Option<String> {
+    let opts = options.and_then(|v| v.as_object())?;
+    let pick = |key: &str| {
+        opts.get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    pick("sessionToken").or_else(|| pick("session_token"))
+}
+
+/// Owner-aware vault read for `aws_session_token_<id>`.
+///
+/// When `user_id` is `Some(uid)`, reads strictly from `uid`'s partition
+/// (falling back to the shared vault only when `uid` is the legacy owner).
+/// When `user_id` is `None`, reads for the active user via the same
+/// owner-aware rule so another user sharing a profile id never receives a
+/// token from the shared vault.
+pub fn resolve_vault_s3_session_token_owner_aware(
+    store: &crate::credential_store::CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+) -> Result<Option<String>, String> {
+    let resolved = match user_id {
+        Some(uid) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, key)
+        }
+        None => crate::user_partitions::resolve_active_credential_owner_aware(store, key),
+    }?;
+    Ok(resolved
+        .map(|secret| secret.to_string())
+        .filter(|s| !s.trim().is_empty()))
+}
+
+/// [`resolve_vault_s3_session_token_owner_aware`] for a caller that CAPTURED
+/// the account alongside the profile read. A captured `Some(uid)` reads that
+/// account's partition; a captured `None` (legacy read) is checked legacy-only:
+/// it reads the legacy vault keys and fails closed with `ACCOUNT_CHANGED` if an
+/// account has become active since the capture, so the newly active account's
+/// token is never served to a caller that captured no account (matching the
+/// checked legacy password read). Callers that did NOT capture an account and
+/// mean "the active one" keep using
+/// [`resolve_vault_s3_session_token_owner_aware`].
+pub fn resolve_vault_s3_session_token_captured(
+    store: &crate::credential_store::CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+) -> Result<Option<String>, String> {
+    let resolved = match user_id {
+        Some(uid) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, key)
+        }
+        None => crate::user_partitions::resolve_legacy_only_credential_checked(store, key),
+    }?;
+    Ok(resolved
+        .map(|secret| secret.to_string())
+        .filter(|s| !s.trim().is_empty()))
+}
+
+/// Populate `extra["session_token"]` for an S3 connection from the vault when
+/// neither the connect form nor a launch URL already provided one. Explicit
+/// session tokens always take precedence.
+///
+/// Fails closed with `Err` if reading the vault fails, or if
+/// `requires_stored_token` is `true` (an STS profile marked
+/// `hasStoredSessionToken: true`) and no usable token is present in the vault.
+pub fn inject_vault_s3_session_token<F>(
+    provider_type: ProviderType,
+    profile_id: Option<&str>,
+    requires_stored_token: bool,
+    extra: &mut HashMap<String, String>,
+    lookup: F,
+) -> Result<(), String>
+where
+    F: FnOnce(&str) -> Result<Option<String>, String>,
+{
+    if provider_type != ProviderType::S3 {
+        return Ok(());
+    }
+    if extra
+        .get("session_token")
+        .is_some_and(|v| !v.trim().is_empty())
+    {
+        return Ok(());
+    }
+    let Some(id) = profile_id.map(str::trim).filter(|s| !s.is_empty()) else {
+        if requires_stored_token {
+            return Err(
+                "This S3 profile requires a saved AWS session token, but has no profile id to look it up"
+                    .to_string(),
+            );
+        }
+        return Ok(());
+    };
+    let key = aws_session_token_vault_key(id);
+    match lookup(&key)?
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        Some(token) => {
+            extra.insert("session_token".to_string(), token);
+            Ok(())
+        }
+        None if requires_stored_token => Err(
+            "The saved AWS session token for this profile is missing from the vault; re-import or update the profile credentials"
+                .to_string(),
+        ),
+        None => Ok(()),
+    }
+}
+
 /// Normalize camelCase profile option keys from the GUI to snake_case keys
 /// expected by the provider factory.
 pub fn normalize_profile_option_key(key: &str) -> &str {
@@ -185,7 +311,17 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
             if normalized == "profile_id" {
                 continue;
             }
+            // The inline S3 session token is resolved once, below, through the
+            // same selector the backup export uses, so a conflicting camelCase
+            // vs snake_case pair resolves identically on every surface instead
+            // of depending on map iteration order.
+            if normalized == "session_token" {
+                continue;
+            }
             insert_profile_option(extra, k, v);
+        }
+        if let Some(token) = inline_s3_session_token(profile.get("options")) {
+            extra.insert("session_token".to_string(), token);
         }
     }
     // Every surface that loads a saved profile comes through here (CLI, MCP,
@@ -481,17 +617,22 @@ fn region_from_s3_template(template: &str, endpoint: &str) -> Option<String> {
             })
             .map_or(value, |scheme| &value[scheme.len()..])
     }
-    let template = without_scheme(template);
+    // The host alone, of the template as of the endpoint: a template that
+    // names its port (`s3.{region}.coritan.com:7337`) kept the port in its
+    // suffix while the endpoint's port was cut, so no endpoint ever matched.
+    fn host_of(value: &str) -> Option<&str> {
+        without_scheme(value.trim())
+            .split(['/', '?', '#'])
+            .next()?
+            .split(':')
+            .next()
+    }
+    let template = host_of(template)?;
     let (prefix, suffix) = template.split_once("{region}")?;
     if prefix.contains('{') || suffix.contains('{') {
         return None;
     }
-    let host = without_scheme(endpoint.trim())
-        .split(['/', '?', '#'])
-        .next()?
-        .split(':')
-        .next()?
-        .to_ascii_lowercase();
+    let host = host_of(endpoint)?.to_ascii_lowercase();
     let region = host.strip_prefix(prefix)?.strip_suffix(suffix)?;
     // Labels a vendor puts where the region goes that are not one (Greptile on
     // #1525): an internal endpoint (`oss-cn-hangzhou-internal.aliyuncs.com`)
@@ -938,6 +1079,36 @@ mod tests {
     }
 
     #[test]
+    fn coritan_preset_resolves_region_path_style_and_endpoint_with_port() {
+        // Coritan: `https://s3.{region}.coritan.com:7337`, path-style,
+        // Frankfurt by default. The port is part of the template, and an
+        // endpoint with that port still gives its region back.
+        let mut extra = HashMap::new();
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("coritan"), "");
+        assert_eq!(endpoint.as_deref(), Some("https://s3.fra.coritan.com:7337"));
+        assert_eq!(extra.get("region").map(String::as_str), Some("fra"));
+        assert_eq!(extra.get("path_style").map(String::as_str), Some("true"));
+
+        let mut explicit = HashMap::new();
+        explicit.insert("region".to_string(), "sin".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut explicit, Some("coritan"), "");
+        assert_eq!(endpoint.as_deref(), Some("https://s3.sin.coritan.com:7337"));
+
+        // A profile that stores only the endpoint signs for its region.
+        let mut imported = HashMap::new();
+        apply_s3_profile_defaults(
+            &mut imported,
+            Some("coritan"),
+            "https://s3.lhr.coritan.com:7337",
+        );
+        assert_eq!(imported.get("region").map(String::as_str), Some("lhr"));
+        assert_eq!(
+            imported.get(S3_REGION_SOURCE_META_KEY).map(String::as_str),
+            Some("endpoint")
+        );
+    }
+
+    #[test]
     fn tigris_preset_resolves_static_endpoint_auto_region_and_virtual_host() {
         // Static endpoint, no template: the manifest default is the only
         // source, region is the fixed `auto`, addressing is virtual-host.
@@ -1177,6 +1348,15 @@ mod tests {
                 "HTTPS://s3.eu-central-2.wasabisys.com",
                 Some("eu-central-2"),
             ),
+            // Coritan: the template carries a port, and the endpoint may carry
+            // it, a path, or neither. A bucket subdomain is not a region.
+            ("coritan", "https://s3.sin.coritan.com:7337", Some("sin")),
+            ("coritan", "s3.lhr.coritan.com:7337/bucket", Some("lhr")),
+            ("coritan", "https://S3.BOM.coritan.com", Some("bom")),
+            ("coritan", "https://bucket.s3.fra.coritan.com:7337", None),
+            // Same table as the TS side: a Kelvin sign is not ASCII and does
+            // not fold to `k`.
+            ("coritan", "https://s3.fra\u{212a}.coritan.com:7337", None),
         ] {
             assert_eq!(
                 s3_region_from_endpoint(preset, endpoint).as_deref(),
@@ -1542,6 +1722,44 @@ mod tests {
     }
 
     #[test]
+    fn apply_profile_options_resolves_the_inline_session_token_with_the_shared_selector() {
+        // A conflicting camelCase vs snake_case pair resolves identically here
+        // and in the backup export (both use inline_s3_session_token), not by
+        // map iteration order.
+        let mut extra = HashMap::new();
+        apply_profile_options(
+            &mut extra,
+            &json!({"options": {"sessionToken": "CAMEL", "session_token": "SNAKE",
+                "region": "us-east-1"}}),
+        );
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("CAMEL")
+        );
+        assert!(
+            !extra.contains_key("sessionToken"),
+            "the raw camelCase key must not leak into extra: {extra:?}"
+        );
+        assert_eq!(extra.get("region").map(String::as_str), Some("us-east-1"));
+
+        // A blank camelCase token falls back to the usable snake_case one.
+        let mut extra = HashMap::new();
+        apply_profile_options(
+            &mut extra,
+            &json!({"options": {"sessionToken": "  ", "session_token": "SNAKE"}}),
+        );
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("SNAKE")
+        );
+
+        // No token at all: no session_token key is invented.
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &json!({"options": {"region": "us-east-1"}}));
+        assert!(!extra.contains_key("session_token"));
+    }
+
+    #[test]
     fn filen_desktop_s3_profile_keeps_endpoint_and_disables_cert_check() {
         // Filen Desktop (local S3) preset shape. apply_profile_options must
         // preserve the endpoint as-is (pass-through) and normalize verifyCert
@@ -1857,5 +2075,71 @@ mod provider_id_reach_tests {
         insert_profile_option(&mut extra, "bucket", &json!("ok"));
         assert!(!extra.contains_key("profile_id"));
         assert_eq!(extra.get("bucket").map(String::as_str), Some("ok"));
+    }
+
+    #[test]
+    fn inject_vault_s3_session_token_fails_closed_on_read_error_or_missing_required_token() {
+        use crate::profile_loader::inject_vault_s3_session_token;
+        use crate::providers::ProviderType;
+
+        // Vault read error is always propagated, never swallowed.
+        let mut extra = HashMap::new();
+        let err = inject_vault_s3_session_token(
+            ProviderType::S3,
+            Some("srv_sts"),
+            false,
+            &mut extra,
+            |_| Err("keystore decryption failed".to_string()),
+        )
+        .unwrap_err();
+        assert!(err.contains("keystore decryption failed"), "{err}");
+        assert!(!extra.contains_key("session_token"));
+
+        // Required stored token missing fails closed.
+        let mut extra = HashMap::new();
+        let err = inject_vault_s3_session_token(
+            ProviderType::S3,
+            Some("srv_sts"),
+            true,
+            &mut extra,
+            |_| Ok(None),
+        )
+        .unwrap_err();
+        assert!(err.contains("missing from the vault"), "{err}");
+
+        // Long-lived profile (requires_stored_token = false) with no token succeeds.
+        let mut extra = HashMap::new();
+        inject_vault_s3_session_token(
+            ProviderType::S3,
+            Some("srv_static"),
+            false,
+            &mut extra,
+            |_| Ok(None),
+        )
+        .unwrap();
+        assert!(!extra.contains_key("session_token"));
+
+        // Present vaulted token is injected under `session_token`.
+        let mut extra = HashMap::new();
+        inject_vault_s3_session_token(ProviderType::S3, Some("srv_sts"), true, &mut extra, |key| {
+            assert_eq!(key, "aws_session_token_srv_sts");
+            Ok(Some("TOK-FROM-VAULT".to_string()))
+        })
+        .unwrap();
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("TOK-FROM-VAULT")
+        );
+
+        // Explicit session_token wins without consulting the vault.
+        let mut extra = HashMap::from([("session_token".to_string(), "TOK-EXPLICIT".to_string())]);
+        inject_vault_s3_session_token(ProviderType::S3, Some("srv_sts"), true, &mut extra, |_| {
+            Err("should not be called".to_string())
+        })
+        .unwrap();
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("TOK-EXPLICIT")
+        );
     }
 }
