@@ -46,7 +46,7 @@ use std::path::Path;
 /// closure (which emits the GUI `transfer_event`) never runs per chunk.
 ///
 /// Must stay structurally identical to `aerorsync::progress::ProgressSink`;
-/// pinned by `delta_transport::tests::aerorsync_delta_progress_sink_is_the_crate_progress_sink`.
+/// pinned by `delta_transport::progress_sink_pin::aerorsync_delta_progress_sink_is_the_crate_progress_sink`.
 pub type DeltaProgressSink = Box<dyn FnMut(u64, u64) + Send>;
 
 /// Transport abstraction over any delta-capable sync mechanism.
@@ -507,7 +507,10 @@ mod tests {
         let stats = Box::new(batch).finalize().await.expect("infallible");
         assert_eq!(stats, BatchStats::default());
     }
+}
 
+#[cfg(all(test, feature = "aerorsync"))]
+mod progress_sink_pin {
     /// The application keeps `crate::delta_transport::DeltaProgressSink` (this
     /// module compiles with the feature off) while the aerorsync module owns
     /// `aerorsync::progress::ProgressSink`. They must be the same type, so
@@ -517,8 +520,9 @@ mod tests {
     /// It lives here, and not in the module's own `tests.rs`, because the
     /// module's import budget forbids naming an application path inside
     /// `src/aerorsync/` (test code included). The `aerorsync_` prefix keeps it
-    /// selected by the module's suite filter.
-    #[cfg(feature = "aerorsync")]
+    /// selected by the module's suite filter. It has its own module because
+    /// `tests` above is unix-only and the alias is not: inside it, Windows never
+    /// compiled the pin.
     #[test]
     fn aerorsync_delta_progress_sink_is_the_crate_progress_sink() {
         fn same(
