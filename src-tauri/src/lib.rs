@@ -37070,7 +37070,9 @@ mod export_account_binding_tests {
         assert!(!none_file.exists());
 
         // Legacy pin: with no active account at all, a no-account request
-        // reads the legacy keys only and exports them.
+        // reads the legacy scope only and exports it. The legacy scope is
+        // the legacy owner's credential scope: its partition row wins over
+        // the raw vault entry of the same key.
         {
             let conn = user_partitions::open_or_init_cli().unwrap();
             conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
@@ -37091,7 +37093,7 @@ mod export_account_binding_tests {
         let (imported, _secrets, _meta) =
             profile_export::import_profiles(&legacy_file, "export-file-password")
                 .expect("the legacy export must decrypt");
-        assert_eq!(imported[0].credential.as_deref(), Some("legacy-vault-pw"));
+        assert_eq!(imported[0].credential.as_deref(), Some("first-account-pw"));
 
         // ...and the moment an account appears, the same no-account request
         // is refused instead of reading a partition.
