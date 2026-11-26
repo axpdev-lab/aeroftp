@@ -90,10 +90,7 @@ fn shared_file_paths(
 }
 
 fn read_sections(path: &std::path::Path) -> Sections {
-    if !crate::aws_credentials_import::is_readable_regular_file(path) {
-        return Sections::new();
-    }
-    std::fs::read_to_string(path)
+    crate::bridge_shared::read_bounded_utf8_file(path, crate::bridge_shared::MAX_IMPORT_FILE_BYTES)
         .map(|content| crate::bridge_shared::parse_ini_sections(&content))
         .unwrap_or_default()
 }
@@ -604,5 +601,50 @@ mod tests {
         assert_eq!(resolved.access_key_id, "FILEKEY");
         assert_eq!(resolved.secret_source, Some(CredentialSource::AwsFiles));
         assert_eq!(resolved.region.as_deref(), Some("eu-west-3"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_sections_ignores_fifo_without_blocking() {
+        const CHILD_ENV: &str = "AEROFTP_TEST_LAUNCH_URL_AWS_FIFO_PATH";
+        if let Ok(fifo_path) = std::env::var(CHILD_ENV) {
+            let sections = read_sections(std::path::Path::new(&fifo_path));
+            assert!(sections.is_empty());
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("credentials");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("mkfifo available");
+        assert!(status.success());
+
+        // Run the FIFO read in a killable child process so a regression to
+        // blocking `open(2)` is terminated and reaped at the deadline instead
+        // of hanging the test runner.
+        let exe = std::env::current_exe().expect("test binary path");
+        let mut child = std::process::Command::new(exe)
+            .arg("--exact")
+            .arg("launch_url::aws::tests::read_sections_ignores_fifo_without_blocking")
+            .arg("--nocapture")
+            .env(CHILD_ENV, &fifo)
+            .spawn()
+            .expect("spawn fifo child");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let exit = loop {
+            if let Some(status) = child.try_wait().expect("poll child") {
+                break status;
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("launch_url::aws::read_sections hung on FIFO past 5s deadline");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        assert!(exit.success(), "fifo child failed with status {exit:?}");
     }
 }

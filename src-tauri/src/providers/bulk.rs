@@ -257,6 +257,10 @@ mod tests {
 
     #[test]
     fn absolute_local_path_resolves_against_the_working_directory() {
+        // Reads the process CWD: take the shared env lock like every other
+        // working-directory-reading test, so a test that changes the CWD
+        // cannot race this read.
+        let _env = crate::test_env::lock();
         let cwd = std::env::current_dir().unwrap();
         let resolved = absolute_local_path("flat/a.bin").unwrap();
         assert_eq!(std::path::Path::new(&resolved), cwd.join("flat/a.bin"));

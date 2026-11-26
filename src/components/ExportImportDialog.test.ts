@@ -324,11 +324,11 @@ describe('ExportImportDialog .aeroftp import', () => {
 describe('ExportImportDialog export account binding', () => {
     const profile = { id: 'srv_a', name: 'A', host: 'h', port: 21, username: 'u', protocol: 'ftp' } as ServerProfile;
 
-    const openExport = async (listAccountId?: number | null) => {
+    const openExport = async (accountId?: number | null) => {
         await act(async () => {
             root.render(createElement(ExportImportDialog, {
                 servers: [profile],
-                listAccountId,
+                accountId,
                 initialMode: 'export',
                 onImport: vi.fn(),
                 onProfilesStored: vi.fn(),

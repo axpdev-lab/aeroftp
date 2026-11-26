@@ -34,6 +34,10 @@ pub struct ProfileSummary {
     pub username: String,
     pub port: Option<u16>,
     pub initial_path: String,
+    /// True when the saved S3 profile recorded a vaulted AWS STS session token
+    /// (`hasStoredSessionToken: true`); connect fails closed if it cannot be
+    /// loaded from the vault.
+    pub has_stored_session_token: bool,
     /// Provider-specific options pulled from `profile.options` and
     /// flattened into the `ProviderConfig.extra` shape (snake_case
     /// string keys/values). S3 (`bucket`, `region`, `endpoint`),
@@ -61,6 +65,13 @@ fn flatten_options(options: Option<&Value>) -> HashMap<String, String> {
     };
     for (k, v) in obj {
         crate::profile_loader::insert_profile_option(&mut out, k, v);
+    }
+    // Both spellings canonicalize to `session_token`, so without this the map
+    // iteration order alone decided which one won (a blank `sessionToken`
+    // could clobber a usable `session_token`). Resolve the pair once through
+    // the shared selector, like every other surface.
+    if let Some(token) = crate::profile_loader::inline_s3_session_token(options) {
+        out.insert("session_token".to_string(), token);
     }
     out
 }
@@ -151,6 +162,10 @@ fn profile_summary_from(matched: &Value) -> ProfileSummary {
             .and_then(|v| v.as_str())
             .unwrap_or("/")
             .to_string(),
+        has_stored_session_token: matched
+            .get("hasStoredSessionToken")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
         extras: {
             let mut extras = flatten_options(matched.get("options"));
             let protocol = matched
@@ -173,12 +188,38 @@ fn profile_summary_from(matched: &Value) -> ProfileSummary {
 /// printed by `profiles --json` is accepted directly.
 pub fn lookup_profile(query: &str) -> Result<ProfileSummary, LookupError> {
     let store = CredentialStore::from_cache().ok_or(LookupError::VaultClosed)?;
-    let profiles_json = store
-        .get("config_server_profiles")
-        .map_err(|e| LookupError::ProfilesUnavailable(e.to_string()))?;
-    let profiles: Vec<Value> = serde_json::from_str(&profiles_json)
-        .map_err(|e| LookupError::ProfilesUnavailable(e.to_string()))?;
+    // Propagate capture errors: collapsing an Err to `None` would read the
+    // legacy blob even when the account lookup failed, and a successful
+    // no-account capture is represented distinctly below so an account
+    // activated later cannot leak into the list read.
+    let user_id = match crate::user_partitions::cli_get_active_user(&store) {
+        Ok(u) => u.map(|u| u.id),
+        Err(e) => return Err(LookupError::ProfilesUnavailable(e)),
+    };
+    lookup_profile_for_user(&store, user_id, query)
+}
 
+/// [`lookup_profile`] reading the profile list of `user_id`'s partition (the
+/// legacy blob when `user_id` is `None`). The legacy blob is only re-mirrored
+/// on profile writes, not on an account switch, so a lookup bound to one
+/// account must not answer from a stale blob holding another account's list.
+pub fn lookup_profile_for_user(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    query: &str,
+) -> Result<ProfileSummary, LookupError> {
+    // A captured `None` (no account at capture time) reads the legacy blob
+    // ONLY: passing it through as `None` would make mcp_list_server_profiles
+    // re-read the active account at call time, so an account activated after
+    // the capture would leak into the lookup.
+    let list_user = user_id.or(Some(crate::user_partitions::LEGACY_ONLY_ACCOUNT));
+    let profiles: Vec<Value> = crate::user_partitions::mcp_list_server_profiles(store, list_user)
+        .map_err(LookupError::ProfilesUnavailable)?;
+    lookup_profile_in(&profiles, query)
+}
+
+/// The matcher of [`lookup_profile`], over an already-read profile list.
+fn lookup_profile_in(profiles: &[Value], query: &str) -> Result<ProfileSummary, LookupError> {
     // AGENT-02: accept the 1-based numeric selector from `profiles --json`.
     if let Ok(idx) = query.trim().parse::<usize>() {
         if idx >= 1 {
@@ -960,21 +1001,43 @@ enum ConnectOutcome {
     Err(String),
 }
 
+fn resolve_profile_password_for_user(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    profile_id: &str,
+) -> Result<String, String> {
+    let key = format!("server_{profile_id}");
+    // Owner-aware like the session-token path below: a secondary account
+    // never falls back to the legacy owner's shared vault row; a captured
+    // `None` reads the legacy keys only and fails closed if an account
+    // appeared since the capture.
+    let resolved = match user_id {
+        Some(uid) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, &key)
+        }
+        None => crate::user_partitions::resolve_legacy_only_credential_checked(store, &key),
+    };
+    Ok(resolved?.map(|s| s.to_string()).unwrap_or_default())
+}
+
 /// Attempt to instantiate + connect a provider for the given profile.
 /// Reads the per-profile credential blob from the open vault.
-async fn connect_provider(profile: &ProfileSummary, no_scp_fallback: bool) -> ConnectOutcome {
+async fn connect_provider(
+    profile: &ProfileSummary,
+    user_id: Option<i64>,
+    no_scp_fallback: bool,
+) -> ConnectOutcome {
     let Some(store) = CredentialStore::from_cache() else {
         return ConnectOutcome::Err("Vault not open".to_string());
     };
-    // MUV-3: per-user store (active user) with fallback to the legacy vault.
-    let password = crate::user_partitions::resolve_active_credential(
-        &store,
-        &format!("server_{}", profile.id),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .unwrap_or_default();
+    // MUV-3: the user id is captured ONCE by the caller (with the profile
+    // lookup) and passed to BOTH the password lookup and the session-token
+    // lookup, so an intervening active-account switch cannot mix credentials
+    // across accounts.
+    let password = match resolve_profile_password_for_user(&store, user_id, &profile.id) {
+        Ok(p) => p,
+        Err(e) => return ConnectOutcome::Err(e),
+    };
 
     let Some(provider_type) = resolve_provider_type(&profile.protocol) else {
         return ConnectOutcome::Unsupported;
@@ -992,6 +1055,19 @@ async fn connect_provider(profile: &ProfileSummary, no_scp_fallback: bool) -> Co
         if let Some(bucket) = extra.remove("bucket") {
             extra.entry("container".to_string()).or_insert(bucket);
         }
+    }
+    if let Err(e) = crate::profile_loader::inject_vault_s3_session_token(
+        provider_type,
+        Some(&profile.id),
+        profile.has_stored_session_token,
+        &mut extra,
+        |key| {
+            // The captured account, not the active one: a `None` capture is a
+            // legacy read and fails closed if an account activated since.
+            crate::profile_loader::resolve_vault_s3_session_token_captured(&store, user_id, key)
+        },
+    ) {
+        return ConnectOutcome::Err(e);
     }
 
     let config = ProviderConfig {
@@ -1033,7 +1109,19 @@ pub async fn build_agent_connect_payload(query: &str) -> Value {
 
 /// [`build_agent_connect_payload`], with the CLI's `--no-scp-fallback`.
 pub async fn build_agent_connect_payload_with(query: &str, no_scp_fallback: bool) -> Value {
-    let profile = match lookup_profile(query) {
+    let store = match CredentialStore::from_cache() {
+        Some(s) => s,
+        None => return lookup_error_payload(query, &LookupError::VaultClosed),
+    };
+    // Capture the account ONCE: the profile lookup and the connect below must
+    // read the same account, even if the active account switches in between.
+    // A capture error is propagated, never collapsed to `None` (which would
+    // read the legacy blob and could follow an account activated later).
+    let user_id = match crate::user_partitions::cli_get_active_user(&store) {
+        Ok(u) => u.map(|u| u.id),
+        Err(e) => return lookup_error_payload(query, &LookupError::ProfilesUnavailable(e)),
+    };
+    let profile = match lookup_profile_for_user(&store, user_id, query) {
         Ok(p) => p,
         Err(e) => return lookup_error_payload(query, &e),
     };
@@ -1042,7 +1130,7 @@ pub async fn build_agent_connect_payload_with(query: &str, no_scp_fallback: bool
     let mut capabilities = capabilities_block(&profile.protocol);
 
     let connect_started = Instant::now();
-    let connect_result = connect_provider(&profile, no_scp_fallback).await;
+    let connect_result = connect_provider(&profile, user_id, no_scp_fallback).await;
     let elapsed_ms = connect_started.elapsed().as_millis();
 
     let (connect, quota) = match connect_result {
@@ -1600,6 +1688,43 @@ mod tests {
         assert!(!m.contains_key("pcloud_region"));
     }
 
+    /// Both inline token spellings canonicalize to `session_token`, so map
+    /// iteration order must not decide the winner: a blank `sessionToken`
+    /// must not clobber a usable `session_token` (and a usable camelCase must
+    /// win over a snake_case one), matching the shared selector every other
+    /// surface uses.
+    #[test]
+    fn flatten_options_resolves_the_inline_token_pair_deterministically() {
+        let blank_camel_usable_snake = json!({
+            "sessionToken": "   ",
+            "session_token": "tok-snake",
+        });
+        let m = flatten_options(Some(&blank_camel_usable_snake));
+        assert_eq!(
+            m.get("session_token").map(String::as_str),
+            Some("tok-snake"),
+            "a blank camelCase must fall back to the usable snake_case: {m:?}"
+        );
+
+        let usable_camel = json!({
+            "sessionToken": "tok-camel",
+            "session_token": "tok-snake",
+        });
+        let m = flatten_options(Some(&usable_camel));
+        assert_eq!(
+            m.get("session_token").map(String::as_str),
+            Some("tok-camel"),
+            "a usable camelCase wins over snake_case: {m:?}"
+        );
+
+        let both_blank = json!({ "sessionToken": "", "session_token": "  " });
+        let m = flatten_options(Some(&both_blank));
+        assert!(
+            m.get("session_token").is_none_or(|s| s.trim().is_empty()),
+            "two blank spellings yield no usable token: {m:?}"
+        );
+    }
+
     #[test]
     fn flatten_options_skips_complex_values() {
         let v = json!({
@@ -1677,6 +1802,7 @@ mod tests {
             username: String::new(),
             port: None,
             initial_path: "/".to_string(),
+            has_stored_session_token: false,
             extras: HashMap::from([("profile_id".to_string(), "srv_attacker".to_string())]),
         };
         let extra = extras_for_connect(&profile, false);
@@ -1696,6 +1822,7 @@ mod tests {
             username: "root".to_string(),
             port: None,
             initial_path: "/".to_string(),
+            has_stored_session_token: false,
             extras: HashMap::from([("allow_scp_fallback".to_string(), "true".to_string())]),
         };
         assert_eq!(
@@ -1735,5 +1862,342 @@ mod tests {
         let payload = lookup_error_payload("prod", &err);
         assert_eq!(payload["lookup"]["kind"], "ambiguous");
         assert_eq!(payload["lookup"]["candidates"], json!(["prod-a", "prod-b"]));
+    }
+
+    #[test]
+    fn connect_provider_reads_password_and_session_token_from_captured_user_across_switch() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "agent_session::tests::connect_provider_reads_password_and_session_token_from_captured_user_across_switch",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let xdg = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", xdg.path());
+        std::env::set_var("AEROFTP_MASTER_PASSWORD", "synthetic test master");
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic test master").unwrap();
+        CredentialStore::unlock_with_master("synthetic test master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let user_a =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Alice", None, None, None)
+                .unwrap();
+        let user_b =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Bob", None, None, None)
+                .unwrap();
+        crate::user_partitions::set_active_user(&conn, user_a.id).unwrap();
+        drop(conn);
+
+        let pid = "srv_switch_test";
+        crate::user_partitions::store_credential_for_user_dual(
+            &store,
+            user_a.id,
+            &format!("server_{pid}"),
+            "ALICE-SECRET",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user_typed_dual(
+            &store,
+            user_a.id,
+            &crate::profile_loader::aws_session_token_vault_key(pid),
+            "aws_session_token",
+            "ALICE-TOKEN",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user_dual(
+            &store,
+            user_b.id,
+            &format!("server_{pid}"),
+            "BOB-SECRET",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user_typed_dual(
+            &store,
+            user_b.id,
+            &crate::profile_loader::aws_session_token_vault_key(pid),
+            "aws_session_token",
+            "BOB-TOKEN",
+        )
+        .unwrap();
+
+        // Capture Alice's user_id, then switch active user to Bob BEFORE the
+        // password and session-token reads run. Both must come from Alice.
+        let captured = crate::user_partitions::cli_get_active_user(&store)
+            .unwrap()
+            .map(|u| u.id);
+        assert_eq!(captured, Some(user_a.id));
+
+        let conn = crate::user_partitions::open_or_init_cli().unwrap();
+        crate::user_partitions::set_active_user(&conn, user_b.id).unwrap();
+        drop(conn);
+
+        let pw = resolve_profile_password_for_user(&store, captured, pid).unwrap();
+        let mut extra = HashMap::new();
+        crate::profile_loader::inject_vault_s3_session_token(
+            ProviderType::S3,
+            Some(pid),
+            true,
+            &mut extra,
+            |key| {
+                crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                    &store, captured, key,
+                )
+            },
+        )
+        .unwrap();
+
+        assert_eq!(pw, "ALICE-SECRET");
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("ALICE-TOKEN")
+        );
+    }
+
+    /// A session-token read captured with NO account (legacy) reads the legacy
+    /// vault key only, and fails closed with ACCOUNT_CHANGED when an account
+    /// has activated since the capture: the new account's partition token
+    /// must never be served to a caller that captured `None`. The no-switch
+    /// control reads the legacy key successfully.
+    #[test]
+    fn a_legacy_captured_token_read_fails_closed_when_an_account_activates() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "agent_session::tests::a_legacy_captured_token_read_fails_closed_when_an_account_activates",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let xdg = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", xdg.path());
+        std::env::set_var("AEROFTP_MASTER_PASSWORD", "synthetic test master");
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic test master").unwrap();
+        CredentialStore::unlock_with_master("synthetic test master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let key = crate::profile_loader::aws_session_token_vault_key("srv-legacy");
+        store.store(&key, "LEGACY-TOKEN").unwrap();
+
+        // Control: no active account at read time -> the legacy vault key.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute(
+                "UPDATE global_state SET value = '' WHERE key = 'active_user_id'",
+                [],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            crate::profile_loader::resolve_vault_s3_session_token_captured(&store, None, &key)
+                .unwrap()
+                .as_deref(),
+            Some("LEGACY-TOKEN"),
+            "a no-switch legacy read returns the legacy vault token"
+        );
+
+        // An account activates after the capture: the same read must fail
+        // closed and must not serve that account's partition token.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let bob =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Bob", None, None, None)
+                .unwrap();
+        crate::user_partitions::set_active_user(&conn, bob.id).unwrap();
+        drop(conn);
+        crate::user_partitions::store_credential_for_user_typed_dual(
+            &store,
+            bob.id,
+            &key,
+            "aws_session_token",
+            "BOB-TOKEN",
+        )
+        .unwrap();
+        let err =
+            crate::profile_loader::resolve_vault_s3_session_token_captured(&store, None, &key)
+                .expect_err(
+                    "a legacy-captured token read must fail closed once an account is active",
+                );
+        assert_eq!(err, crate::user_partitions::ACCOUNT_CHANGED, "{err}");
+
+        CredentialStore::clear_cache();
+    }
+
+    /// R15 pin: a lookup bound to one account reads that account's partition,
+    /// not the legacy blob (which is only re-mirrored on profile writes, so it
+    /// goes stale on an account switch); and the password read for a secondary
+    /// account never falls back to the legacy owner's shared vault row.
+    #[test]
+    fn a_lookup_and_password_read_bound_to_an_account_stay_in_that_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "agent_session::tests::a_lookup_and_password_read_bound_to_an_account_stay_in_that_account",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let xdg = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", xdg.path());
+        std::env::set_var("AEROFTP_MASTER_PASSWORD", "synthetic test master");
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic test master").unwrap();
+        CredentialStore::unlock_with_master("synthetic test master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+
+        // The legacy blob holds a stale list; the first account's partition
+        // holds its own profile with the same lookup name.
+        store
+            .store(
+                "config_server_profiles",
+                &json!([{"id": "srv-stale", "name": "lab", "protocol": "sftp",
+                    "host": "stale.example", "port": 22, "username": "stale"}])
+                .to_string(),
+            )
+            .unwrap();
+        crate::user_partitions::replace_server_profiles_for(
+            &mut conn,
+            &root_key,
+            first,
+            &[json!({"id": "srv-a", "name": "lab", "protocol": "sftp",
+                "host": "a.example", "port": 22, "username": "u"})],
+        )
+        .unwrap();
+        drop(conn);
+
+        // Bound to the first account: its partition answers, with its host.
+        let found = lookup_profile_for_user(&store, Some(first), "lab").unwrap();
+        assert_eq!(found.id, "srv-a");
+        assert_eq!(found.host, "a.example");
+
+        // Switch to the second account: a lookup bound to it must NOT find the
+        // stale blob's profile (the old code read the blob and returned
+        // srv-stale, the previous account's profile, under the new account).
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+        }
+        assert!(
+            lookup_profile_for_user(&store, Some(second), "lab").is_err(),
+            "a lookup bound to the second account must not answer from the stale legacy blob"
+        );
+
+        // The password leg: the legacy owner's shared vault row answers only
+        // for the legacy owner, never for the secondary account.
+        store.store("server_srv-a", "LEGACY-OWNER-PW").unwrap();
+        assert_eq!(
+            resolve_profile_password_for_user(&store, Some(first), "srv-a").unwrap(),
+            "LEGACY-OWNER-PW",
+            "the legacy owner still gets the shared fallback"
+        );
+        assert_eq!(
+            resolve_profile_password_for_user(&store, Some(second), "srv-a").unwrap(),
+            "",
+            "a secondary account must not receive the legacy owner's password"
+        );
+
+        CredentialStore::clear_cache();
+    }
+
+    /// A lookup that captured NO active account reads the legacy blob only:
+    /// an account activated AFTER the capture must not leak its partition into
+    /// the lookup (the captured `None` is mapped to `LEGACY_ONLY_ACCOUNT`, it
+    /// is not re-resolved against the active account at call time). The
+    /// no-switch control reads the legacy blob successfully first.
+    #[test]
+    fn a_captured_no_account_lookup_never_follows_an_account_activated_later() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "agent_session::tests::a_captured_no_account_lookup_never_follows_an_account_activated_later",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let xdg = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", xdg.path());
+        std::env::set_var("AEROFTP_MASTER_PASSWORD", "synthetic test master");
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic test master").unwrap();
+        CredentialStore::unlock_with_master("synthetic test master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+
+        // The legacy blob holds one profile under the lookup name "lab".
+        store
+            .store(
+                "config_server_profiles",
+                &json!([{"id": "srv-legacy", "name": "lab", "protocol": "sftp",
+                    "host": "legacy.example", "port": 22, "username": "u"}])
+                .to_string(),
+            )
+            .unwrap();
+
+        // Capture with NO active account.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                .unwrap();
+        }
+        let captured = crate::user_partitions::cli_get_active_user(&store)
+            .unwrap()
+            .map(|u| u.id);
+        assert_eq!(captured, None, "precondition: no active account at capture");
+
+        // No-switch control: the captured None reads the legacy blob.
+        let found = lookup_profile_for_user(&store, captured, "lab").unwrap();
+        assert_eq!(found.id, "srv-legacy");
+        assert_eq!(found.host, "legacy.example");
+
+        // Activate an account whose partition holds a DIFFERENT profile under
+        // the same lookup name.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::replace_server_profiles_for(
+            &mut conn,
+            &root_key,
+            second,
+            &[json!({"id": "srv-b", "name": "lab", "protocol": "sftp",
+                "host": "b.example", "port": 22, "username": "u"})],
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, second).unwrap();
+        drop(conn);
+
+        // The SAME captured None must still answer from the legacy blob, never
+        // from the account activated after the capture.
+        let found = lookup_profile_for_user(&store, captured, "lab").unwrap();
+        assert_eq!(
+            found.id, "srv-legacy",
+            "a captured no-account lookup must not follow an account activated after the capture"
+        );
+        assert_eq!(found.host, "legacy.example");
+
+        CredentialStore::clear_cache();
     }
 }

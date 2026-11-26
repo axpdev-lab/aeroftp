@@ -10,7 +10,7 @@ import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import panelSource from './BridgeSourcePanel.tsx?raw';
 import type { ServerProfile } from '../types';
-import { createScanSettler, commitImportedServers, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
+import { createScanSettler, commitImportedServersForScan, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
 import { keptRelaxationId } from './ImportSecurityReview';
 
 function confirmImportClosure() {
@@ -34,7 +34,7 @@ const servers: ImportedServer[] = [
 
 function fixture() {
     const onImport = vi.fn(async (_servers: ServerProfile[], _expectedUserId?: number | null) => undefined);
-    const commit = vi.fn<typeof commitImportedServers>(async (selected, _keys, importFn) => {
+    const commit = vi.fn<typeof commitImportedServersForScan>(async (selected, _keys, _scanUserId, importFn) => {
         await importFn(selected, null);
         return { added: selected.length, updated: 0 };
     });
@@ -53,7 +53,9 @@ function fixture() {
         closeTimerRef: { current: null },
         onClose: vi.fn(),
         t: (key: string) => key,
-        commitImportedServers: commit,
+        commitImportedServersForScan: commit,
+        resolveBridgeRowFileIndex: (server: { fileIndex?: number }, position: number) => server.fileIndex ?? position,
+        scanUserId: null,
         existingServerKeys: new Set<string>(),
         onImport,
         importedServerProfile,

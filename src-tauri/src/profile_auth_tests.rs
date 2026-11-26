@@ -1,6 +1,16 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
+/// The account id an export caller sends for the profile list it just read:
+/// the active account of the fixture vault (the list was read under it).
+fn export_account_id() -> Option<i64> {
+    let store = CredentialStore::from_cache().unwrap();
+    users::cli_get_active_user(&store)
+        .ok()
+        .flatten()
+        .map(|u| u.id)
+}
+
 /// Slots whose write of one key fails, for a failure the real vault cannot be made
 /// to produce.
 struct FailingAt<'a, S> {
@@ -658,7 +668,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         true,
         file.to_string_lossy().into_owned(),
-        None,
+        export_account_id(),
     )
     .await
     .unwrap();
@@ -790,7 +800,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         true,
         jotta_file.to_string_lossy().into_owned(),
-        None,
+        export_account_id(),
     )
     .await
     .unwrap();
@@ -1503,7 +1513,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         true,
         repeated_file.to_string_lossy().into_owned(),
-        None,
+        export_account_id(),
     )
     .await
     .unwrap();
@@ -1770,7 +1780,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         "native-fixture-export-password".into(),
         true,
         file.to_string_lossy().into_owned(),
-        None,
+        export_account_id(),
     )
     .await
     .unwrap();
@@ -2359,6 +2369,61 @@ fn with_unreadable_profile_vault(test: impl FnOnce(&CredentialStore)) {
     }
 }
 
+/// CodeRabbit (pr1613 r7, gap on bridge_commands restore): the session can be
+/// lost between the snapshot and the recovery (account locked or switched in
+/// between). The partition then cannot be read, but the shared vault must
+/// still be restored from the snapshot, and the returned error must say both:
+/// a silently skipped vault rollback would leave the new secret in the vault.
+#[test]
+fn a_session_loss_after_the_snapshot_still_restores_the_shared_vault() {
+    with_unreadable_profile_vault(|store| {
+        // A passphrase-protected account, unlocked so partition writes work.
+        let mut conn = users::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let protected = users::create_user(
+            &mut conn,
+            &root_key,
+            "Protected",
+            None,
+            None,
+            Some("pw-session-loss"),
+        )
+        .unwrap();
+        users::unlock_user(&conn, &root_key, protected.id, Some("pw-session-loss")).unwrap();
+        drop(conn);
+
+        let key = "server_session-loss";
+        store.store(key, "vault-before").unwrap();
+        let before = users::snapshot_credential_for_user(store, protected.id, key).unwrap();
+        users::store_imported_credential_for_user(store, protected.id, key, None, "file-value")
+            .unwrap();
+        assert_eq!(store.get(key).unwrap(), "file-value");
+
+        // The session is lost after the snapshot, before the recovery.
+        users::clear_user_session();
+
+        let err = users::restore_credential_for_user(
+            store,
+            protected.id,
+            key,
+            None,
+            "file-value",
+            &before,
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("partition") && err.contains("vault"),
+            "the error must name the partition failure and the vault recovery: {err}"
+        );
+        assert_eq!(
+            store.get(key).unwrap(),
+            "vault-before",
+            "the shared vault must go back to the snapshot value even when the partition is unreadable"
+        );
+        store.delete(key).unwrap();
+    });
+}
+
 /// CodeRabbit (CLI deep, #1574): a profile token that cannot be read is an
 /// error, not a missing token. The legacy singleton beside it may be another
 /// profile's account, so the connect and the rclone export that read the
@@ -2416,9 +2481,9 @@ fn an_unreadable_profile_token_never_falls_back_to_the_singleton() {
         let injected = crate::bridge_commands::inject_rclone_oauth_export_options(
             &mut options,
             store,
+            scope.user_id,
             "googledrive",
             "mine",
-            scope.user_id,
         );
         assert!(injected.is_err());
         assert!(!options
@@ -2464,9 +2529,9 @@ fn the_rclone_export_reads_the_token_of_the_captured_account() {
         let injected = crate::bridge_commands::inject_rclone_oauth_export_options(
             &mut options,
             store,
+            Some(captured.id),
             "googledrive",
             "mine",
-            Some(captured.id),
         );
         assert!(
             !options
@@ -2601,10 +2666,10 @@ fn an_unreadable_oauth_token_fails_the_profile_export() {
             protocol: Some("googledrive".into()),
             ..Default::default()
         };
-        let secrets = crate::collect_provider_secrets_for_server(store, &server, None).unwrap();
+        let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
         assert_eq!(secrets.oauth.as_deref(), Some("own-google"));
         store.corrupt_entry_for_test("oauth_google_mine");
-        let secrets = crate::collect_provider_secrets_for_server(store, &server, None);
+        let secrets = crate::collect_provider_secrets_for_server(store, &server);
         assert!(
             secrets.as_ref().is_err_and(|e| e.contains("drive")),
             "{:?}",
@@ -2612,7 +2677,7 @@ fn an_unreadable_oauth_token_fails_the_profile_export() {
         );
         // Absent, not unreadable: the singleton is still the fallback.
         store.delete("oauth_google_mine").unwrap();
-        let secrets = crate::collect_provider_secrets_for_server(store, &server, None).unwrap();
+        let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
         assert_eq!(secrets.oauth.as_deref(), Some("other-google"));
     });
 }
@@ -2698,14 +2763,14 @@ fn an_unreadable_jotta_token_fails_the_profile_export() {
             ..Default::default()
         };
         store.corrupt_entry_for_test("jottacloud_refresh_mine");
-        let secrets = crate::collect_provider_secrets_for_server(store, &server, None);
+        let secrets = crate::collect_provider_secrets_for_server(store, &server);
         assert!(
             secrets.as_ref().is_err_and(|e| e.contains("jotta")),
             "{:?}",
             secrets.map(|s| s.jotta_refresh)
         );
         store.delete("jottacloud_refresh_mine").unwrap();
-        let secrets = crate::collect_provider_secrets_for_server(store, &server, None).unwrap();
+        let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
         assert_eq!(secrets.jotta_refresh.as_deref(), Some("other-jotta"));
     });
 }
@@ -3020,14 +3085,15 @@ fn an_export_reads_the_secrets_of_the_account_that_produced_the_list() {
 
         let directory = tempfile::tempdir().unwrap();
         let file = directory.path().join("bound.aeroftp");
-        let metadata = tauri::async_runtime::block_on(crate::export_server_profiles_core(
-            json!([profile]).to_string(),
-            "fixture-export-password".into(),
-            true,
-            file.to_string_lossy().into_owned(),
-            Some(listed.id),
-        ))
-        .unwrap();
+        let metadata =
+            tauri::async_runtime::block_on(crate::export_server_profiles_core_with_policy(
+                json!([profile]).to_string(),
+                "fixture-export-password".into(),
+                true,
+                file.to_string_lossy().into_owned(),
+                crate::ExportAccountBinding::ExplicitUser(listed.id),
+            ))
+            .unwrap();
         assert!(metadata.has_credentials);
         let (out, _secrets, _) =
             crate::profile_export::import_profiles(&file, "fixture-export-password").unwrap();

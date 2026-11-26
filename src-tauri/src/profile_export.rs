@@ -161,6 +161,12 @@ pub struct ProviderSecrets {
     /// profiles or when credentials are excluded from the export.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filen_api_key: Option<String>,
+    /// Per-profile AWS STS session token (`aws_session_token_<id>` vault entry).
+    /// Imported STS tokens move out of `options.sessionToken` into the vault so
+    /// they never sit in plaintext profile metadata; carrying them here keeps
+    /// credential-enabled `.aeroftp` backups restorable into an empty vault.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aws_session_token: Option<String>,
     /// OneDrive Graph drive id captured at connect (`onedrive_drive_id_<id>`).
     /// Like the Filen key it lives only in the vault, not on the profile, so the
     /// export dropped it; carried here so a re-import is a complete snapshot.
@@ -202,6 +208,8 @@ pub struct ServerProfileExport {
     pub provider_id: Option<String>,
     pub credential: Option<String>,
     pub has_stored_credential: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_stored_session_token: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_url_base: Option<String>,
     /// User-chosen custom icon (base64 data URL). Top-level `ServerProfile`
@@ -289,6 +297,10 @@ pub const OPTIONS_SECRET_KEYS: &[&str] = &[
     "totp_secret",
     "key_passphrase",
     "sessionToken",
+    // snake_case spelling of the same inline AWS STS token
+    // (`extract_and_strip_inline_s3_session_token` accepts both): a legacy
+    // options blob carrying `session_token` is secret too.
+    "session_token",
     "sasToken",
     "clientSecret",
     "client_secret",
@@ -316,6 +328,12 @@ pub const OPTIONS_SECRET_KEYS: &[&str] = &[
     // The native Proton Drive session, injected into a copy of the options
     // only on the rclone export path (`inject_rclone_proton_export_options`).
     "proton_native_session",
+    // Bridge-imported secrets moved into the vault on save (`rclone_import`
+    // crypt password/salt and Filen CLI API key). Unified here so every
+    // export/redaction path strips the exact same canonical list (AWS-10).
+    "rcloneCryptPassword",
+    "rcloneCryptPassword2",
+    "filen_api_key",
 ];
 
 /// Remove options-borne secrets in place. No-op when `options` is absent or
@@ -381,6 +399,7 @@ pub fn export_profiles(
             || s.oauth_client_id.is_some()
             || s.oauth_client_secret.is_some()
             || s.filen_api_key.is_some()
+            || s.aws_session_token.is_some()
             || s.onedrive_drive_id.is_some()
             || s.onedrive_drive_type.is_some()
             || s.proton_native_session.is_some()
@@ -508,6 +527,7 @@ mod tests {
             provider_id: None,
             credential: None,
             has_stored_credential: None,
+            has_stored_session_token: None,
             public_url_base: None,
             custom_icon_url: None,
             favicon_url: None,
@@ -748,6 +768,7 @@ mod tests {
             "filen-profile".to_string(),
             ProviderSecrets {
                 filen_api_key: Some("filen-cli-api-key-secret".to_string()),
+                aws_session_token: Some("aws-sts-token-secret".to_string()),
                 onedrive_drive_id: Some("b!driveid123".to_string()),
                 onedrive_drive_type: Some("business".to_string()),
                 proton_native_session: Some(
@@ -789,6 +810,13 @@ mod tests {
                 .and_then(|s| s.filen_api_key.clone()),
             Some("filen-cli-api-key-secret".to_string()),
             "Filen CLI API key must survive as a provider secret"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("filen-profile")
+                .and_then(|s| s.aws_session_token.clone()),
+            Some("aws-sts-token-secret".to_string()),
+            "AWS STS session token must survive as a provider secret"
         );
         assert_eq!(
             restored_secrets

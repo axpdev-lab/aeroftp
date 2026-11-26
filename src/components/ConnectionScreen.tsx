@@ -38,7 +38,7 @@ import { StoredTotpSecretDisclosure } from './StoredTotpSecretDisclosure';
 import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
 import { ManualStorageField } from './common/ManualStorageField';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
-import { discoveryRequestParams, discoveryRequestResetKey, type DiscoveryProtocol } from './common/discoveryRequest';
+import { discoveryRequestParams, discoveryRequestResetKey, type DiscoveryEditContext, type DiscoveryProtocol } from './common/discoveryRequest';
 import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, modeLabel, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
 import { getDiscoverCardDescription } from './IntroHub/discoverData';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
@@ -319,9 +319,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // detect attached devices, pick one, store deviceFingerprint + default paths.
     const isMtp = protocol === 'mtp';
 
+    // The saved profile this form is bound to (connected from the list or being
+    // edited): its id lets bucket discovery resolve the vaulted STS session
+    // token under the captured account instead of seeing only an inline token.
+    const discoveryEditContext = (): DiscoveryEditContext | undefined => {
+        const editId = connectionParams.savedServerId ?? editingProfileId ?? undefined;
+        if (!editId) return undefined;
+        const profile =
+            savedProfiles.find((s) => s.id === editId) ??
+            (editingProfile?.id === editId ? editingProfile : undefined);
+        return { profileId: editId, hasStoredSessionToken: profile?.hasStoredSessionToken };
+    };
+
     const discoverConnectionTargets = (targetProtocol: DiscoveryProtocol) =>
         invoke<ConnectionTarget[]>('provider_discover_targets', {
-            params: discoveryRequestParams(targetProtocol, connectionParams),
+            params: discoveryRequestParams(targetProtocol, connectionParams, discoveryEditContext()),
         });
 
     // Connections are always saved (the legacy "Save this connection" checkbox
@@ -5223,7 +5235,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             }}
                                             onDiscover={() => discoverConnectionTargets('kdrive')}
                                             canDiscover={!!connectionParams.password}
-                                            resetKey={discoveryRequestResetKey('kdrive', connectionParams)}
+                                            resetKey={discoveryRequestResetKey('kdrive', connectionParams, discoveryEditContext())}
                                             placeholder="1234567"
                                             inputMode="numeric"
                                             maxLength={10}
@@ -5520,7 +5532,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 })}
                                                 onDiscover={() => discoverConnectionTargets('backblaze')}
                                                 canDiscover={!!connectionParams.username && !!connectionParams.password}
-                                                resetKey={discoveryRequestResetKey('backblaze', connectionParams)}
+                                                resetKey={discoveryRequestResetKey('backblaze', connectionParams, discoveryEditContext())}
                                                 placeholder="my-b2-bucket"
                                                 helpText={t('connection.forms.bucketNameExactHint')}
                                                 required
@@ -6475,7 +6487,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             onPresetUnlock={(field) => setPresetUnlocked(prev => ({ ...prev, [field]: true }))}
                                             discoverS3Targets={() => discoverConnectionTargets('s3')}
                                             canDiscoverS3Targets={isFilenDesktopBridge || (!!connectionParams.username && !!connectionParams.password)}
-                                            s3DiscoveryResetKey={discoveryRequestResetKey('s3', connectionParams)}
+                                            s3DiscoveryResetKey={discoveryRequestResetKey('s3', connectionParams, discoveryEditContext())}
                                         />
                                         {/* Advanced Options: hidden server/port for preset WebDAV, hidden endpoint for preset S3 */}
                                         {(() => {

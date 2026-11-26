@@ -1963,6 +1963,11 @@ pub struct ProviderConnectionParams {
     /// `ProviderConfig.extra["base_path"]`.
     #[serde(default, alias = "basePath")]
     pub base_path: Option<String>,
+    /// True when the saved S3 profile recorded a vaulted AWS STS session token
+    /// (`hasStoredSessionToken: true`); connect fails closed if it cannot be
+    /// loaded from the vault.
+    #[serde(default, alias = "hasStoredSessionToken")]
+    pub has_stored_session_token: Option<bool>,
 }
 
 /// The host the backend uses for a cloud API whatever the tab's server field
@@ -1989,8 +1994,18 @@ fn fixed_api_host(provider_type: ProviderType) -> Option<&'static str> {
 }
 
 impl ProviderConnectionParams {
-    /// Convert to provider configuration
+    /// Convert to provider configuration using the active user's partition.
     pub fn to_provider_config(&self) -> Result<ProviderConfig, String> {
+        self.to_provider_config_for_user(None)
+    }
+
+    /// Convert to provider configuration scoped to `user_id` when captured
+    /// before connect/discovery so an intervening account switch can never
+    /// inject another user's vaulted AWS STS session token.
+    pub fn to_provider_config_for_user(
+        &self,
+        user_id: Option<i64>,
+    ) -> Result<ProviderConfig, String> {
         let provider_type = match self.protocol.to_lowercase().as_str() {
             "ftp" => ProviderType::Ftp,
             "ftps" => ProviderType::Ftps,
@@ -2523,6 +2538,85 @@ impl ProviderConnectionParams {
                 }
             }
         }
+        // AWS-11: imported S3 session tokens live in the encrypted vault under
+        // `aws_session_token_<profile_id>` so they never cross into the webview.
+        // Owner-aware lookup ensures another user with the same profile id never
+        // receives the legacy owner's shared-vault token. An explicit form token
+        // or launch-URL token already populated above wins. Fail closed if the
+        // vault read fails or a profile marked `hasStoredSessionToken` lacks its
+        // token in the vault.
+        let explicit_requires_token = self.has_stored_session_token.unwrap_or(false);
+        // Fail closed on a locked vault only when the request itself declares
+        // the stored token required (`Some(true)`). A static S3 profile
+        // (profile_id + password, flag omitted or `Some(false)`) never reads
+        // the vault, so it must keep connecting while the vault is locked.
+        let fail_closed_when_locked = explicit_requires_token;
+        crate::profile_loader::inject_vault_s3_session_token(
+            config.provider_type,
+            self.profile_id.as_deref(),
+            explicit_requires_token,
+            &mut config.extra,
+            |key| {
+                let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+                    return if fail_closed_when_locked {
+                        Err(
+                            "The credential vault is locked, so this S3 profile's saved AWS session token cannot be read"
+                                .to_string(),
+                        )
+                    } else {
+                        Ok(None)
+                    };
+                };
+                match crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                    &store, user_id, key,
+                ) {
+                    Ok(Some(token)) => Ok(Some(token)),
+                    Ok(None) => {
+                        let stored_flag = self.has_stored_session_token.is_none()
+                            && self.profile_id.as_deref().is_some_and(|pid| {
+                                let profiles = match user_id {
+                                    Some(uid) => {
+                                        crate::user_partitions::cli_list_server_profiles_for_user(
+                                            &store, uid,
+                                        )
+                                    }
+                                    None => {
+                                        crate::user_partitions::mcp_list_active_server_profiles(
+                                            &store,
+                                        )
+                                    }
+                                };
+                                profiles
+                                    .map(|profiles| {
+                                        profiles.iter().any(|p| {
+                                            p.get("id").and_then(|v| v.as_str()) == Some(pid)
+                                                && p.get("hasStoredSessionToken")
+                                                    .and_then(|v| v.as_bool())
+                                                    == Some(true)
+                                        })
+                                    })
+                                    .unwrap_or(false)
+                            });
+                        if stored_flag {
+                            Err(
+                                "The saved AWS session token for this profile is missing from the vault; re-import or update the profile credentials"
+                                    .to_string(),
+                            )
+                        } else {
+                            Ok(None)
+                        }
+                    }
+                    // A static S3 profile (flag omitted or `Some(false)`) treats
+                    // an unreadable partition (root vault open, the captured
+                    // account's passphrase partition locked) as "no vault
+                    // token", exactly like the locked-root vault above; only a
+                    // request that declares the stored token required fails
+                    // closed on the error.
+                    Err(e) if fail_closed_when_locked => Err(e),
+                    Err(_) => Ok(None),
+                }
+            },
+        )?;
         Ok(config)
     }
 }
@@ -2578,8 +2672,11 @@ pub async fn provider_discover_targets(
     // Provider configuration validates the same credential/endpoint contract
     // as a real connection. The placeholder is never sent as a data-plane
     // target: each discovery method uses its account/service-root endpoint.
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
     params.bucket = Some(discovery_bucket_placeholder(&protocol));
-    let config = params.to_provider_config()?;
+    let config = params.to_provider_config_for_user(owner.user())?;
+    owner.validate()?;
     // The provider clients carry transfer-scale read timeouts (1800s for S3 and
     // kDrive, 120s for B2) and nothing here can be cancelled, so an endpoint
     // that accepts the connection and stalls froze the Quick Connect button for
@@ -2643,6 +2740,10 @@ pub async fn provider_discover_targets(
                     .to_string(),
             ),
         };
+    // The discovery await can outlast an account switch or a vault lock: a
+    // stale reply keyed only on credentials would be presented as current.
+    // Re-validate the captured owner before the targets leave this function.
+    owner.validate()?;
     // Dedup on the identity, then present by label. `dedup_by` only removes
     // ADJACENT equals, so it has to run against the key it compares: sorting by
     // label first leaves two rows with the same value un-adjacent and both
@@ -2766,7 +2867,8 @@ where
     let connect_token = params.connect_token.clone();
     let registration = ConnectRegistration::new(cancel_registry, connect_token.as_deref());
 
-    let mut config = params.to_provider_config()?;
+    let mut config = params.to_provider_config_for_user(owner.user())?;
+    owner.validate()?;
     // The preparation reads the config's extras, never its secret: it gets a
     // copy with the password zeroized (A3-05).
     let mut prepare_config = config.clone();
@@ -19642,8 +19744,19 @@ mod tests {
     /// bridge that serves plain HTTP while the preset starts from HTTPS. Only
     /// a known bridge is reconciled: the fixture's free port stands for 1800.
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn a_fetch_lists_the_buckets_of_a_bridge_on_plain_http() {
+        // Isolated child: the discovery captures a GuiOwnerContext, which can
+        // prime the process-global user session; a child keeps that away from
+        // the other tests running in this process.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::a_fetch_lists_the_buckets_of_a_bridge_on_plain_http",
+        ) {
+            return;
+        }
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         crate::local_bridge::alias_test_port(port, 1800);
@@ -19697,6 +19810,311 @@ mod tests {
             targets.iter().map(|t| t.value.as_str()).collect::<Vec<_>>(),
             ["Documents"]
         );
+    }
+
+    /// A discovery reply must not outlive an account switch: the owner is
+    /// captured before the network await and re-validated after it, so a Fetch
+    /// started under one account fails closed when the active account changed
+    /// while the buckets were being listed. The fixture answers only after a
+    /// delay, and the switch lands while the reply is still in flight.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_discovery_reply_after_an_account_switch_is_rejected() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::a_discovery_reply_after_an_account_switch_is_rejected",
+        ) {
+            return;
+        }
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic discovery owner master",
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master(
+            "synthetic discovery owner master",
+            None,
+        )
+        .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        crate::local_bridge::alias_test_port(port, 1800);
+        // A preliminary probe that connects and closes without a COMPLETE HTTP
+        // request must not consume the hold barrier: only the real bucket-list
+        // request may hold its reply.
+        {
+            let mut probe = tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .unwrap();
+            let _ = probe.write_all(b"GET /probe-without-header-end").await;
+            drop(probe);
+        }
+        let (requested_tx, mut requested_rx) = tokio::sync::mpsc::channel::<()>(4);
+        // The reply is held on a oneshot, not on a fixed delay: it is released
+        // only after the account switch below has landed.
+        let (hold_tx, hold_rx) = tokio::sync::oneshot::channel::<()>();
+        let hold_rx = std::sync::Arc::new(tokio::sync::Mutex::new(Some(hold_rx)));
+        let server = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                let requested_tx = requested_tx.clone();
+                let hold_rx = hold_rx.clone();
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buffer = [0u8; 4096];
+                    while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut buffer).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&buffer[..n]),
+                        }
+                    }
+                    // Take the hold barrier ONLY when the complete request is
+                    // the authenticated bucket-list call: an unauthenticated
+                    // probe (no Authorization header) is answered 404 at once
+                    // and must not consume the barrier or signal the test.
+                    let is_authenticated = request
+                        .windows(b"authorization:".len())
+                        .any(|w| w.eq_ignore_ascii_case(b"authorization:"));
+                    if !is_authenticated {
+                        let reply = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        let _ = stream.write_all(reply.as_bytes()).await;
+                        return;
+                    }
+                    let hold_rx = hold_rx.lock().await.take();
+                    // Signal only AFTER the authenticated request has taken the
+                    // hold: a preliminary probe must not release the barrier
+                    // before the bucket-list request arrives.
+                    let _ = requested_tx.send(()).await;
+                    // Hold the reply so the account switch lands while the
+                    // discovery is still awaiting it.
+                    if let Some(hold_rx) = hold_rx {
+                        let _ = hold_rx.await;
+                    }
+                    let body = "<ListAllMyBucketsResult><Buckets><Bucket><Name>Documents</Name></Bucket></Buckets></ListAllMyBucketsResult>";
+                    let reply = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+
+        // A COMPLETE preliminary probe (headers end, no Authorization header) is
+        // answered 404 but must not signal: the barrier waits for the
+        // authenticated bucket-list request only.
+        {
+            let mut probe = tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .unwrap();
+            probe
+                .write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+                .await
+                .unwrap();
+            let mut reply = Vec::new();
+            probe.read_to_end(&mut reply).await.unwrap();
+            assert!(
+                String::from_utf8_lossy(&reply).starts_with("HTTP/1.1 404"),
+                "an unauthenticated complete probe gets 404, got: {}",
+                String::from_utf8_lossy(&reply)
+            );
+            assert!(
+                requested_rx.try_recv().is_err(),
+                "a complete preliminary probe must not signal the barrier"
+            );
+        }
+
+        let mut params = s3_params(None);
+        params.provider_id = Some("filen-desktop-s3".to_string());
+        params.server = format!("https://local.s3.filen.io:{port}");
+        params.port = Some(port);
+        params.endpoint = Some(format!("https://local.s3.filen.io:{port}"));
+        params.region = Some("filen".to_string());
+        params.username = "admin".to_string();
+        params.password = "admin".to_string();
+        params.path_style = Some(true);
+        params.verify_cert = Some(false);
+        let mut discovery = tokio::spawn(provider_discover_targets(params));
+
+        // The bucket request is on the wire; switch the active account before
+        // the delayed reply comes back. If the discovery ends first, its error
+        // is the real failure: surface it instead of hanging on the channel.
+        tokio::select! {
+            got = requested_rx.recv() => {
+                assert!(got.is_some(), "the fake bridge must receive the bucket request");
+                let conn = crate::user_partitions::open_or_init_cli().unwrap();
+                crate::user_partitions::set_active_user(&conn, second).unwrap();
+                drop(conn);
+                // Release the held reply only now that the switch has landed.
+                let _ = hold_tx.send(());
+            }
+            early = &mut discovery => {
+                panic!("discovery ended before the account switch: {:?}", early.unwrap());
+            }
+        }
+
+        let result = discovery.await.unwrap();
+        server.abort();
+        assert!(
+            matches!(&result, Err(e) if e.starts_with(crate::providers::types::TARGET_CHANGED_MARKER)),
+            "a discovery reply that outlived an account switch must be refused, got: {result:?}"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        crate::credential_store::CredentialStore::clear_cache();
+    }
+
+    /// Bucket discovery for a saved STS profile resolves the vaulted session
+    /// token (`aws_session_token_<profile_id>`) under the captured account and
+    /// sends it as `x-amz-security-token`: the fake endpoint answers 200 only
+    /// when that header carries the saved token, 403 otherwise. The request
+    /// now carries `profile_id` + `has_stored_session_token` from the edit form.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_saved_sts_profile_fetch_buckets_with_its_vaulted_session_token() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::a_saved_sts_profile_fetch_buckets_with_its_vaulted_session_token",
+        ) {
+            return;
+        }
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic sts discovery master",
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master(
+            "synthetic sts discovery master",
+            None,
+        )
+        .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let account = crate::user_partitions::cli_get_active_user(&store)
+            .unwrap()
+            .expect("active account")
+            .id;
+        // The saved STS profile: flagged row in the account's list, token in
+        // its partition only (private-token write, no shared vault copy).
+        crate::user_partitions::cli_replace_server_profiles_for_user(
+            &store,
+            account,
+            &[serde_json::json!({
+                "id": "srv-sts", "name": "sts-lab", "protocol": "s3",
+                "host": "s3.example.invalid", "port": 443, "username": "AKIAEXAMPLE",
+                "hasStoredSessionToken": true,
+            })],
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            account,
+            &crate::profile_loader::aws_session_token_vault_key("srv-sts"),
+            "aws_session_token",
+            "STS-SAVED-TOKEN",
+        )
+        .unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buffer = [0u8; 4096];
+                    while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut buffer).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&buffer[..n]),
+                        }
+                    }
+                    let head = String::from_utf8_lossy(&request).to_ascii_lowercase();
+                    let authorized = head.contains("x-amz-security-token: sts-saved-token");
+                    let (status, body) = if authorized {
+                        ("200 OK", "<ListAllMyBucketsResult><Buckets><Bucket><Name>Documents</Name></Bucket></Buckets></ListAllMyBucketsResult>")
+                    } else {
+                        ("403 Forbidden", "")
+                    };
+                    let reply = format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+
+        let mut params = s3_params(None);
+        params.server = format!("http://127.0.0.1:{port}");
+        params.port = Some(port);
+        params.endpoint = Some(format!("http://127.0.0.1:{port}"));
+        params.region = Some("garage".to_string());
+        params.username = "AKIAEXAMPLE".to_string();
+        params.password = "secret".to_string();
+        params.path_style = Some(true);
+        params.profile_id = Some("srv-sts".to_string());
+        params.has_stored_session_token = Some(true);
+        let targets = provider_discover_targets(params).await;
+        server.abort();
+        let targets = targets.expect(
+            "discovery must resolve the saved STS token from the vault and send it; \
+             a 403 here means the token never reached the wire",
+        );
+        assert_eq!(
+            targets.iter().map(|t| t.value.as_str()).collect::<Vec<_>>(),
+            ["Documents"]
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        crate::credential_store::CredentialStore::clear_cache();
     }
 
     #[test]
@@ -19898,6 +20316,7 @@ mod tests {
             connect_token: None,
             opendrive_default_privacy: None,
             base_path: None,
+            has_stored_session_token: None,
         }
     }
 
@@ -24995,12 +25414,566 @@ mod tests {
         );
     }
 
+    /// A static S3 connect (profile id + keys, `hasStoredSessionToken =
+    /// Some(false)`) must keep working when the root vault is open but the
+    /// captured account's passphrase partition is locked: the owner-aware
+    /// token lookup's USER_LOCKED error is treated as "no vault token", like
+    /// the locked-root case. A profile that declares the token required still
+    /// fails closed.
+    #[test]
+    fn a_static_s3_connect_survives_a_locked_passphrase_partition_but_an_sts_one_fails_closed() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::a_static_s3_connect_survives_a_locked_passphrase_partition_but_an_sts_one_fails_closed",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic test master",
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("synthetic test master", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        // A passphrase-protected account that is never unlocked in this
+        // session: its partition stays locked while the root vault is open.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let locked_user = crate::user_partitions::create_user(
+            &mut conn,
+            &root_key,
+            "Locked",
+            None,
+            None,
+            Some("synthetic partition passphrase"),
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut static_params = s3_params(None);
+        static_params.profile_id = Some("aws-static-x".to_string());
+        static_params.has_stored_session_token = Some(false);
+        let config = static_params
+            .to_provider_config_for_user(Some(locked_user.id))
+            .expect("a static S3 connect must not be blocked by a locked passphrase partition");
+        assert!(
+            !config.extra.contains_key("session_token"),
+            "no token may be invented for a static profile: {:?}",
+            config.extra.get("session_token")
+        );
+
+        let mut sts_params = s3_params(None);
+        sts_params.profile_id = Some("aws-static-x".to_string());
+        sts_params.has_stored_session_token = Some(true);
+        let err = sts_params
+            .to_provider_config_for_user(Some(locked_user.id))
+            .expect_err("an STS profile must fail closed when its partition is locked");
+        assert!(
+            err.contains("USER_LOCKED") || err.contains("locked"),
+            "the locked-partition error must propagate for a token-requiring profile: {err}"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        crate::credential_store::CredentialStore::clear_cache();
+    }
+
     #[test]
     fn test_s3_provider_params_trim_blank_session_token() {
         let mut params = s3_params(None);
         params.session_token = Some("   ".to_string());
         let config = params.to_provider_config().unwrap();
         assert!(!config.extra.contains_key("session_token"));
+    }
+
+    #[test]
+    fn s3_connect_reads_vault_session_token_by_profile_id() {
+        if !isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::s3_connect_reads_vault_session_token_by_profile_id",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic test master",
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("synthetic test master", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first_user = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first user");
+        drop(conn);
+        crate::user_partitions::store_active_credential_dual(
+            &store,
+            "aws_session_token_aws-sts-1",
+            "VAULT-STS-TOKEN-42",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user_dual(
+            &store,
+            first_user.id,
+            "aerocrypt_overlay_pw_aws-sts-1",
+            "ALICE-OVERLAY-PW",
+        )
+        .unwrap();
+
+        let mut params = s3_params(None);
+        params.profile_id = Some("aws-sts-1".to_string());
+        params.session_token = None;
+        let config = params.to_provider_config().unwrap();
+        let got_vault = config.extra.get("session_token").cloned();
+
+        // Explicit form token still wins over the vaulted token.
+        let mut explicit = s3_params(None);
+        explicit.profile_id = Some("aws-sts-1".to_string());
+        explicit.session_token = Some("EXPLICIT-TOKEN".to_string());
+        let got_explicit = explicit
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        // Finding #11: duplicating an imported STS profile through the real
+        // vault + partition copy helper copies `aws_session_token_<id>` onto
+        // the new profile id so the duplicate connects with the token too.
+        let copied = crate::copy_profile_secrets_for(
+            &store,
+            Some(first_user.id),
+            "aws-sts-1",
+            "aws-sts-copy",
+            Some("s3"),
+        )
+        .unwrap();
+        let mut copy_params = s3_params(None);
+        copy_params.profile_id = Some("aws-sts-copy".to_string());
+        copy_params.has_stored_session_token = Some(true);
+        let got_copy_connect = copy_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        // Greptile #1: credential-enabled `.aeroftp` backup collects vaulted
+        // `aws_session_token_<id>` and restores it into an empty vault partition.
+        let backup_server = crate::profile_export::ServerProfileExport {
+            id: "aws-sts-1".to_string(),
+            name: "STS Backup".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "ASIABACKUP".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("secret-backup".to_string()),
+            ..Default::default()
+        };
+        let collected_secrets =
+            crate::collect_provider_secrets_for_server(&store, &backup_server).unwrap();
+        let backup_path = dir.path().join("sts-backup.aeroftp");
+        crate::profile_export::export_profiles(
+            vec![backup_server],
+            std::collections::HashMap::from([("aws-sts-1".to_string(), collected_secrets)]),
+            "backup-passphrase-123",
+            &backup_path,
+        )
+        .unwrap();
+        let (backup_servers, backup_secrets, backup_meta) =
+            crate::profile_export::import_profiles(&backup_path, "backup-passphrase-123").unwrap();
+        let backup_writes = crate::import_secret_writes(&backup_servers, &backup_secrets);
+
+        // Class A (findings 12, 13, 14): create user B without a token on the
+        // shared profile id `aws-sts-1`. Switching active user to B must NEVER
+        // leak user A's shared-vault token on connect or export, while an
+        // explicit scoped lookup for user A still resolves A's token.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second_user =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap();
+        crate::user_partitions::set_active_user(&conn, second_user.id).unwrap();
+        drop(conn);
+        crate::user_partitions::store_credential_for_user_dual(
+            &store,
+            second_user.id,
+            "aerocrypt_overlay_pw_aws-sts-1",
+            "BOB-OVERLAY-PW",
+        )
+        .unwrap();
+
+        let mut second_params = s3_params(None);
+        second_params.profile_id = Some("aws-sts-1".to_string());
+        second_params.session_token = None;
+        second_params.has_stored_session_token = Some(false);
+        let got_second_connect = second_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        // Finding #12: an STS profile whose stored token cannot be found for
+        // the active user fails closed instead of connecting without a token.
+        let mut missing_required_params = s3_params(None);
+        missing_required_params.profile_id = Some("aws-sts-1".to_string());
+        missing_required_params.has_stored_session_token = Some(true);
+        let missing_required_err = missing_required_params.to_provider_config().unwrap_err();
+
+        // Now restore the `.aeroftp` backup secrets into user B's empty partition
+        // under a fresh profile id and verify connect recovers the STS token.
+        let restored_backup_id = "aws-sts-restored";
+        for w in &backup_writes {
+            if w.key == "aws_session_token_aws-sts-1" {
+                crate::user_partitions::store_credential_for_user_typed_dual(
+                    &store,
+                    second_user.id,
+                    &crate::profile_loader::aws_session_token_vault_key(restored_backup_id),
+                    w.kind.unwrap_or("aws_session_token"),
+                    w.value.as_str(),
+                )
+                .unwrap();
+            }
+        }
+        let mut restored_params = s3_params(None);
+        restored_params.profile_id = Some(restored_backup_id.to_string());
+        restored_params.has_stored_session_token = Some(true);
+        let got_restored_backup_connect = restored_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        // CR-CLI #14: scoped backup collection for captured user A still reads
+        // user A's session token even after active user switched to user B.
+        let scoped_a_server = crate::profile_export::ServerProfileExport {
+            id: "aws-sts-1".to_string(),
+            name: "STS Backup".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "ASIABACKUP".to_string(),
+            protocol: Some("s3".to_string()),
+            ..Default::default()
+        };
+        let collected_for_a_after_switch = crate::collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(first_user.id),
+            &scoped_a_server,
+        )
+        .unwrap();
+
+        // CR-CLI #13: overwriting `aws-sts-restored` with a credential-enabled
+        // S3 backup carrying NO session token emits a delete write that removes
+        // the stale vaulted token so subsequent connects send no expired token.
+        let replacement_server = crate::profile_export::ServerProfileExport {
+            id: restored_backup_id.to_string(),
+            name: "Permanent S3".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "AKIAPERM".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("perm-secret".to_string()),
+            ..Default::default()
+        };
+        let overwrite_writes = crate::import_secret_writes(
+            std::slice::from_ref(&replacement_server),
+            &std::collections::HashMap::new(),
+        );
+        for w in &overwrite_writes {
+            if w.delete {
+                crate::user_partitions::delete_imported_credential_for_user(
+                    &store,
+                    second_user.id,
+                    &w.key,
+                )
+                .unwrap();
+            }
+        }
+        let mut after_overwrite_params = s3_params(None);
+        after_overwrite_params.profile_id = Some(restored_backup_id.to_string());
+        after_overwrite_params.has_stored_session_token = Some(false);
+        let got_after_overwrite_connect = after_overwrite_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        let mut export_opts_b: Option<serde_json::Value> = None;
+        crate::bridge_commands::inject_aws_session_token_export_option_for_user(
+            &mut export_opts_b,
+            &store,
+            Some(second_user.id),
+            "s3",
+            "aws-sts-1",
+            false,
+        )
+        .unwrap();
+        let mut export_opts_b_req: Option<serde_json::Value> = None;
+        let export_b_req_err =
+            crate::bridge_commands::inject_aws_session_token_export_option_for_user(
+                &mut export_opts_b_req,
+                &store,
+                Some(second_user.id),
+                "s3",
+                "aws-sts-1",
+                true,
+            )
+            .unwrap_err();
+        let mut export_opts_a: Option<serde_json::Value> = None;
+        crate::bridge_commands::inject_aws_session_token_export_option_for_user(
+            &mut export_opts_a,
+            &store,
+            Some(first_user.id),
+            "s3",
+            "aws-sts-1",
+            true,
+        )
+        .unwrap();
+
+        // A2: secondary account restoring an STS token via `store_imported_credential_for_user`
+        // stores ONLY in its own partition and NEVER overwrites user A's shared legacy fallback.
+        crate::user_partitions::store_imported_credential_for_user(
+            &store,
+            second_user.id,
+            "aws_session_token_aws-sts-1",
+            Some("aws_session_token"),
+            "BOB-OWN-STS-TOKEN",
+        )
+        .unwrap();
+        let vault_after_bob_restore = store.get("aws_session_token_aws-sts-1").unwrap();
+
+        // A4: captured owner (first_user) connects while active user is second_user ->
+        // must read first_user's token, NEVER second_user's token.
+        let mut captured_a_params = s3_params(None);
+        captured_a_params.profile_id = Some("aws-sts-1".to_string());
+        captured_a_params.has_stored_session_token = Some(true);
+        let got_captured_a_connect = captured_a_params
+            .to_provider_config_for_user(Some(first_user.id))
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+        let got_captured_b_connect = captured_a_params
+            .to_provider_config_for_user(Some(second_user.id))
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        // A1: secondary account deleting its own `aws_session_token_aws-sts-1` clears
+        // second_user's partition row while leaving first_user's shared fallback intact.
+        crate::user_partitions::delete_imported_credential_for_user(
+            &store,
+            second_user.id,
+            "aws_session_token_aws-sts-1",
+        )
+        .unwrap();
+        let vault_after_bob_delete = store.get("aws_session_token_aws-sts-1").unwrap();
+        let bob_after_delete = crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+            &store,
+            Some(second_user.id),
+            "aws_session_token_aws-sts-1",
+        )
+        .unwrap();
+        let alice_after_bob_delete = captured_a_params
+            .to_provider_config_for_user(Some(first_user.id))
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        // A3: third secondary account with an empty partition imports an STS token via
+        // `store_bridge_import_secret_for_user` -> lands in its own partition and resolves,
+        // without touching the shared legacy vault fallback.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let third_user =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Third", None, None, None)
+                .unwrap();
+        drop(conn);
+        crate::bridge_commands::store_bridge_import_secret_for_user(
+            &store,
+            Some(third_user.id),
+            "aws_session_token_aws-sts-1",
+            "CAROL-IMPORTED-TOKEN",
+        )
+        .unwrap();
+        let carol_resolved = crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+            &store,
+            Some(third_user.id),
+            "aws_session_token_aws-sts-1",
+        )
+        .unwrap();
+        let vault_after_carol_import = store.get("aws_session_token_aws-sts-1").unwrap();
+
+        // A6: credential-enabled native export fails closed when a profile marked
+        // `hasStoredSessionToken: true` lacks its token in the vault, while a static
+        // profile with no token and an STS profile with a readable token both succeed.
+        let sts_missing_export = crate::profile_export::ServerProfileExport {
+            id: "aws-sts-1".to_string(),
+            name: "Bob Missing STS".to_string(),
+            protocol: Some("s3".to_string()),
+            has_stored_session_token: Some(true),
+            ..Default::default()
+        };
+        let export_missing_sts_err = crate::collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(second_user.id),
+            &sts_missing_export,
+        )
+        .err()
+        .expect("missing required STS token must fail credential-enabled export");
+        let static_no_tok_export = crate::profile_export::ServerProfileExport {
+            id: "aws-static-none".to_string(),
+            name: "Static S3".to_string(),
+            protocol: Some("s3".to_string()),
+            ..Default::default()
+        };
+        assert!(crate::collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(second_user.id),
+            &static_no_tok_export,
+        )
+        .is_ok());
+
+        crate::credential_store::CredentialStore::clear_cache();
+
+        // Locked vault: `has_stored_session_token: Some(true)` fails closed with
+        // the local vault error, while an omitted flag (`None`, what a saved
+        // static S3 profile's connect sends) or `Some(false)` proceeds without
+        // a token, because that path never reads the vault.
+        let mut locked_required_params = s3_params(None);
+        locked_required_params.profile_id = Some("aws-sts-1".to_string());
+        locked_required_params.has_stored_session_token = Some(true);
+        let locked_required_err = locked_required_params.to_provider_config().unwrap_err();
+        let mut locked_omitted_params = s3_params(None);
+        locked_omitted_params.profile_id = Some("aws-sts-1".to_string());
+        locked_omitted_params.has_stored_session_token = None;
+        let locked_omitted_tok = locked_omitted_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+        let mut locked_non_sts_params = s3_params(None);
+        locked_non_sts_params.profile_id = Some("aws-sts-1".to_string());
+        locked_non_sts_params.has_stored_session_token = Some(false);
+        let locked_non_sts_tok = locked_non_sts_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+
+        assert_eq!(got_vault.as_deref(), Some("VAULT-STS-TOKEN-42"));
+        assert_eq!(got_explicit.as_deref(), Some("EXPLICIT-TOKEN"));
+        assert_eq!(copied.get("aws_session_token"), Some(&true));
+        assert_eq!(
+            got_copy_connect.as_deref(),
+            Some("VAULT-STS-TOKEN-42"),
+            "duplicated STS profile must carry aws_session_token under its new profile id"
+        );
+        assert!(backup_meta.has_credentials);
+        assert_eq!(
+            got_restored_backup_connect.as_deref(),
+            Some("VAULT-STS-TOKEN-42"),
+            "restoring a credential-enabled .aeroftp backup must preserve aws_session_token"
+        );
+        assert_eq!(
+            collected_for_a_after_switch.aws_session_token.as_deref(),
+            Some("VAULT-STS-TOKEN-42"),
+            "captured user A export collection must still read user A's token after switch to user B"
+        );
+        assert_eq!(
+            collected_for_a_after_switch.aerocrypt_overlay_pw.as_deref(),
+            Some("ALICE-OVERLAY-PW"),
+            "captured user A export collection must read user A's overlay secret, never user B's"
+        );
+        assert_eq!(
+            got_after_overwrite_connect, None,
+            "overwriting an STS profile with permanent credentials must clear stale aws_session_token"
+        );
+        assert_eq!(
+            got_second_connect, None,
+            "user B without a token must never inherit user A's shared-vault token on connect"
+        );
+        assert!(
+            missing_required_err.contains("missing from the vault"),
+            "STS profile missing its stored token must fail closed: {missing_required_err}"
+        );
+        assert!(
+            locked_required_err.contains("vault is locked"),
+            "STS profile with locked vault must fail closed: {locked_required_err}"
+        );
+        assert_eq!(
+            locked_omitted_tok, None,
+            "an omitted has_stored_session_token with a locked vault must proceed without a token, like a static S3 profile does"
+        );
+        assert_eq!(locked_non_sts_tok, None);
+        assert_eq!(vault_after_bob_restore, "VAULT-STS-TOKEN-42");
+        assert_eq!(
+            got_captured_a_connect.as_deref(),
+            Some("VAULT-STS-TOKEN-42")
+        );
+        assert_eq!(got_captured_b_connect.as_deref(), Some("BOB-OWN-STS-TOKEN"));
+        assert_eq!(vault_after_bob_delete, "VAULT-STS-TOKEN-42");
+        assert_eq!(bob_after_delete, None);
+        assert_eq!(
+            alice_after_bob_delete.as_deref(),
+            Some("VAULT-STS-TOKEN-42")
+        );
+        assert_eq!(carol_resolved.as_deref(), Some("CAROL-IMPORTED-TOKEN"));
+        assert_eq!(vault_after_carol_import, "VAULT-STS-TOKEN-42");
+        assert!(export_missing_sts_err.contains("missing from the vault"));
+        assert!(
+            export_opts_b.is_none(),
+            "user B without a token must never inherit user A's shared-vault token on export"
+        );
+        assert!(
+            export_b_req_err.contains("missing from the vault"),
+            "exporting an STS profile whose stored token is missing must fail closed: {export_b_req_err}"
+        );
+        assert_eq!(
+            export_opts_a
+                .as_ref()
+                .and_then(|o| o.get("sessionToken"))
+                .and_then(|v| v.as_str()),
+            Some("VAULT-STS-TOKEN-42"),
+            "explicit scoped lookup for user A must still resolve A's token when user B is active"
+        );
     }
 
     #[test]
@@ -29506,7 +30479,7 @@ mod fourshared_attempt_key_tests {
                 "protocol": "fourshared"
             }))
             .unwrap();
-        let exported = crate::collect_provider_secrets_for_server(&store, &server, None).unwrap();
+        let exported = crate::collect_provider_secrets_for_server(&store, &server).unwrap();
         assert_eq!(exported.oauth.as_deref(), Some("token-t:secret-t"));
 
         // What the purge must leave: no copy the account can read, in the

@@ -1312,6 +1312,9 @@ impl ZohoWorkdriveProvider {
         if profile_id.is_empty() {
             return None;
         }
+        // Scope the OAuth manager to the captured account before discovery, so
+        // a switch between capture and discovery cannot read another
+        // account's token.
         let mut provider = Self::new(ZohoWorkdriveConfig::new(client_id, client_secret, region))
             .with_profile_id(profile_id)
             .with_credential_user(user);
@@ -5479,6 +5482,99 @@ impl StorageProvider for ZohoWorkdriveProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The export's root-folder discovery scopes its OAuth manager to the
+    /// captured account: with the active account switched to another one, a
+    /// provider built the way `rclone_root_folder_id_for_export` builds it
+    /// still reads the CAPTURED account's token, never the active one's.
+    #[tokio::test]
+    async fn the_export_provider_reads_tokens_for_the_captured_account_across_a_switch() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::zoho_workdrive::tests::the_export_provider_reads_tokens_for_the_captured_account_across_a_switch",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic zoho export master",
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master(
+            "synthetic zoho export master",
+            None,
+        )
+        .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        for (user, token) in [(first, "FIRST-TOKEN"), (second, "SECOND-TOKEN")] {
+            OAuth2Manager::new()
+                .with_credential_user(Some(user))
+                .store_tokens(
+                    OAuthProvider::ZohoWorkdrive,
+                    "shared-zoho",
+                    &crate::providers::oauth2::StoredTokens {
+                        access_token: token.into(),
+                        refresh_token: None,
+                        expires_at: None,
+                        token_type: "Bearer".into(),
+                        scopes: vec![],
+                    },
+                )
+                .unwrap();
+        }
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+
+        // The export captured `second`; the active account stays `first`.
+        let captured = second;
+        let provider = ZohoWorkdriveProvider::new(ZohoWorkdriveConfig::new("cid", "csecret", "us"))
+            .with_profile_id("shared-zoho")
+            .with_credential_user(Some(captured));
+        let tokens = provider
+            .oauth_manager
+            .load_tokens(OAuthProvider::ZohoWorkdrive, "shared-zoho")
+            .unwrap();
+        assert_eq!(
+            tokens.access_token, "SECOND-TOKEN",
+            "the captured account's token must be read even with another account active"
+        );
+
+        // Control: no captured account follows the active one.
+        let provider = ZohoWorkdriveProvider::new(ZohoWorkdriveConfig::new("cid", "csecret", "us"))
+            .with_profile_id("shared-zoho");
+        let tokens = provider
+            .oauth_manager
+            .load_tokens(OAuthProvider::ZohoWorkdrive, "shared-zoho")
+            .unwrap();
+        assert_eq!(tokens.access_token, "FIRST-TOKEN");
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        crate::credential_store::CredentialStore::clear_cache();
+    }
 
     /// A search skips a folder that is gone and stops on what may speak of the
     /// session, and a 403 is not told apart from that here.

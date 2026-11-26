@@ -15,8 +15,9 @@ import { ExportImportDialog } from '../ExportImportDialog';
 import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { newFormTabOptions } from './newFormTabOptions';
+import { PaletteReadGuard } from './paletteReads';
 import { useTranslation } from '../../i18n';
-import { loadSavedServerProfilesBound } from '../../utils/serverProfileStore';
+import { loadSavedServerProfilesWithAccount } from '../../utils/serverProfileStore';
 import { accountChangeGeneration } from '../../utils/userPartitions';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
 import type { ProviderType } from '../../types';
@@ -168,19 +169,32 @@ export function IntroHub(props: IntroHubProps) {
 
     // Saved servers for Command Palette
     const [paletteServers, setPaletteServers] = useState<ServerProfile[]>([]);
-    // The account that produced `paletteServers`, bound when the list was
-    // read; the export dialog refuses any other account.
-    const [paletteAccountId, setPaletteAccountId] = useState<number | null | undefined>(undefined);
+    // The account paletteServers was read under, captured in that read; the
+    // export dialog sends it so the backend refuses the export on a switch.
+    const [paletteAccountId, setPaletteAccountId] = useState<number | null>(null);
+    // Read guard: only the LATEST account-scoped read may commit its pair, and
+    // only when the account did not change while it was in flight, so a stale
+    // completion (e.g. one that answered after an account switch) is discarded
+    // and a stale list can never reach the export.
+    const paletteReadsRef = useRef(new PaletteReadGuard());
+    // Load paletteServers and paletteAccountId TOGETHER from one account-scoped
+    // read and store them as one coherent snapshot; clear both on error.
+    const reloadPalette = useCallback(async (): Promise<void> => {
+        const token = paletteReadsRef.current.begin();
+        try {
+            const read = await loadSavedServerProfilesWithAccount();
+            if (!paletteReadsRef.current.isCurrent(token)) return;
+            setPaletteServers(read.profiles);
+            setPaletteAccountId(read.userId ?? null);
+        } catch {
+            if (!paletteReadsRef.current.isCurrent(token)) return;
+            setPaletteServers([]);
+            setPaletteAccountId(null);
+        }
+    }, []);
     useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            const bound = await loadSavedServerProfilesBound();
-            if (cancelled || !bound) return;
-            setPaletteServers(bound.profiles);
-            setPaletteAccountId(bound.accountId);
-        })();
-        return () => { cancelled = true; };
-    }, [serversRefreshKey]);
+        void reloadPalette();
+    }, [serversRefreshKey, reloadPalette]);
 
     // Export/Import dialog. `exportPreselect` holds the profile ids handed
     // over by a My Servers context menu "Export...": the dialog then opens
@@ -192,18 +206,12 @@ export function IntroHub(props: IntroHubProps) {
         setShowExportImport(true);
     }, []);
     const openExportForProfiles = useCallback(async (serverIds: string[]) => {
-        // Reload from the vault so a profile saved a moment ago is in the
-        // list the dialog selects from, bound to the account that read it.
-        try {
-            const bound = await loadSavedServerProfilesBound();
-            if (bound) {
-                setPaletteServers(bound.profiles);
-                setPaletteAccountId(bound.accountId);
-            }
-        } catch { /* keep the cached list */ }
+        // Reload list and account together from the vault so a profile saved a
+        // moment ago is in the list the dialog selects from.
+        await reloadPalette();
         setExportPreselect(serverIds);
         setShowExportImport(true);
-    }, []);
+    }, [reloadPalette]);
     const closeExportImport = useCallback(() => {
         setShowExportImport(false);
         setExportPreselect(null);
@@ -469,15 +477,8 @@ export function IntroHub(props: IntroHubProps) {
                         onOpenExportImport={openExportImport}
                         onExportProfiles={(ids) => { void openExportForProfiles(ids); }}
                         onServersChange={() => {
-                            (async () => {
-                                try {
-                                    const bound = await loadSavedServerProfilesBound();
-                                    if (bound) {
-                                        setPaletteServers(bound.profiles);
-                                        setPaletteAccountId(bound.accountId);
-                                    }
-                                } catch { setPaletteServers([]); }
-                            })();
+                            // List and account reload together (one scoped read).
+                            void reloadPalette();
                         }}
                         onOpenCrossProfile={onOpenCrossProfile}
                         onOpenMountManager={onOpenMountManager}
@@ -541,30 +542,30 @@ export function IntroHub(props: IntroHubProps) {
             {showExportImport && (
                 <ExportImportDialog
                     servers={paletteServers}
-                    listAccountId={paletteAccountId}
+                    accountId={paletteAccountId}
                     initialMode={exportPreselect ? 'export' : undefined}
                     initialSelectedServerIds={exportPreselect ?? undefined}
-                    onImport={async (newServers, expectedUserId) => {
+                    onImport={async (newServers, expectedUserId, removeKeys) => {
                         // The dialog closes itself (onClose) after its result.
                         const accountBefore = accountChangeGeneration();
-                        await appendImportedProfiles(newServers, expectedUserId);
+                        const updated = await appendImportedProfiles(newServers, expectedUserId, removeKeys);
+                        // The import is a write to the profile list: any palette
+                        // read still in flight started before it and must not
+                        // commit over the imported list.
+                        paletteReadsRef.current.invalidate();
                         // A switch meanwhile brings its own re-read: this list is the previous account's.
+                        // List and account update together, in one update; an unknown
+                        // account (undefined) retains the current id.
                         if (accountChangeGeneration() === accountBefore) {
-                            const bound = await loadSavedServerProfilesBound();
-                            if (bound && accountChangeGeneration() === accountBefore) {
-                                setPaletteServers(bound.profiles);
-                                setPaletteAccountId(bound.accountId);
-                            }
+                            setPaletteServers(updated);
+                            if (expectedUserId !== undefined) setPaletteAccountId(expectedUserId ?? null);
                         }
                         onServersChanged?.();
                     }}
-                    onProfilesStored={async (_stored) => {
-                        const accountBefore = accountChangeGeneration();
-                        const bound = await loadSavedServerProfilesBound();
-                        if (bound && accountChangeGeneration() === accountBefore) {
-                            setPaletteServers(bound.profiles);
-                            setPaletteAccountId(bound.accountId);
-                        }
+                    onProfilesStored={() => {
+                        // Re-read list AND account from one scoped read (generation-
+                        // gated); a failed read clears both, never a stale pair.
+                        void reloadPalette();
                         onServersChanged?.();
                     }}
                     onClose={closeExportImport}

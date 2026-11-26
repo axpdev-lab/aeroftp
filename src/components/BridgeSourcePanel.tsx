@@ -14,7 +14,7 @@ import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources';
 import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
-import { bridgeProfileKey, commitImportedServers, createScanSettler, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
+import { bridgeProfileKey, commitImportedServersForScan, createScanSettler, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
 import { securityRelaxations } from '../utils/profileSecurity';
@@ -28,8 +28,8 @@ interface BridgeImportResult {
     security?: ImportedSecurity[];
     sourcePath: string | null;
     totalRemotes: number;
-    /** The account the scan stored the secrets in (`null`: no account yet). */
-    importedUserId?: number | null;
+    /** The account the scan wrote its secrets into (`null`: the legacy store). */
+    scanUserId?: number | null;
     /** The scan that stored them, settled once the panel is done with it. */
     scanId?: string;
 }
@@ -38,14 +38,39 @@ interface BridgeExportResult {
     exported: number;
     total: number;
     skipped: Array<{ name: string; reason: string }>;
+    warnings: Array<{ name: string; reason: string }>;
 }
+
+export const matchBridgeSecurityEntries = (
+    servers: ReadonlyArray<{ id: string; fileIndex?: number }>,
+    entries: ReadonlyArray<ImportedSecurity>,
+    selectedIds: ReadonlySet<string>,
+): ImportedSecurity[] =>
+    entries.filter(entry => {
+        const server = servers.find((s, idx) => (s.fileIndex ?? idx) === entry.fileIndex);
+        return server ? selectedIds.has(server.id) : false;
+    });
+
+export const resolveBridgeRowFileIndex = (
+    server: { fileIndex?: number },
+    position: number,
+): number => server.fileIndex ?? position;
+
+export const shouldAutoCloseBridgeExport = (
+    r: Pick<BridgeExportResult, 'skipped' | 'warnings'>,
+): boolean => r.skipped.length === 0 && (r.warnings?.length ?? 0) === 0;
 
 interface Props {
     source: BridgeSourceDescriptor;
     direction: 'import' | 'export';
     servers: ServerProfile[];
+    /** The account the `servers` list was read under, captured in that read.
+     *  Sent with the export so the backend refuses it (ACCOUNT_CHANGED, no
+     *  file) when the active account changed since. Null/undefined for a
+     *  pre-multi-user legacy list. */
+    accountId?: number | null;
     existingServerKeys: Set<string>;
-    onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>;
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null, removeKeys?: ReadonlySet<string>) => void | Promise<void>;
     onClose: () => void;
     onBack: () => void;
     /** A profile file dragged onto the import dialog and identified as
@@ -62,7 +87,7 @@ const DEFAULT_EXPORT_NAME: Record<string, string> = {
 };
 
 export const BridgeSourcePanel: React.FC<Props> = ({
-    source, direction, servers, existingServerKeys, onImport, onClose, onBack,
+    source, direction, servers, accountId, existingServerKeys, onImport, onClose, onBack,
     presetFilePath,
 }) => {
     const t = useTranslation();
@@ -80,6 +105,11 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     // The preview on screen was confirmed: its selection and its confirm are
     // closed (see `confirmImport`), until a new scan replaces it.
     const [committed, setCommitted] = useState(false);
+    // The account the last scan wrote its secrets into; the commit is bound to
+    // it. `undefined` means the scan could not read an owner (locked vault):
+    // unknown, NOT a confirmed legacy (null), so a later unlock + rescan does
+    // not trip a false account-changed refusal.
+    const [scanUserId, setScanUserId] = useState<number | null | undefined>(undefined);
     const [keptRelaxed, setKeptRelaxed] = useState<Set<string>>(() => new Set());
 
     // export state
@@ -163,10 +193,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         });
     }, [result]);
     const selectedSecurityEntries = useMemo(
-        () => allSecurityEntries.filter(entry => {
-            const server = result?.servers[entry.fileIndex];
-            return server ? selectedIds.has(server.id) : false;
-        }),
+        () => matchBridgeSecurityEntries(result?.servers ?? [], allSecurityEntries, selectedIds),
         [allSecurityEntries, result, selectedIds],
     );
     const exportFilter = useServerChecklistFilter(servers);
@@ -217,6 +244,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             if (r === null) { latest = false; return; }
             setCommitted(false);
             setResult(r);
+            setScanUserId(r.scanUserId);
             setSelectedIds(new Set(r.servers.map(s => s.id)));
         } catch (e) {
             setError(String(e));
@@ -260,7 +288,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     const confirmImport = async () => {
         if (!result) return;
         const selected: ServerProfile[] = result.servers
-            .map((s, fileIndex) => ({ s, fileIndex }))
+            .map((s, idx) => ({ s, fileIndex: resolveBridgeRowFileIndex(s, idx) }))
             .filter(({ s }) => selectedIds.has(s.id))
             .map(({ s, fileIndex }) => {
                 const entry = allSecurityEntries.find(e => e.fileIndex === fileIndex);
@@ -284,7 +312,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             // Closing the panel meanwhile settles the scan only once the
             // profiles are saved, so their secrets stay.
             const outcome = await scans.confirming(
-                () => commitImportedServers(selected, existingServerKeys, onImport, result.importedUserId),
+                () => commitImportedServersForScan(selected, existingServerKeys, scanUserId, onImport),
             );
             if (outcome.error) { setError(outcome.error); return; }
             // A newer scan that landed during the save owns the preview now:
@@ -338,11 +366,16 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 serversJson: JSON.stringify(chosen),
                 includeCredentials,
                 filePath,
+                // The account the list was read under: the backend refuses the
+                // export (ACCOUNT_CHANGED, no file written) when the active
+                // account changed since that read.
+                accountId: accountId ?? null,
             });
             setExportResult(r);
             setSuccess(t('settings.bridgeExportSuccess').replace('{count}', String(r.exported)));
-            // Stay open when something was left out, so its reason can be read.
-            if (r.skipped.length === 0) closeTimerRef.current = setTimeout(() => onClose(), 2500);
+            // Stay open when something was skipped or warned (e.g. AWS side-file
+            // manual merge), so the operator can read the message before closing.
+            if (shouldAutoCloseBridgeExport(r)) closeTimerRef.current = setTimeout(() => onClose(), 2500);
         } catch (e) {
             setError(String(e));
         } finally {
@@ -617,6 +650,20 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                         {exportResult.skipped.map((s, i) => (
                             <div key={i} className="truncate" title={s.reason}>
                                 <span className="font-medium">{s.name}</span><span className="mx-1">-</span><span>{s.reason}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {exportResult && exportResult.warnings.length > 0 && (
+                <div>
+                    <div className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">
+                        {t('common.warning')} ({exportResult.warnings.length})
+                    </div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 space-y-0.5 max-h-[110px] overflow-y-auto">
+                        {exportResult.warnings.map((warning, i) => (
+                            <div key={i} className="break-words" title={warning.reason}>
+                                <span className="font-medium">{warning.name}</span><span className="mx-1">-</span><span>{warning.reason}</span>
                             </div>
                         ))}
                     </div>

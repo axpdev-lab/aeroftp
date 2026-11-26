@@ -46,7 +46,7 @@ import { secureGetWithFallback } from '../utils/secureStorage';
 import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { loadSavedServerProfiles, loadSavedServerProfilesBound, readSavedServerProfilesForWrite, reloadRestoredServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfilesWithAccount, readSavedServerProfilesForWrite, reloadRestoredServerProfilesWithAccount } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -405,9 +405,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const oauthEdits = useRef<Partial<Record<keyof OAuthSettings, { clientId?: boolean; clientSecret?: boolean }>>>({});
     const [servers, setServers] = useState<ServerProfile[]>([]);
-    // The account that produced `servers`, bound when the list was read; the
-    // export dialog refuses any other account.
-    const [serversAccountId, setServersAccountId] = useState<number | null | undefined>(undefined);
+    // The account `servers` was read under, captured in that read; the export
+    // dialog sends it so the backend refuses the export on an account switch.
+    const [serversAccountId, setServersAccountId] = useState<number | null>(null);
     const [showExportImport, setShowExportImport] = useState(false);
     // #270 Backup table: starting mode handed to ExportImportDialog so a table
     // cell opens straight into the right action. Undefined = unified landing.
@@ -703,12 +703,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         // Opening the dialog reads preferences; migration must not rewrite a stale snapshot.
                     }
 
-                    // Load servers from the active user's vault partition,
-                    // bound to the account that produced them.
-                    const boundServers = await loadSavedServerProfilesBound();
-                    if (boundServers) {
-                        setServers(boundServers.profiles);
-                        setServersAccountId(boundServers.accountId);
+                    // Load servers from the active user's vault partition, with
+                    // the account id captured in the same read. A locked vault
+                    // (STORE_NOT_READY / USER_LOCKED) must not abort the rest of
+                    // the settings init below: servers stay empty and the vault /
+                    // account status still loads.
+                    try {
+                        const vaultRead = await loadSavedServerProfilesWithAccount();
+                        setServers(vaultRead.profiles);
+                        setServersAccountId(vaultRead.userId ?? null);
+                    } catch {
+                        setServers([]);
+                        setServersAccountId(null);
                     }
 
                     // Resolve modern and legacy app pairs inside the vault only.
@@ -3868,14 +3874,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         // the list lock: a load before that would have lost what it left in the blob.
                                                                         try {
                                                                             const accountBefore = accountChangeGeneration();
-                                                                            await reloadRestoredServerProfiles();
+                                                                            const restored = await reloadRestoredServerProfilesWithAccount();
                                                                             // A switch meanwhile brings its own re-read: this list is the previous account's.
+                                                                            // List and account are stored as ONE snapshot, from the same read.
                                                                             if (accountChangeGeneration() === accountBefore) {
-                                                                                const bound = await loadSavedServerProfilesBound();
-                                                                                if (bound && accountChangeGeneration() === accountBefore) {
-                                                                                    setServers(bound.profiles);
-                                                                                    setServersAccountId(bound.accountId);
-                                                                                }
+                                                                                setServers(restored.profiles);
+                                                                                setServersAccountId(restored.userId ?? null);
                                                                             }
                                                                             onServersChanged?.();
                                                                         } catch (err) {
@@ -4063,29 +4067,31 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             {showExportImport && (
                 <ExportImportDialog
                     servers={servers}
-                    listAccountId={serversAccountId}
+                    accountId={serversAccountId}
                     initialMode={exportImportInitialMode}
-                    onImport={async (newServers, expectedUserId) => {
+                    onImport={async (newServers, expectedUserId, removeKeys) => {
                         // The dialog closes itself (onClose) after its result.
                         const accountBefore = accountChangeGeneration();
-                        await appendImportedProfiles(newServers, expectedUserId);
+                        const updated = await appendImportedProfiles(newServers, expectedUserId, removeKeys);
                         // A switch meanwhile brings its own re-read: this list is the previous account's.
+                        // List and account update together, in one update; an unknown
+                        // account (undefined) retains the current id.
                         if (accountChangeGeneration() === accountBefore) {
-                            const bound = await loadSavedServerProfilesBound();
-                            if (bound && accountChangeGeneration() === accountBefore) {
-                                setServers(bound.profiles);
-                                setServersAccountId(bound.accountId);
-                            }
+                            setServers(updated);
+                            if (expectedUserId !== undefined) setServersAccountId(expectedUserId ?? null);
                         }
                         onServersChanged?.();
                     }}
-                    onProfilesStored={async (_stored) => {
+                    onProfilesStored={() => {
+                        // Re-read list AND account from one scoped read, so the pair
+                        // is coherent; if the read fails the account is unknown and
+                        // the current pair is retained.
                         const accountBefore = accountChangeGeneration();
-                        const bound = await loadSavedServerProfilesBound();
-                        if (bound && accountChangeGeneration() === accountBefore) {
-                            setServers(bound.profiles);
-                            setServersAccountId(bound.accountId);
-                        }
+                        void loadSavedServerProfilesWithAccount().then(read => {
+                            if (accountChangeGeneration() !== accountBefore) return;
+                            setServers(read.profiles);
+                            setServersAccountId(read.userId ?? null);
+                        }).catch(() => { /* account unknown: retain the current list and account */ });
                         void refreshStoredOAuthApps();
                         onServersChanged?.();
                     }}

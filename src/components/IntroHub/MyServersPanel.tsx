@@ -1416,6 +1416,7 @@ export function MyServersPanel({
                 lastConnected: undefined,
                 hasStoredCredential: false,
                 hasStoredFilenApiKey: false,
+                hasStoredSessionToken: false,
                 hasStoredAeroCryptPassword: false,
                 hasStoredAeroCryptSalt: false,
             };
@@ -1430,6 +1431,7 @@ export function MyServersPanel({
             const copiedSecrets = await copyProfileVaultSecrets(source.id, newId, source.protocol, copyAccount);
             dup.hasStoredCredential = copiedSecrets.server;
             dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
+            dup.hasStoredSessionToken = copiedSecrets.aws_session_token;
             dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
             dup.hasStoredAeroCryptSalt = copiedSecrets.aerocrypt_overlay_salt;
             // Append the copy at the tail, consistent with add/import. The list has

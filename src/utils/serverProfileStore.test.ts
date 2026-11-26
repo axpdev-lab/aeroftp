@@ -18,8 +18,9 @@ vi.mock('@tauri-apps/api/core', () => ({
 import {
     PROFILES_CHANGED_EVENT,
     loadSavedServerProfiles,
-    loadSavedServerProfilesBound,
     loadSavedServerProfilesStrict,
+    loadSavedServerProfilesWithAccount,
+    reloadRestoredServerProfilesWithAccount,
     mergeSavedServerProfile,
     readSavedServerProfilesForWrite,
     reloadRestoredServerProfiles,
@@ -390,7 +391,9 @@ describe('a list read from the legacy store', () => {
     it('goes only to the guarded legacy write, with the list it read, and a refusal stays one', async () => {
         const legacy = [sampleProfile({ name: 'from the legacy store' })];
         mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            // NO_ACTIVE_USER is a CONFIRMED legacy store: the backend says no
+            // account exists, so the locked legacy read is the real answer.
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('NO_ACTIVE_USER');
             if (command === 'user_partitions_read_legacy_server_profiles') return legacyRead({ profiles: legacy });
             return undefined;
         });
@@ -416,7 +419,7 @@ describe('a list read from the legacy store', () => {
     it('binds the list to the account the locked read proves as its owner', async () => {
         const legacy = [sampleProfile({ name: 'from the legacy store' })];
         mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('NO_ACTIVE_USER');
             if (command === 'user_partitions_read_legacy_server_profiles') {
                 return legacyRead({ profiles: legacy, activeUserId: 7, ownerUserId: 7 });
             }
@@ -444,7 +447,7 @@ describe('a list read from the legacy store', () => {
         // sees owner B under active A and binds nothing.
         const legacy = [sampleProfile({ name: 'from the legacy store' })];
         mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('NO_ACTIVE_USER');
             if (command === 'user_partitions_read_legacy_server_profiles') {
                 return legacyRead({ profiles: legacy, activeUserId: 7, ownerUserId: 9 });
             }
@@ -457,7 +460,7 @@ describe('a list read from the legacy store', () => {
     it('refuses with ACCOUNT_CHANGED when an active account has no proven owner', async () => {
         const legacy = [sampleProfile({ name: 'from the legacy store' })];
         mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('NO_ACTIVE_USER');
             if (command === 'user_partitions_read_legacy_server_profiles') {
                 return legacyRead({ profiles: legacy, activeUserId: 7, ownerUserId: null });
             }
@@ -471,7 +474,7 @@ describe('a list read from the legacy store', () => {
         // profiles null is the locked read's answer "no list": the blob is
         // not read again unlocked, so nothing binds account 7.
         mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('NO_ACTIVE_USER');
             if (command === 'user_partitions_read_legacy_server_profiles') {
                 return { profiles: null, activeUserId: 7, ownerUserId: 7, accountsUnknown: false };
             }
@@ -486,7 +489,7 @@ describe('a list read from the legacy store', () => {
     it('leaves the list unbound and the owner unknown when the account cannot be read', async () => {
         const legacy = [sampleProfile({ name: 'from the legacy store' })];
         mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('NO_ACTIVE_USER');
             if (command === 'user_partitions_read_legacy_server_profiles') {
                 return legacyRead({ profiles: legacy, accountsUnknown: true });
             }
@@ -497,6 +500,23 @@ describe('a list read from the legacy store', () => {
         expect(read.userId).toBeUndefined();
         expect(read.activeUserId).toBeUndefined();
         expect(read.ownerUnknown).toBe(true);
+        mockInvoke.mockReset();
+    });
+
+    it('an UNAVAILABLE owner read (locked vault / unreachable partition) throws instead of posing as a confirmed legacy store', async () => {
+        // STORE_NOT_READY / USER_LOCKED mean the owner could not be read. For a
+        // WRITE that is a retryable failure, not a legacy answer: returning the
+        // legacy blob with no userId would let the write proceed as if the
+        // legacy store were confirmed and later trip a false ACCOUNT_CHANGED.
+        for (const unavailable of ['STORE_NOT_READY', 'USER_LOCKED']) {
+            mockInvoke.mockReset();
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error(unavailable);
+                if (command === 'get_credential') return JSON.stringify([sampleProfile()]);
+                return undefined;
+            });
+            await expect(readSavedServerProfilesForWrite()).rejects.toThrow(unavailable);
+        }
         mockInvoke.mockReset();
     });
 });
@@ -639,56 +659,47 @@ describe('account-bound profile writes', () => {
     });
 });
 
-describe('loadSavedServerProfilesBound', () => {
-    const legacyRead = (overrides: Record<string, unknown> = {}) => ({
-        profiles: [sampleProfile({ name: 'from the legacy store' })],
-        activeUserId: null,
-        ownerUserId: null,
-        accountsUnknown: false,
-        revision: 'legacy-store:test-revision',
-        ...overrides,
-    });
+describe('account-aware list reads fall back only on a CONFIRMED legacy store', () => {
+    const readers = [
+        ['loadSavedServerProfilesWithAccount', loadSavedServerProfilesWithAccount],
+        ['reloadRestoredServerProfilesWithAccount', reloadRestoredServerProfilesWithAccount],
+    ] as const;
 
-    it('binds the list to the account the scoped read captured, not the later unlock status', async () => {
-        mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') {
-                return { userId: 7, profiles: [sampleProfile()], revision: 'part:test-revision' };
-            }
-            // A switch in another process lands between the read and this status call.
-            if (command === 'user_partitions_unlock_status') return { activeUserId: 9 };
-            return undefined;
-        });
-        const bound = await loadSavedServerProfilesBound();
-        expect(bound?.accountId).toBe(7);
-        expect(bound?.profiles).toEqual([sampleProfile()]);
-        mockInvoke.mockReset();
-    });
-
-    it('binds nothing when the legacy read cannot prove the account', async () => {
-        mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
-            if (command === 'user_partitions_read_legacy_server_profiles') {
-                return legacyRead({ activeUserId: 7, ownerUserId: null, accountsUnknown: true });
-            }
-            return undefined;
-        });
-        const bound = await loadSavedServerProfilesBound();
-        expect(bound).toBeNull();
-        mockInvoke.mockReset();
-    });
-
-    it('binds nothing when the legacy blob owner is not the active account', async () => {
-        for (const ownerUserId of [null, 4]) {
+    for (const [name, read] of readers) {
+        it(`${name} rejects when the scoped read fails with STORE_NOT_READY even though legacy is readable`, async () => {
+            const legacy = [sampleProfile({ name: 'legacy fallback' })];
             mockInvoke.mockImplementation(async (command: string) => {
                 if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
-                if (command === 'user_partitions_read_legacy_server_profiles') {
-                    return legacyRead({ activeUserId: 7, ownerUserId, accountsUnknown: false });
-                }
+                if (command === 'get_credential') return JSON.stringify(legacy);
                 return undefined;
             });
-            const bound = await loadSavedServerProfilesBound();
-            expect(bound).toBeNull();
+            // STORE_NOT_READY is UNAVAILABLE, not legacy: the account-aware read
+            // must reject rather than return a legacy list with no userId.
+            await expect(read()).rejects.toThrow('STORE_NOT_READY');
             mockInvoke.mockReset();
-        }
-    });
+        });
+
+        it(`${name} rejects on USER_LOCKED too`, async () => {
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('USER_LOCKED');
+                if (command === 'get_credential') return JSON.stringify([sampleProfile()]);
+                return undefined;
+            });
+            await expect(read()).rejects.toThrow('USER_LOCKED');
+            mockInvoke.mockReset();
+        });
+
+        it(`${name} falls back to the legacy list on a CONFIRMED NO_ACTIVE_USER`, async () => {
+            const legacy = [sampleProfile({ name: 'confirmed legacy' })];
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('NO_ACTIVE_USER');
+                if (command === 'get_credential') return JSON.stringify(legacy);
+                return undefined;
+            });
+            const result = await read();
+            expect(result.profiles).toEqual(legacy);
+            expect(result.userId).toBeUndefined();
+            mockInvoke.mockReset();
+        });
+    }
 });

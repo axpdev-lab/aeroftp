@@ -557,7 +557,7 @@ describe('saved profile write rejection in production handlers', () => {
         Object.assign(f.context, {
             result: { profilesAfterDecisions: f.servers }, setKeystoreMessage: vi.fn(), onServersChanged: vi.fn(),
             setKeystoreMetadata: vi.fn(), setKeystoreImportFilePath: vi.fn(), setKeystoreImportPassword: vi.fn(), setKeystoreImportResult: vi.fn(),
-            reloadRestoredServerProfiles: vi.fn(async () => { throw new Error('the partition could not be read'); }),
+            reloadRestoredServerProfilesWithAccount: vi.fn(async () => { throw new Error('the partition could not be read'); }), setServersAccountId: vi.fn(),
         });
         await snippet(settingsSource.slice(start, end), f.context);
         expect(f.context.setKeystoreMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
@@ -711,8 +711,8 @@ describe('the saved-profile list shown after a write', () => {
         // Its one list write is the keystore restore, which shows what that stored:
         // the saved list read back bound to its account, never the list sent.
         expect(settingsSource).not.toMatch(/await storeSavedServerProfiles\(/);
-        expect(settingsSource).toContain('await reloadRestoredServerProfiles();');
-        expect(settingsSource).toContain('const bound = await loadSavedServerProfilesBound();');
-        expect(settingsSource).toContain('setServers(bound.profiles);');
+        expect(settingsSource).toContain('const restored = await reloadRestoredServerProfilesWithAccount();');
+        expect(settingsSource).toContain('setServers(restored.profiles);');
+        expect(settingsSource).toContain('setServersAccountId(restored.userId ?? null);');
     });
 });

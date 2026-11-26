@@ -29,18 +29,19 @@ import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from '.
 interface ExportImportDialogProps {
     servers: ServerProfile[];
     /**
-     * The account that produced `servers`, captured by the caller when the
-     * list entered its state. The export writes secrets for this account,
-     * never for whichever account happens to be active at write time; an
-     * absent prop refuses the export rather than falling back to the active
+     * The account the `servers` list was read under, captured in that same
+     * read. Sent with `serversJson` so the backend can refuse the export
+     * (ACCOUNT_CHANGED, no file) when the active account changed since.
+     * Null/undefined for a pre-multi-user legacy list; an absent binding is
+     * refused before the write rather than falling back to the active
      * account.
      */
-    listAccountId?: number | null;
+    accountId?: number | null;
     /**
      * Store the profiles a bridge import read from another client's config; the
      * write is refused unless the active account is still `expectedUserId`.
      */
-    onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>;
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null, removeKeys?: ReadonlySet<string>) => void | Promise<void>;
     /**
      * A `.aeroftp` import stored this list in the backend, secrets and list in one
      * operation: the host only shows it.
@@ -112,7 +113,7 @@ interface ImportResult {
  * or without credentials; import with Skip, Overwrite or Duplicate for a
  * profile that already exists) and the bridges to other clients' configs.
  */
-export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, listAccountId, onImport, onProfilesStored, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
+export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, accountId, onImport, onProfilesStored, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [mode, setMode] = useState<'export' | 'import' | 'template-import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
@@ -254,20 +255,20 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
 
         // The export's secrets must come from the account that produced the
         // profile list, not from whichever account is active when the write
-        // runs. `listAccountId` is that binding, captured by the caller when
+        // runs. `accountId` is that binding, captured by the caller when
         // the list entered the dialog's state; the active account is read
         // before the save picker opens and again after it closes, and any
         // difference - including a switch another process already finished -
         // refuses the export, like the import path's accountChangeGeneration
         // check.
-        if (listAccountId === undefined) {
+        if (accountId === undefined) {
             setError(t('settings.exportAccountUnbound'));
             return;
         }
         const accountBefore = accountChangeGeneration();
         const status = await getUnlockStatus().catch(() => null);
         const activeId = status?.activeUserId ?? null;
-        if (accountChangeGeneration() !== accountBefore || activeId !== listAccountId) {
+        if (accountChangeGeneration() !== accountBefore || activeId !== accountId) {
             setError(t('settings.exportAccountChanged'));
             return;
         }
@@ -282,7 +283,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         const statusAfter = await getUnlockStatus().catch(() => null);
         if (
             accountChangeGeneration() !== accountBefore ||
-            (statusAfter?.activeUserId ?? null) !== listAccountId
+            (statusAfter?.activeUserId ?? null) !== accountId
         ) {
             setError(t('settings.exportAccountChangedDuringSave'));
             return;
@@ -297,7 +298,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 password,
                 includeCredentials,
                 filePath,
-                accountId: listAccountId,
+                accountId: accountId ?? null,
             });
             setSuccess(t('settings.exportSuccess').replace('{count}', String(selectedServers.length)));
             cancelScheduledClose();
@@ -743,6 +744,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             source={bridgeSrc}
                             direction={bridgeSrcDir}
                             servers={servers}
+                            accountId={accountId ?? null}
                             existingServerKeys={existingServerKeys}
                             onImport={onImport}
                             onClose={onClose}
