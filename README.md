@@ -148,7 +148,7 @@ AeroFTP organizes integrations on three tiers. The figures below are generated i
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/ibm-cloud-object-storage" title="IBM Cloud Object Storage"><img src="public/icons/providers/grid/ibm-cloud.png" width="36" alt="IBM COS" /></a><br><sub>IBM COS</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/nextcloud"><img src="public/icons/providers/grid/nextcloud.png" width="36" alt="Nextcloud" /></a><br><sub>Nextcloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/felicloud"><img src="public/icons/providers/grid/felicloud.png" width="36" alt="Felicloud" /></a><br><sub>Felicloud</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/murena"><img src="public/icons/providers/grid/murena.png" width="36" alt="Murena" /></a><br><sub>Murena</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/nextcloud"><img src="public/icons/providers/grid/murena.png" width="36" alt="Murena" /></a><br><sub>Murena</sub></td>
   </tr>
   <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/tabdigital"><img src="public/icons/providers/grid/tabdigital.png" width="36" alt="TAB.DIGITAL" /></a><br><sub>TAB.DIGITAL</sub></td>

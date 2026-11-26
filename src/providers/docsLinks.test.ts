@@ -37,4 +37,10 @@ describe('Quick Connect docs links', () => {
     it('resolves LifetimeCloud WebDAV preset to providers/lifetimecloud', () => {
         expect(getProviderDocsUrl('lifetimecloud', 'webdav')).toBe('https://docs.aeroftp.app/providers/lifetimecloud');
     });
+
+    it('resolves the Murena preset to the live Nextcloud page while its docs page is pending', () => {
+        expect(getProviderDocsUrl('murena', 'webdav')).toBe('https://docs.aeroftp.app/providers/nextcloud');
+        const tile = PROVIDER_GRID.find(t => t.logoId === 'murena');
+        expect(tile?.docsPath).toBe('providers/nextcloud');
+    });
 });

@@ -243,22 +243,24 @@ pub fn canonicalize_profile_option_key(key: &str) -> String {
 /// (the GUI through `stripLegacyStartFolder`), so such a profile works
 /// without a re-save. A subfolder below the root, or any other provider, is
 /// kept as written.
+/// Hosted Nextcloud presets whose WebDAV root profiles saved as start folder.
+/// Held equal to `NEXTCLOUD_ROOT_PRESETS` in `src/utils/legacyStartFolder.ts`.
+const NEXTCLOUD_ROOT_PRESETS: &[&str] = &[
+    "tabdigital",
+    "tabdigital-webdav",
+    "felicloud",
+    "felicloud-webdav",
+    "murena",
+    "nextcloud",
+];
+
 pub fn strip_legacy_nextcloud_webdav_root(
     initial_path: &str,
     provider_id: &str,
     username: &str,
 ) -> String {
-    let is_nextcloud_based = matches!(
-        provider_id,
-        "tabdigital"
-            | "tabdigital-webdav"
-            | "felicloud"
-            | "felicloud-webdav"
-            | "murena"
-            | "nextcloud"
-    );
     // Blank is read trimmed; the path is compared with the username as stored.
-    if !is_nextcloud_based || username.trim().is_empty() {
+    if !NEXTCLOUD_ROOT_PRESETS.contains(&provider_id) || username.trim().is_empty() {
         return initial_path.to_string();
     }
     if initial_path.trim_end_matches('/') == format!("/remote.php/dav/files/{username}") {
@@ -1172,6 +1174,20 @@ mod tests {
             .map(|(id, base)| (id.to_string(), base.to_string()))
             .collect();
         assert_eq!(gui, rust);
+    }
+
+    /// The hosted-Nextcloud preset list the root strip applies to is the
+    /// GUI's, item for item, so a preset added on one side only cannot make
+    /// the GUI and the CLI/MCP open different folders.
+    #[test]
+    fn the_nextcloud_root_presets_match_the_gui() {
+        let ts = include_str!("../../src/utils/legacyStartFolder.ts");
+        let start = ts
+            .find("NEXTCLOUD_ROOT_PRESETS: ReadonlySet<string> = new Set([")
+            .expect("set in legacyStartFolder.ts");
+        let set = &ts[start..start + ts[start..].find("]);").expect("end of the GUI set")];
+        let gui_ids: Vec<&str> = set.split('\'').skip(1).step_by(2).collect();
+        assert_eq!(gui_ids, NEXTCLOUD_ROOT_PRESETS);
     }
 
     #[test]

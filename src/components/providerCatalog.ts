@@ -491,7 +491,9 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     // WebDAV
     { logoId: 'nextcloud', icon: 'nextcloud.png', docsPath: 'providers/nextcloud' },
     { logoId: 'felicloud', icon: 'felicloud.png', docsPath: 'providers/felicloud' },
-    { logoId: 'murena', icon: 'murena.png', docsPath: 'providers/murena' },
+    // Murena docs page pending a docs PR on the release tag: link the live
+    // Nextcloud page until it exists.
+    { logoId: 'murena', icon: 'murena.png', docsPath: 'providers/nextcloud' },
     { logoId: 'tabdigital', icon: 'tabdigital.png', docsPath: 'providers/tabdigital' },
     { logoId: 'cloudme', icon: 'cloudme.png', docsPath: 'providers/cloudme' },
     { logoId: 'puter', icon: 'puter.png', docsPath: 'providers/puter' },

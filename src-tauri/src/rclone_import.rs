@@ -8924,6 +8924,16 @@ http_proxy =
             }
             missing
         };
+        // The 8-space anchor must still find the top-level arms: if a future
+        // re-indent silently drops them all, the guard would pass vacuously.
+        let found: Vec<&str> = arms
+            .captures_iter(body)
+            .map(|marker| marker.get(1).unwrap().as_str())
+            .collect();
+        assert!(
+            found.contains(&"webdav") && found.contains(&"ftp"),
+            "arm scan lost the top-level arms: {found:?}"
+        );
         assert!(missing(body).is_empty(), "{:?}", missing(body));
         let mutated = body.replacen(
             "\"ftp\" => {",
