@@ -115,3 +115,53 @@ test('buildMarkdown renders one open and one suppressed finding with GitHub-safe
   assert.ok(!md.includes(os.hostname()), 'no hostname in the Markdown report');
   assert.ok(md.includes(`Platform: ${process.platform}-${process.arch}`));
 });
+
+const cleanTool = (tool) => tool === 'cargo audit'
+  ? { tool, skipped: false, counts: { vulnerabilities: 0, warnings: 0 }, vulns: [], warnings: [] }
+  : tool === 'npm audit'
+    ? { tool, skipped: false, counts: { info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0 }, advisories: [] }
+    : { tool, skipped: false, counts: { open: 0, suppressed: 0, total: 0 }, open: [], suppressed: [] };
+
+test('buildMarkdown reports an incomplete scan when a tool is skipped or fails to parse', () => {
+  const base = { pkg: { version: '4.2.8' }, cargoVersion: '4.2.8', versions: {} };
+  for (const broken of [
+    { tool: 'osv-scanner', skipped: true, reason: 'osv-scanner not installed' },
+    { tool: 'osv-scanner', skipped: false, parseError: true, raw: 'boom' },
+  ]) {
+    const md = buildMarkdown({ ...base, results: [cleanTool('cargo audit'), cleanTool('npm audit'), broken] });
+    assert.ok(md.includes('**Incomplete scan**: 1 of 3 tools did not complete (osv-scanner)'), 'must flag the incomplete scan');
+    assert.ok(md.includes('No open vulnerabilities among the tools that ran.'), 'keeps the known clean counts');
+    assert.ok(!md.includes('No open vulnerabilities** across'), 'must not claim a full clean scan');
+  }
+});
+
+test('buildMarkdown claims a full clean scan only when all three tools ran clean', () => {
+  const md = buildMarkdown({
+    pkg: { version: '4.2.8' },
+    cargoVersion: '4.2.8',
+    versions: {},
+    results: [cleanTool('cargo audit'), cleanTool('npm audit'), cleanTool('osv-scanner')],
+  });
+  assert.ok(md.includes('**No open vulnerabilities** across cargo audit, npm audit, and osv-scanner.'));
+  assert.ok(!md.includes('Incomplete scan'));
+});
+
+test('buildMarkdown never emits an em-dash, even from external advisory text', () => {
+  const md = buildMarkdown({
+    pkg: { version: '4.2.8' },
+    cargoVersion: '4.2.8',
+    versions: {},
+    results: [{
+      tool: 'osv-scanner',
+      skipped: false,
+      counts: { open: 1, suppressed: 0, total: 1 },
+      open: [{
+        ecosystem: 'crates.io', package: 'demo', version: '1.0.0', id: 'RUSTSEC-2026-7777',
+        aliases: [], summary: `title with \u2014 em-dash`, severity: '', fixedVersion: '', lockfiles: [], suppressed: false,
+      }],
+      suppressed: [],
+    }],
+  });
+  assert.ok(!md.includes('\u2014'), 'no U+2014 in the generated Markdown');
+  assert.ok(md.includes('title with  -  em-dash'), 'em-dash normalized to a hyphen separator');
+});

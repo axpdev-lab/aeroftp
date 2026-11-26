@@ -495,7 +495,10 @@ function toolVersion(cmd, args = ['--version']) {
 }
 
 function mdCell(s) {
-  return String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+  // External advisory text can contain an em-dash (U+2014); the public Markdown
+  // must never carry it, so normalize it to a plain hyphen separator. Written as
+  // an escape so this source file itself stays free of the literal character.
+  return String(s ?? '').replace(/\u2014/g, ' - ').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
 function mdLink(url, label) {
@@ -531,9 +534,19 @@ function buildMarkdown({ pkg, cargoVersion, results, versions }) {
   lines.push('');
   lines.push('## Summary');
   lines.push('');
-  lines.push(totalIssues === 0
-    ? `**No open vulnerabilities** across cargo audit, npm audit, and osv-scanner.`
-    : `**${totalIssues} open finding(s)** across the tools below. Review each one.`);
+  const incomplete = results.filter((r) => r.skipped || r.parseError);
+  if (incomplete.length > 0) {
+    // A zero count only means something when every scanner actually ran.
+    const names = incomplete.map((r) => r.tool).join(', ');
+    lines.push(`**Incomplete scan**: ${incomplete.length} of ${results.length} tools did not complete (${names}). Counts below cover only the tools that ran.`);
+    lines.push(totalIssues === 0
+      ? 'No open vulnerabilities among the tools that ran.'
+      : `**${totalIssues} open finding(s)** among the tools that ran. Review each one.`);
+  } else {
+    lines.push(totalIssues === 0
+      ? `**No open vulnerabilities** across cargo audit, npm audit, and osv-scanner.`
+      : `**${totalIssues} open finding(s)** across the tools below. Review each one.`);
+  }
   if (totalSuppressed > 0) {
     // Relative links resolve against docs/security/ on GitHub, hence ../../
     lines.push(`- ${totalSuppressed} additional finding(s) suppressed via documented rationale in [\`src-tauri/.cargo/audit.toml\`](../../src-tauri/.cargo/audit.toml)`);
