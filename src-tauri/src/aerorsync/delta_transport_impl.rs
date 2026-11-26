@@ -1443,11 +1443,24 @@ where
 
     // B3 / X.4: xattrs must land on the temp file before rename so a
     // kill-9 never leaves a visible target without its metadata.
-    let apply_xattrs = remote_entry
-        .as_ref()
-        .and_then(|e| e.xattrs.as_ref())
-        .filter(|_| preserve_xattrs)
-        .cloned();
+    let apply_xattrs = match remote_entry.as_ref().and_then(|e| e.xattrs.as_ref()) {
+        Some(crate::aerorsync::real_wire::XattrWireEntry::Literal(pairs)) if preserve_xattrs => {
+            Some(pairs.clone())
+        }
+        // A back-reference is refused by the driver at decode time with
+        // the same XattrAbbrevUnsupported as before this change, so it
+        // cannot reach the commit path; keep that verdict if one ever does.
+        Some(crate::aerorsync::real_wire::XattrWireEntry::Reference(i)) => {
+            return Err(TransferError::Hard {
+                detail: format!(
+                    "xattr back-reference {} reached the commit path",
+                    *i as i64 + 1
+                )
+                .into(),
+            });
+        }
+        _ => None,
+    };
     let apply_acls = if preserve_acls {
         let entry = remote_entry.as_ref().ok_or_else(|| TransferError::Hard {
             detail: "session negotiated -A but the download finished without a file-list entry"
@@ -1897,7 +1910,7 @@ fn build_source_entry(
         checksum: file_checksum,
         symlink_target: symlink_target.map(String::into_bytes),
         rdev: None,
-        xattrs,
+        xattrs: xattrs.map(crate::aerorsync::real_wire::XattrWireEntry::Literal),
         acls,
     }
 }

@@ -1228,7 +1228,7 @@ fn b1_classic_and_varint_flags_decode_to_the_same_list() {
 /// the B1 addendum (`b1-*`, devices, specials, links without `-l`,
 /// LONG_NAME, non-UTF-8 names, io_error, and a 3.1.3 server's classic
 /// flags).
-const DECODABLE: [&str; 44] = [
+const DECODABLE: [&str; 46] = [
     "b1-313-dev-dl",
     "b1-313-ioerr-dl",
     "b1-313-long-dl",
@@ -1259,6 +1259,8 @@ const DECODABLE: [&str; 44] = [
     "p1c-dl",
     "p2-dl-noinc",
     "p2-up-noinc",
+    "p3-dl",
+    "p3-up",
     "p4-dl",
     "p4-up",
     "p5-dl",
@@ -1312,8 +1314,6 @@ fn b1_every_decodable_capture_round_trips_and_streams_byte_by_byte() {
 #[test]
 fn b1_captures_beyond_b1_are_refused_by_name() {
     for (run, expected) in [
-        ("p3-dl", "xattr"),
-        ("p3-up", "xattr"),
         ("p6-dl", "hardlink"),
         ("p6-up", "hardlink"),
         ("p6-dl-noinc", "hardlink"),
@@ -1345,8 +1345,7 @@ fn b1_captures_beyond_b1_are_refused_by_name() {
             cursor += n;
         };
         match (expected, &err) {
-            ("xattr", RealWireError::XattrAbbrevUnsupported { .. })
-            | ("hardlink", RealWireError::HardlinkUnsupported { .. }) => {}
+            ("hardlink", RealWireError::HardlinkUnsupported { .. }) => {}
             _ => panic!("{run}: expected a {expected} refusal, got {err:?}"),
         }
     }
@@ -1412,7 +1411,7 @@ fn b1_streaming_largest_legal_entry_fits_the_ceiling() {
         checksum: Vec::new(),
         symlink_target: None,
         rdev: None,
-        xattrs: Some(xattrs),
+        xattrs: Some(crate::aerorsync::real_wire::XattrWireEntry::Literal(xattrs)),
         acls: Some(FileListAcls {
             access: full_acl(),
             default: Some(full_acl()),

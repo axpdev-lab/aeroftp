@@ -71,8 +71,9 @@ use crate::aerorsync::real_wire::{
     is_symlink_mode, resolve_xattr_datum_section, ClientPreamble, DeflateLiteralStreamEncoder,
     DeltaOp, DeltaStreamReport, DeltaStreamState, FileListCodecState, FileListDecodeOptions,
     FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState,
-    PreambleCompression, RealWireError, SumBlock, SumHead, SummaryFrame, ZstdLiteralStreamEncoder,
-    CF_VARINT_FLIST_FLAGS, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF, TOKEN_END_FLAG,
+    PreambleCompression, RealWireError, SumBlock, SumHead, SummaryFrame, XattrWireEntry,
+    ZstdLiteralStreamEncoder, CF_VARINT_FLIST_FLAGS, MAX_DELTA_LITERAL_LEN, NDX_DONE,
+    NDX_FLIST_EOF, TOKEN_END_FLAG,
 };
 use crate::aerorsync::remote_command::{
     always_checksum_from_args, metadata_flags_from_args, preamble_compression_from_args,
@@ -2215,6 +2216,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 match decode_file_list_entry(&flist_buf, &opts, &mut flist_state) {
                     Ok((FileListDecodeOutcome::Entry(entry), consumed)) => {
                         flist_buf.drain(..consumed);
+                        // Same principle as the non-UTF-8 refusal below:
+                        // refuse before any commit, with the error the codec
+                        // itself used to raise on this shape, so the verdict
+                        // (hard error, no fallback) is unchanged. The codec
+                        // has already advanced flist_state by the time it
+                        // returns Ok, but this error closes the session,
+                        // exactly like the non-UTF-8 one.
+                        if let Some(XattrWireEntry::Reference(i)) = entry.xattrs.as_ref() {
+                            return Err(map_realwire_error(
+                                RealWireError::XattrAbbrevUnsupported {
+                                    reference: *i as i64 + 1,
+                                },
+                                "file list entry",
+                            ));
+                        }
                         // The codec carries names as the bytes rsync sent;
                         // the product writes UTF-8 names only, the policy
                         // the upload side pins too. Refuse here, before any
@@ -2273,8 +2289,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // X.2a / ACL B1: this list is a contract the xattr and
                     // ACL codecs are written against. A blob that straddles
                     // a frame boundary is `TruncatedBuffer` so it lands
-                    // here; `InvalidXattrField`, `XattrAbbrevUnsupported`
-                    // and `InvalidAclField` abort. Widening this arm to
+                    // here; `InvalidXattrField` and `InvalidAclField` abort.
+                    // An xattr back-reference no longer errors in the codec
+                    // (it decodes as `XattrWireEntry::Reference`); the Entry
+                    // arm above re-raises it as `XattrAbbrevUnsupported`,
+                    // which also aborts here. Widening this arm to
                     // swallow those would turn a hostile blob into an
                     // unbounded frame-pull loop.
                     // Retrying is safe because decoding restarts from the
@@ -2639,11 +2658,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 // Resolve them into the file-list entry before the filesystem
                 // layer sees it; leaving Deferred values until finalize makes
                 // every >32-byte attribute fail closed as "unresolved".
-                let original_pairs = self
-                    .file_list
-                    .first()
-                    .and_then(|entry| entry.xattrs.clone())
-                    .unwrap_or_default();
+                let original_pairs = match self.file_list.first().and_then(|e| e.xattrs.as_ref()) {
+                    Some(XattrWireEntry::Literal(pairs)) => pairs.clone(),
+                    // Refused at decode time with XattrAbbrevUnsupported, so
+                    // a reference cannot be in the list; keep the same
+                    // verdict if one ever is.
+                    Some(XattrWireEntry::Reference(i)) => {
+                        return Err(map_realwire_error(
+                            RealWireError::XattrAbbrevUnsupported {
+                                reference: *i as i64 + 1,
+                            },
+                            "file list entry",
+                        ));
+                    }
+                    None => Vec::new(),
+                };
                 loop {
                     self.check_cancel("read_signature_header xattr_datum_section")?;
                     // Resolution mutates records as it goes. Retry from the
@@ -2654,7 +2683,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         Ok(consumed) => {
                             buf.drain(..consumed);
                             if let Some(entry) = self.file_list.first_mut() {
-                                entry.xattrs = Some(candidate);
+                                entry.xattrs = Some(XattrWireEntry::Literal(candidate));
                             }
                             break;
                         }
@@ -3027,11 +3056,12 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         if !self.negotiated_xattrs || self.last_iflags & ITEM_REPORT_XATTR == 0 {
             return Vec::new();
         }
-        let pairs = self
-            .file_list
-            .first()
-            .and_then(|e| e.xattrs.as_deref())
-            .unwrap_or(&[]);
+        // A back-reference carries no inline values (its set lives in a
+        // session table), so only a literal contributes to the section.
+        let pairs = match self.file_list.first().and_then(|e| e.xattrs.as_ref()) {
+            Some(XattrWireEntry::Literal(pairs)) => pairs.as_slice(),
+            _ => &[],
+        };
         encode_xattr_datum_section(pairs)
     }
 
@@ -4928,7 +4958,7 @@ mod tests {
     ) -> AerorsyncDriver<MockRemoteShellTransport> {
         let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
         let mut entry = sample_file_list_entry("upload.bin");
-        entry.xattrs = xattrs;
+        entry.xattrs = xattrs.map(XattrWireEntry::Literal);
         d.file_list.push(entry);
         d.last_iflags = iflags;
         d.negotiated_xattrs = negotiated_xattrs;
@@ -5059,7 +5089,7 @@ mod tests {
         let transport = mock_transport_with_raw_inbound(inbound);
         let mut d = make_driver(transport);
         let mut entry = sample_file_list_entry("download.bin");
-        entry.xattrs = Some(deferred);
+        entry.xattrs = Some(XattrWireEntry::Literal(deferred));
         d.file_list.push(entry);
         d.session_role = Some(SessionRole::Receiver);
         d.open_raw_stream_internal(
@@ -5073,7 +5103,10 @@ mod tests {
             .await
             .expect("split datum section must resolve before sum_head");
         assert!(matches!(parsed, SignatureHeader::Transfer { head: h, .. } if h == head));
-        assert_eq!(d.file_list[0].xattrs.as_ref(), Some(&originals));
+        assert_eq!(
+            d.file_list[0].xattrs.as_ref(),
+            Some(&XattrWireEntry::Literal(originals.clone()))
+        );
     }
 
     #[tokio::test]
@@ -5109,10 +5142,9 @@ mod tests {
 
             // 3. the out-of-band section on the sender path
             let mut entry = sample_file_list_entry("upload.bin");
-            entry.xattrs = Some(vec![crate::aerorsync::real_wire::XattrPair::inline(
-                "user.big",
-                vec![b'B'; 64],
-            )]);
+            entry.xattrs = Some(XattrWireEntry::Literal(vec![
+                crate::aerorsync::real_wire::XattrPair::inline("user.big", vec![b'B'; 64]),
+            ]));
             d.file_list.push(entry);
             d.last_iflags = A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR;
             assert_eq!(
@@ -7527,6 +7559,61 @@ mod tests {
                 FallbackVerdict::HardError
             );
         }
+    }
+
+    /// B2: an xattr back-reference in the file list is refused by the
+    /// product driver before any commit, with the same typed error the
+    /// codec used to raise on that shape, so single-file behaviour and the
+    /// fallback verdict are unchanged. The codec now decodes the reference
+    /// unresolved (`XattrWireEntry::Reference`); resolving it is the
+    /// session table's job (B2/B3), not the codec's.
+    #[tokio::test]
+    async fn driver_download_refuses_an_xattr_back_reference_before_commit() {
+        use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            preserve_acls: false,
+            preserve_xattrs: true,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
+        };
+        let entry = FileListEntry {
+            xattrs: Some(XattrWireEntry::Reference(2)),
+            ..sample_file_list_entry("target.bin")
+        };
+        let entry_bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(
+            MuxTag::Data,
+            &encode_file_list_terminator(&opts, 0),
+        ));
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+        let err = d
+            .drive_download(
+                RemoteCommandSpec::capture_download("/remote/target.bin").with_xattrs(true),
+                &[],
+                &MockSigAdapter::default(),
+                &mut sink,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame, "{err:?}");
+        assert!(err.detail.contains("abbreviated back-reference"), "{err:?}");
+        assert!(d.file_list().is_empty());
+        assert!(!d.committed());
+        assert_eq!(
+            classify_fallback(&err, d.committed()),
+            FallbackVerdict::HardError
+        );
     }
 
     /// CLAUDE-AV-B3-18: exact regression for the live xxh64 hang. The

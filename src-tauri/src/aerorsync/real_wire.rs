@@ -1817,6 +1817,32 @@ impl XattrPair {
     }
 }
 
+/// A file-list xattr set is either a full literal or a back-reference to
+/// a set already sent earlier in this session. `xattrs.c::send_xattr`
+/// opens the blob with `write_varint(ndx + 1)`: `ndx >= 0` selects an
+/// identical set already on the wire and the payload is that index
+/// alone, while `ndx == -1` sends the full list, written as marker 0.
+/// `Reference(i)` is the 0-based index of that earlier set (measured,
+/// `12-multi-entry-wire-evidence.md` point 3: wire `03` is
+/// `Reference(2)`). The codec does not resolve references: that needs a
+/// per-session table the recursive file-list will own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum XattrWireEntry {
+    Literal(Vec<XattrPair>),
+    Reference(u32),
+}
+
+impl XattrWireEntry {
+    /// Pairs in the literal form; a reference carries none inline, its
+    /// set lives in the session table.
+    pub fn literal_len(&self) -> usize {
+        match self {
+            XattrWireEntry::Literal(pairs) => pairs.len(),
+            XattrWireEntry::Reference(_) => 0,
+        }
+    }
+}
+
 /// MD5 of an xattr value, the digest rsync puts in the entry in place of
 /// an over-threshold value (`06-xattr-oob-wire-evidence.md` §1).
 pub fn xattr_value_digest(value: &[u8]) -> [u8; XATTR_DIGEST_LEN] {
@@ -1949,18 +1975,20 @@ pub struct FileListEntry {
     /// | State | Wire | Here |
     /// |---|---|---|
     /// | `-X` not negotiated | zero bytes | `None` |
-    /// | `-X` negotiated, file has no xattr | `00 00` | `Some(vec![])` |
-    /// | `-X` negotiated, file has xattrs | `00 <count> …` | `Some(vec![..])` |
+    /// | `-X` negotiated, file has no xattr | `00 00` | `Some(Literal(vec![]))` |
+    /// | `-X` negotiated, file has xattrs | `00 <count> …` | `Some(Literal(vec![..]))` |
+    /// | `-X` negotiated, set already sent | `<ndx+1>` alone | `Some(Reference(i))` |
     ///
-    /// `Some(vec![])` is NOT the same as `None`: with `-X` active the
-    /// blob is mandatory on the wire, so the encoder still emits its two
-    /// bytes. Conflating the two would desynchronise the stream.
+    /// `Some(Literal(vec![]))` is NOT the same as `None`: with `-X` active
+    /// the blob is mandatory on the wire, so the encoder still emits its
+    /// two bytes. Conflating the two would desynchronise the stream.
     ///
     /// Unlike `symlink_target` this is not gated on `mode`: rsync sends
     /// the blob for symlink entries too (`flist.c::send_file_entry` gates
     /// it on `preserve_xattrs` alone, with no `S_ISLNK` exclusion — that
-    /// exclusion applies to ACLs, not xattrs).
-    pub xattrs: Option<Vec<XattrPair>>,
+    /// exclusion applies to ACLs, not xattrs). References stay unresolved
+    /// here, like the ACL ones: a session table owns that.
+    pub xattrs: Option<XattrWireEntry>,
     /// POSIX ACLs, present iff `-A` was negotiated
     /// (`FileListDecodeOptions::preserve_acls`) and this entry is not a
     /// symlink. Three states, matching the xattr field:
@@ -2146,17 +2174,32 @@ fn decode_flist_flags(
 /// the transfer. A blob that straddles a frame boundary is normal, so it
 /// must land in the recoverable set; a structurally impossible length is
 /// not, so it must not.
-fn decode_xattr_blob(buf: &[u8]) -> Result<(Vec<XattrPair>, usize), RealWireError> {
+fn decode_xattr_blob(buf: &[u8]) -> Result<(XattrWireEntry, usize), RealWireError> {
     let mut cursor = 0usize;
 
     // `send_xattr` opens with `write_varint(ndx + 1)`: `ndx` is the index
     // of an identical xattr list already sent, or -1 when the list is
     // new, so a fresh list writes 0. A non-zero value selects the
-    // abbreviated form, whose payload is an index rather than a list.
+    // abbreviated form, whose payload is an index rather than a list;
+    // the codec keeps it unresolved as `Reference(ndx)`.
     let (marker, consumed) = decode_varint(&buf[cursor..])?;
     cursor += consumed;
-    if marker != 0 {
-        return Err(RealWireError::XattrAbbrevUnsupported { reference: marker });
+    if marker < 0 {
+        return Err(RealWireError::InvalidXattrField {
+            field: "reference",
+            declared: marker,
+            available: buf.len().saturating_sub(cursor),
+        });
+    }
+    if marker > 0 {
+        if marker - 1 > u32::MAX as i64 {
+            return Err(RealWireError::InvalidXattrField {
+                field: "reference",
+                declared: marker,
+                available: buf.len().saturating_sub(cursor),
+            });
+        }
+        return Ok((XattrWireEntry::Reference((marker - 1) as u32), cursor));
     }
 
     let (count, consumed) = decode_varint(&buf[cursor..])?;
@@ -2288,7 +2331,7 @@ fn decode_xattr_blob(buf: &[u8]) -> Result<(Vec<XattrPair>, usize), RealWireErro
         pairs.push(XattrPair { name, datum });
     }
 
-    Ok((pairs, cursor))
+    Ok((XattrWireEntry::Literal(pairs), cursor))
 }
 
 fn invalid_acl(field: &'static str, declared: i64, available: usize) -> RealWireError {
@@ -2917,9 +2960,9 @@ pub fn decode_file_list_entry(
     // With `-X` off this branch consumes nothing, so every byte-pinned
     // capture decodes exactly as it did before this codec existed.
     let xattrs = if options.preserve_xattrs {
-        let (pairs, consumed) = decode_xattr_blob(&buf[cursor..])?;
+        let (set, consumed) = decode_xattr_blob(&buf[cursor..])?;
         cursor += consumed;
-        Some(pairs)
+        Some(set)
     } else {
         None
     };
@@ -2994,10 +3037,24 @@ fn compute_flist_name_split<'a>(
 /// and the entry carries [`XATTR_DIGEST_LEN`] digest bytes while the
 /// value travels in the out-of-band section (see
 /// [`encode_xattr_datum_section`]).
-fn encode_xattr_blob(pairs: &[XattrPair], out: &mut Vec<u8>) {
-    // `write_varint(ndx + 1)` with `ndx == -1`: this codec always sends
-    // the full list and never the abbreviated back-reference, which needs
-    // a multi-entry file-list to be meaningful.
+fn encode_xattr_blob(entry: Option<&XattrWireEntry>, out: &mut Vec<u8>) {
+    let pairs: &[XattrPair] = match entry {
+        // `write_varint(ndx + 1)` with `ndx >= 0`: the abbreviated form is
+        // the marker alone, no count and no pairs.
+        Some(XattrWireEntry::Reference(i)) => {
+            assert!(
+                *i < i32::MAX as u32,
+                "xattr reference {i} does not fit the wire marker"
+            );
+            out.extend_from_slice(&encode_varint(*i as i32 + 1));
+            return;
+        }
+        Some(XattrWireEntry::Literal(pairs)) => pairs,
+        // `ndx == -1`: the full list. `None` under an xattr session means
+        // "no attribute on this file", still two bytes (`00 00`), because
+        // `-X` makes the blob mandatory.
+        None => &[],
+    };
     out.extend_from_slice(&encode_varint(0));
     out.extend_from_slice(&encode_varint(pairs.len() as i32));
     for pair in pairs {
@@ -3501,7 +3558,7 @@ pub fn encode_file_list_entry(
     // (`00 00`), because with `-X` active rsync makes the blob mandatory.
     // Decoding that back therefore yields `Some(vec![])`, not `None`.
     if options.preserve_xattrs {
-        encode_xattr_blob(entry.xattrs.as_deref().unwrap_or(&[]), &mut out);
+        encode_xattr_blob(entry.xattrs.as_ref(), &mut out);
     } else {
         // Emitting the blob would desynchronise a peer that never
         // negotiated `-X`; dropping it quietly would lose metadata the
@@ -3511,7 +3568,7 @@ pub fn encode_file_list_entry(
             entry.xattrs.is_none(),
             "entry {:?} carries {} xattr(s) but the session did not negotiate -X",
             entry.path_lossy(),
-            entry.xattrs.as_ref().map_or(0, Vec::len)
+            entry.xattrs.as_ref().map_or(0, XattrWireEntry::literal_len)
         );
     }
 
@@ -8070,7 +8127,12 @@ mod tests {
                 // encoder normalising "no xattr on this file" to the two
                 // bytes rsync requires, not a round-trip failure.
                 let expected_xattrs = if opts.preserve_xattrs {
-                    Some(entry.xattrs.clone().unwrap_or_default())
+                    Some(
+                        entry
+                            .xattrs
+                            .clone()
+                            .unwrap_or(XattrWireEntry::Literal(Vec::new())),
+                    )
                 } else {
                     None
                 };
@@ -8368,7 +8430,7 @@ mod tests {
         );
 
         let mut with = baseline_entry();
-        with.xattrs = Some(pairs);
+        with.xattrs = Some(XattrWireEntry::Literal(pairs));
         let full = encode_file_list_entry(
             &with,
             &xattr_options_for_test(),
@@ -8415,7 +8477,7 @@ mod tests {
         assert_eq!(encoded_xattr_blob(vec![]), vec![0x00, 0x00]);
 
         let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![]);
+        entry.xattrs = Some(XattrWireEntry::Literal(vec![]));
         let opts = xattr_options_for_test();
         let bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
         let (outcome, consumed) =
@@ -8424,8 +8486,8 @@ mod tests {
         match outcome {
             FileListDecodeOutcome::Entry(d) => assert_eq!(
                 d.xattrs,
-                Some(vec![]),
-                "an empty list must decode as Some(vec![]), never as None: \
+                Some(XattrWireEntry::Literal(vec![])),
+                "an empty list must decode as Some(Literal(vec![])), never as None: \
                  conflating them loses the fact that -X was negotiated"
             ),
             other => panic!("expected Entry, got {other:?}"),
@@ -8446,7 +8508,7 @@ mod tests {
 
         let pair = XattrPair::inline("user.aeroftp.test", b"v1".to_vec());
         let mut on = baseline_entry();
-        on.xattrs = Some(vec![pair]);
+        on.xattrs = Some(XattrWireEntry::Literal(vec![pair]));
         let on_bytes = encode_file_list_entry(
             &on,
             &xattr_options_for_test(),
@@ -8497,7 +8559,7 @@ mod tests {
         assert_eq!(encoded_xattr_blob(pairs.clone()), expected);
 
         let mut entry = baseline_entry();
-        entry.xattrs = Some(pairs);
+        entry.xattrs = Some(XattrWireEntry::Literal(pairs));
         assert_flist_entry_round_trip(entry, &xattr_options_for_test());
     }
 
@@ -8515,7 +8577,7 @@ mod tests {
         assert_eq!(encoded_xattr_blob(vec![pair.clone()]), expected);
 
         let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![pair]);
+        entry.xattrs = Some(XattrWireEntry::Literal(vec![pair]));
         assert_flist_entry_round_trip(entry, &xattr_options_for_test());
     }
 
@@ -8536,7 +8598,7 @@ mod tests {
         );
 
         let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![pair]);
+        entry.xattrs = Some(XattrWireEntry::Literal(vec![pair]));
         assert_flist_entry_round_trip(entry, &xattr_options_for_test());
     }
 
@@ -8567,7 +8629,10 @@ mod tests {
 
         // And it decodes back as deferred, not as a 16-byte value.
         let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![XattrPair::inline("user.long", value.clone())]);
+        entry.xattrs = Some(XattrWireEntry::Literal(vec![XattrPair::inline(
+            "user.long",
+            value.clone(),
+        )]));
         let opts = xattr_options_for_test();
         let bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
         let (outcome, consumed) =
@@ -8575,7 +8640,10 @@ mod tests {
         assert_eq!(consumed, bytes.len());
         match outcome {
             FileListDecodeOutcome::Entry(d) => {
-                let pairs = d.xattrs.expect("xattrs present");
+                let pairs = match d.xattrs.expect("xattrs present") {
+                    XattrWireEntry::Literal(pairs) => pairs,
+                    other => panic!("expected a literal xattr set, got {other:?}"),
+                };
                 assert_eq!(pairs.len(), 1);
                 assert_eq!(
                     pairs[0].datum,
@@ -8745,7 +8813,7 @@ mod tests {
             ),
         ];
         let mut entry = baseline_entry();
-        entry.xattrs = Some(originals.clone());
+        entry.xattrs = Some(XattrWireEntry::Literal(originals.clone()));
         let opts = xattr_options_for_test();
 
         let entry_bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
@@ -8756,7 +8824,10 @@ mod tests {
                 .expect("decode");
         assert_eq!(consumed, entry_bytes.len());
         let mut decoded = match outcome {
-            FileListDecodeOutcome::Entry(d) => d.xattrs.expect("xattrs present"),
+            FileListDecodeOutcome::Entry(d) => match d.xattrs.expect("xattrs present") {
+                XattrWireEntry::Literal(pairs) => pairs,
+                other => panic!("expected a literal xattr set, got {other:?}"),
+            },
             other => panic!("expected Entry, got {other:?}"),
         };
 
@@ -8797,14 +8868,17 @@ mod tests {
     /// hand back the decoded attribute list (large values still deferred).
     fn decode_pairs_from_entry(pairs: &[XattrPair]) -> Vec<XattrPair> {
         let mut entry = baseline_entry();
-        entry.xattrs = Some(pairs.to_vec());
+        entry.xattrs = Some(XattrWireEntry::Literal(pairs.to_vec()));
         let opts = xattr_options_for_test();
         let bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
         match decode_file_list_entry(&bytes, &opts, &mut FileListCodecState::new())
             .expect("decode")
             .0
         {
-            FileListDecodeOutcome::Entry(d) => d.xattrs.expect("xattrs present"),
+            FileListDecodeOutcome::Entry(d) => match d.xattrs.expect("xattrs present") {
+                XattrWireEntry::Literal(pairs) => pairs,
+                other => panic!("expected a literal xattr set, got {other:?}"),
+            },
             other => panic!("expected Entry, got {other:?}"),
         }
     }
@@ -8916,25 +8990,35 @@ mod tests {
     }
 
     #[test]
-    fn abbreviated_xattr_back_reference_is_refused() {
+    fn abbreviated_xattr_back_reference_decodes_unresolved() {
         // `xattrs.c::send_xattr` opens with `write_varint(ndx + 1)`: a
         // non-zero value means "same list as a previously sent entry" and
-        // what follows is an index, not a list. Single-file transfers
-        // never produce it; parsing on regardless would read the next
-        // entry's bytes as xattr names.
+        // what follows is an index, not a list. The codec keeps it as
+        // `Reference(ndx)` without resolving it; the product driver
+        // re-refuses it with the same error as before (see
+        // native_driver), so single-file behaviour is unchanged.
         let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![]);
+        entry.xattrs = Some(XattrWireEntry::Literal(vec![]));
         let opts = xattr_options_for_test();
         let mut bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
-        let marker_at = bytes.len() - 2;
-        assert_eq!(bytes[marker_at], 0x00, "expected the blob marker here");
-        bytes[marker_at] = 0x03;
+        // Replace the two-byte empty literal (`00 00`) with the one-byte
+        // reference marker `03` (= index 2).
+        assert_eq!(&bytes[bytes.len() - 2..], &[0x00, 0x00]);
+        bytes.truncate(bytes.len() - 1);
+        let last = bytes.len() - 1;
+        bytes[last] = 0x03;
 
-        match decode_file_list_entry(&bytes, &opts, &mut FileListCodecState::new()) {
-            Err(RealWireError::XattrAbbrevUnsupported { reference }) => {
-                assert_eq!(reference, 3);
+        let (outcome, consumed) =
+            decode_file_list_entry(&bytes, &opts, &mut FileListCodecState::new())
+                .expect("a back-reference decodes unresolved");
+        assert_eq!(consumed, bytes.len(), "the reference is the whole blob");
+        match outcome {
+            FileListDecodeOutcome::Entry(d) => {
+                assert_eq!(d.xattrs, Some(XattrWireEntry::Reference(2)));
+                let reencoded = encode_file_list_entry(&d, &opts, &mut FileListCodecState::new());
+                assert_eq!(reencoded, bytes, "a reference round-trips byte for byte");
             }
-            other => panic!("expected XattrAbbrevUnsupported, got {other:?}"),
+            other => panic!("expected Entry, got {other:?}"),
         }
     }
 
@@ -8947,7 +9031,7 @@ mod tests {
         // panic, wrap around, or allocate on the declared size.
         let opts = xattr_options_for_test();
         let mut base = baseline_entry();
-        base.xattrs = Some(vec![]);
+        base.xattrs = Some(XattrWireEntry::Literal(vec![]));
         let prefix = {
             let bytes = encode_file_list_entry(&base, &opts, &mut FileListCodecState::new());
             bytes[..bytes.len() - 2].to_vec() // drop the `00 00` blob
@@ -9081,7 +9165,10 @@ mod tests {
         // is what should stop it.
         let opts = xattr_options_for_test();
         let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![XattrPair::inline("user.aeroftp.test", b"v1".to_vec())]);
+        entry.xattrs = Some(XattrWireEntry::Literal(vec![XattrPair::inline(
+            "user.aeroftp.test",
+            b"v1".to_vec(),
+        )]));
         let full = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
 
         // Every prefix that cuts into the blob must read as a truncation.
@@ -9125,7 +9212,7 @@ mod tests {
         // `xattrs.c::recv_xattr`.
         let opts = xattr_options_for_test();
         let mut base = baseline_entry();
-        base.xattrs = Some(vec![]);
+        base.xattrs = Some(XattrWireEntry::Literal(vec![]));
         let mut buf = {
             let bytes = encode_file_list_entry(&base, &opts, &mut FileListCodecState::new());
             bytes[..bytes.len() - 2].to_vec()
@@ -9169,7 +9256,7 @@ mod tests {
         entry.size = target.len() as i64;
         entry.checksum = vec![];
         entry.symlink_target = Some(target.clone().into_bytes());
-        entry.xattrs = Some(vec![]);
+        entry.xattrs = Some(XattrWireEntry::Literal(vec![]));
 
         let opts = xattr_options_for_test();
         let bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
@@ -9193,7 +9280,10 @@ mod tests {
         // metadata the caller attached. Neither is acceptable, so the
         // combination is refused outright.
         let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![XattrPair::inline("user.a", b"v1".to_vec())]);
+        entry.xattrs = Some(XattrWireEntry::Literal(vec![XattrPair::inline(
+            "user.a",
+            b"v1".to_vec(),
+        )]));
         let _ = encode_file_list_entry(
             &entry,
             &frozen_oracle_options_for_test(),
@@ -9470,7 +9560,7 @@ mod tests {
 
         let mut with = baseline_entry();
         with.acls = Some(nobody_access_acl());
-        with.xattrs = Some(vec![]);
+        with.xattrs = Some(XattrWireEntry::Literal(vec![]));
         let mut opts = acl_options_for_test();
         opts.preserve_xattrs = true;
         let full = encode_file_list_entry(&with, &opts, &mut FileListCodecState::new());
@@ -9611,7 +9701,7 @@ mod tests {
         assert_flist_entry_round_trip(entry.clone(), &on);
 
         let mut ax_entry = entry;
-        ax_entry.xattrs = Some(vec![]);
+        ax_entry.xattrs = Some(XattrWireEntry::Literal(vec![]));
         let mut ax_opts = on;
         ax_opts.preserve_xattrs = true;
         let ax_bytes = encode_file_list_entry(&ax_entry, &ax_opts, &mut FileListCodecState::new());
