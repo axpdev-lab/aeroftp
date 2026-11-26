@@ -2052,6 +2052,25 @@ fn profile_plan_inputs(
             }
         }
     }
+    // Vault-only private tokens: an OAuth singleton such as `oauth_box` is
+    // saved without a profile key or a partition row, so the inventories
+    // above can miss it. Its vault copy is still this device's account's
+    // token and must join the sweep candidates, or a restored foreign owner
+    // would inherit it.
+    match store.list_accounts() {
+        Ok(accounts) => {
+            for key in accounts {
+                if crate::user_partitions::private_token_type(&key).is_some()
+                    && !candidate_keys.contains(&key)
+                {
+                    candidate_keys.push(key);
+                }
+            }
+        }
+        Err(e) => {
+            failure = Some(from_store_error(e));
+        }
+    }
     'keys: for key in candidate_keys {
         let private = crate::user_partitions::private_token_type(&key).is_some();
         if private {
@@ -6675,6 +6694,90 @@ mod tests {
                 Err(crate::credential_store::CredentialError::NotFound(_))
             ),
             "the foreign token must not stay readable by the restored owner"
+        );
+        // Once the legacy owner of the published partition is active, its
+        // read of a rowless private token finds nothing in the vault.
+        let db = cfg.join("user_partitions.db");
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&conn)
+            .unwrap()
+            .expect("the published partition has a legacy owner");
+        crate::user_partitions::set_active_user(&conn, owner).unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        let read = read_effective_secret(&store, Some(&conn), &root, key).unwrap();
+        assert_eq!(read, None, "the restored owner reads no foreign token");
+    }
+
+    /// A private token kept only in the vault, named by no profile and no
+    /// partition row (an OAuth singleton such as `oauth_box`), is still this
+    /// device's account's token: a `skip_existing` restore of another
+    /// account's partition must sweep it, or the restored legacy owner would
+    /// adopt the previous owner's cloud authorization. Red if the vault's
+    /// own key list does not join the sweep candidates.
+    #[test]
+    fn a_vault_only_private_token_is_swept_for_the_restored_legacy_owner() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_box";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        // The backup's partition: the first account owns the legacy secrets
+        // and stays idle, a second one is active and reads rows alone.
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let receiver = active_receiver(&source_db).unwrap();
+        assert!(!receiver.legacy_owner, "the active account is no owner");
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert!(
+            matches!(
+                store.get(key),
+                Err(crate::credential_store::CredentialError::NotFound(_))
+            ),
+            "the foreign vault-only token must not stay readable by the restored owner"
         );
         // Once the legacy owner of the published partition is active, its
         // read of a rowless private token finds nothing in the vault.
