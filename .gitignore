@@ -191,6 +191,7 @@ run-clean.sh
 # Security reports: keep latest snapshot in repo, ignore dated copies
 /docs/security/security-report-20*.html
 /docs/security/security-report-20*.json
+/docs/security/security-report-20*.md
 
 # Temporary output files
 check_output*.txt
