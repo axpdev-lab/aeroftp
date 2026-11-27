@@ -2369,9 +2369,10 @@ mod b3_1 {
         let mut d = driver_for_capture("p8-dl", 65_536).await;
         let mut sink = CollectingSink::default();
         let limits = TreeListLimits::default();
+        let gate: usize = 50_001;
         assert!(
-            DEFAULT_MAX_TREE_ENTRIES > 50_001,
-            "the default ceiling must stay above the p8-dl gate (50.001 entries)"
+            DEFAULT_MAX_TREE_ENTRIES > gate,
+            "the default ceiling must stay above the p8-dl gate ({gate} entries)"
         );
         let start = d
             .receive_initial_tree_list(limits, &mut sink)

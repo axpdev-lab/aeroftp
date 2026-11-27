@@ -279,7 +279,6 @@ impl SessionTables {
                 }
                 let index = slot.len() as u32;
                 slot.push(acl.clone());
-                drop(slot);
                 self.acl_index_push(table, hash, index);
                 Ok(acl.clone())
             }
@@ -353,7 +352,6 @@ impl SessionTables {
         }
         let pos = slot.len() as u32;
         slot.push(acl.clone());
-        drop(slot);
         self.acl_index_push(table, hash, pos);
         Ok(AclWireEntry::Literal(acl))
     }
