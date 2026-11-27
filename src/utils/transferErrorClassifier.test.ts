@@ -24,4 +24,14 @@ describe('classifyErrorFast: a file over the destination limit', () => {
     it('leaves a real quota refusal fatal', () => {
         expect(classifyErrorFast('552 Insufficient storage space').kind).toBe('quota_exceeded');
     });
+
+    it('classifies the typed WebDAV 507 QuotaExceeded display as quota_exceeded', () => {
+        // ProviderError::QuotaExceeded renders "Storage quota exceeded: {0}";
+        // the WebDAV 507 message names the plan limit and quotes the server.
+        expect(
+            classifyErrorFast(
+                'Storage quota exceeded: the account is full or has reached a plan limit, such as a storage quota or a maximum number of files (HTTP 507). Server says: File limit reached \u{2014} upgrade your plan',
+            ),
+        ).toEqual({ kind: 'quota_exceeded', retryable: false });
+    });
 });

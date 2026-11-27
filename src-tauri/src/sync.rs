@@ -5372,6 +5372,7 @@ fn mentions_ftp_status(lowered: &str, code_and_space: &str) -> bool {
         "path not found: ",
         "permission denied: ",
         "file too large: ",
+        "storage quota exceeded: ",
         "path already exists: ",
         "directory not empty: ",
         "invalid path: ",
@@ -10626,6 +10627,7 @@ mod tests {
                 | PE::NotFound(_)
                 | PE::PermissionDenied(_)
                 | PE::FileTooLarge(_)
+                | PE::QuotaExceeded(_)
                 | PE::AlreadyExists(_)
                 | PE::DirectoryNotEmpty(_)
                 | PE::InvalidPath(_)
@@ -10661,6 +10663,7 @@ mod tests {
             PE::NotFound(reply.clone()),
             PE::PermissionDenied(reply.clone()),
             PE::FileTooLarge(reply.clone()),
+            PE::QuotaExceeded(reply.clone()),
             PE::AlreadyExists(reply.clone()),
             PE::DirectoryNotEmpty(reply.clone()),
             PE::InvalidPath(reply.clone()),
@@ -10686,7 +10689,7 @@ mod tests {
         ];
         assert_eq!(
             every_variant.len(),
-            26,
+            27,
             "the list stopped covering every variant; the match above is what fails the build, this only says how many were meant"
         );
 

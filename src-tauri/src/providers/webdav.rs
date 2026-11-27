@@ -466,42 +466,47 @@ impl std::fmt::Display for InsecureRedirect {
 
 impl std::error::Error for InsecureRedirect {}
 
-/// What an error may show of a WebDAV server's reply: its message element
-/// (Sabre `<s:message>`, OCS `<message>`, a JSON `"message"`), sanitized and
-/// with the profile's base path replaced by `<base>`, or only its length.
-/// The rest of a reply can echo the request (an href, the form, a path below
-/// a base URL that holds a token, as MEGAcmd's does).
-///
-/// `sent` is what the request sent as a secret (the account password, a
-/// generated share password): an echo of it is removed in any spelling once
-/// the message is decoded, see `without_sent_values`.
-fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
+/// The message element of an error reply (Sabre/OCS `<message>`, a JSON
+/// `"message"`), trimmed.
+fn message_element(body: &str) -> Option<&str> {
     static ELEMENT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r"<(?:[A-Za-z0-9_]+:)?message(?:\s[^>]*)?>([^<]*)</").unwrap()
     });
     static JSON: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r#""message"\s*:\s*"((?:[^"\\]|\\.)*)""#).unwrap()
     });
-    let message = ELEMENT
+    ELEMENT
         .captures(body)
         .or_else(|| JSON.captures(body))
         .and_then(|found| found.get(1))
         .map(|found| found.as_str().trim())
-        .filter(|message| !message.is_empty());
-    let Some(message) = message else {
-        return if body.is_empty() {
-            "no message".to_string()
-        } else {
-            format!("a reply of {} bytes with no message", body.len())
-        };
-    };
+        .filter(|message| !message.is_empty())
+}
+
+/// A short single-line plain-text body (1..=200 bytes, no CR/LF, no `<`, no
+/// control chars): some servers (LifetimeCloud) answer a plan-limit refusal
+/// as `text/html` with the reason as the whole body. An HTML page is not a
+/// reason.
+fn plain_text_reason(body: &str) -> Option<&str> {
+    let trimmed = body.trim();
+    let plain_text = (1..=200).contains(&trimmed.len())
+        && !trimmed.contains('\n')
+        && !trimmed.contains('\r')
+        && !trimmed.contains('<')
+        && trimmed.chars().all(|c| !c.is_control());
+    plain_text.then_some(trimmed)
+}
+
+/// Shared scrub of a server reason: fully decode, strip the sent secrets,
+/// replace the base path and the saved query values, sanitize.
+fn scrubbed(message: &str, body_len: usize, base_url: &str, sent: &[String]) -> String {
     // Fully decoded before scrubbing, so an entity-escaped path or query
     // value (`AB&amp;CD` for `AB%26CD`) matches.
     let Some(decoded) = super::fully_unescaped(message) else {
-        return super::deeply_escaped_reply(body.len());
+        return super::deeply_escaped_reply(body_len);
     };
     let Some(mut shown) = super::without_sent_values(&decoded, sent) else {
-        return super::reply_with_a_sent_value(body.len());
+        return super::reply_with_a_sent_value(body_len);
     };
     if let Ok(url) = url::Url::parse(base_url) {
         let path = url.path().trim_end_matches('/');
@@ -574,6 +579,32 @@ fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
         }
     }
     super::sanitize_plain_error(&shown)
+}
+
+/// What an error may show of a WebDAV server's reply: its message element
+/// (Sabre `<s:message>`, OCS `<message>`, a JSON `"message"`), sanitized and
+/// with the profile's base path replaced by `<base>`, or only its length.
+/// The rest of a reply can echo the request (an href, the form, a path below
+/// a base URL that holds a token, as MEGAcmd's does).
+///
+/// `sent` is what the request sent as a secret (the account password, a
+/// generated share password): an echo of it is removed in any spelling once
+/// the message is decoded, see `without_sent_values`.
+fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
+    match message_element(body) {
+        Some(message) => scrubbed(message, body.len(), base_url, sent),
+        None if body.is_empty() => "no message".to_string(),
+        None => format!("a reply of {} bytes with no message", body.len()),
+    }
+}
+
+/// The server's own reason from an error reply, sanitized exactly as
+/// `server_message` does, or `None` when the reply carries neither a message
+/// element nor a short plain-text reason.
+fn server_reason(body: &str, base_url: &str, sent: &[String]) -> Option<String> {
+    message_element(body)
+        .or_else(|| plain_text_reason(body))
+        .map(|message| scrubbed(message, body.len(), base_url, sent))
 }
 
 /// The value of a response header as the download diagnostic logs it. A
@@ -6258,7 +6289,23 @@ impl StorageProvider for WebDavProvider {
                 progress.complete();
                 Ok(())
             }
-            status => Err(upload_failure_error(status)),
+            status => {
+                // Only the plan-limit answers quote the server; the body is
+                // read nowhere else here, so other statuses keep their
+                // message unchanged.
+                let reason = if matches!(
+                    status,
+                    StatusCode::PAYLOAD_TOO_LARGE
+                        | StatusCode::FORBIDDEN
+                        | StatusCode::INSUFFICIENT_STORAGE
+                ) {
+                    let body = response.text().await.unwrap_or_default();
+                    server_reason(&body, &self.config.url, &self.sent_secrets())
+                } else {
+                    None
+                };
+                Err(upload_failure_error(status, reason.as_deref()))
+            }
         }
     }
 
@@ -7356,9 +7403,14 @@ impl StorageProvider for WebDavProvider {
             StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => Err(
                 ProviderError::PermissionDenied("Nextcloud rejected chunk upload".to_string()),
             ),
-            StatusCode::INSUFFICIENT_STORAGE => Err(ProviderError::ServerError(
-                "Insufficient storage on Nextcloud server".to_string(),
-            )),
+            StatusCode::PAYLOAD_TOO_LARGE | StatusCode::INSUFFICIENT_STORAGE => {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                Err(upload_failure_error(
+                    status,
+                    server_reason(&body, &self.config.url, &self.sent_secrets()).as_deref(),
+                ))
+            }
             status => {
                 let body = response.text().await.unwrap_or_default();
                 Err(ProviderError::TransferFailed(format!(
@@ -7423,9 +7475,14 @@ impl StorageProvider for WebDavProvider {
             StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
                 "Destination parent does not exist".to_string(),
             )),
-            StatusCode::INSUFFICIENT_STORAGE => Err(ProviderError::ServerError(
-                "Insufficient storage on Nextcloud server".to_string(),
-            )),
+            StatusCode::PAYLOAD_TOO_LARGE | StatusCode::INSUFFICIENT_STORAGE => {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                Err(upload_failure_error(
+                    status,
+                    server_reason(&body, &self.config.url, &self.sent_secrets()).as_deref(),
+                ))
+            }
             status => {
                 let body = response.text().await.unwrap_or_default();
                 Err(ProviderError::TransferFailed(format!(
@@ -7861,7 +7918,15 @@ fn whole_object_total_from_content_range(headers: &reqwest::header::HeaderMap) -
 /// (discussion #277). Both `409` and `404` are folded into one actionable,
 /// non-retryable `InvalidPath` error so the message is clear and a sync/retry
 /// loop does not keep re-uploading a file that can never land at that path.
-fn upload_failure_error(status: StatusCode) -> ProviderError {
+///
+/// `413` and a `403` whose server reason names a size limit become the typed,
+/// non-retried `FileTooLarge`; `507` becomes the typed, non-retried
+/// `QuotaExceeded`. Both name the plan limit and quote the server's own
+/// reason, which `reason` carries already sanitized by `server_reason`.
+fn upload_failure_error(status: StatusCode, reason: Option<&str>) -> ProviderError {
+    let says = reason
+        .map(|reason| format!(" Server says: {reason}"))
+        .unwrap_or_default();
     match status {
         StatusCode::CONFLICT | StatusCode::NOT_FOUND => ProviderError::InvalidPath(
             "Upload target is not a writable file: the parent directory is missing or the \
@@ -7869,11 +7934,29 @@ fn upload_failure_error(status: StatusCode) -> ProviderError {
              409 here)"
                 .to_string(),
         ),
-        StatusCode::INSUFFICIENT_STORAGE => {
-            ProviderError::ServerError("Insufficient storage space".to_string())
+        StatusCode::PAYLOAD_TOO_LARGE => ProviderError::FileTooLarge(format!(
+            "the server refused this file as larger than it accepts, often a per-file \
+             limit of the account plan (HTTP 413).{says}"
+        )),
+        StatusCode::FORBIDDEN if reason.is_some_and(reason_says_file_too_large) => {
+            ProviderError::FileTooLarge(format!(
+                "the server refused this file as larger than the account plan allows \
+                 (HTTP 403).{says}"
+            ))
         }
+        StatusCode::INSUFFICIENT_STORAGE => ProviderError::QuotaExceeded(format!(
+            "the account is full or has reached a plan limit, such as a storage quota \
+             or a maximum number of files (HTTP 507).{says}"
+        )),
         other => ProviderError::TransferFailed(format!("Upload failed with status: {}", other)),
     }
+}
+
+/// A 403 reason that names a size limit ("File too large. Max 50MB on Free.",
+/// LifetimeCloud). Narrow on purpose: any other 403 keeps its mapping.
+fn reason_says_file_too_large(reason: &str) -> bool {
+    let lower = reason.to_lowercase();
+    lower.contains("too large") || lower.contains("file size limit")
 }
 
 /// `Depth` of every MOVE, file or collection. RFC 4918 section 9.9.2: a MOVE
@@ -10848,7 +10931,7 @@ exit 1
         // or the target is a directory. Both must become the same actionable,
         // non-retryable InvalidPath error rather than an opaque "status: 404".
         for status in [StatusCode::NOT_FOUND, StatusCode::CONFLICT] {
-            match upload_failure_error(status) {
+            match upload_failure_error(status, None) {
                 ProviderError::InvalidPath(msg) => {
                     assert!(msg.contains("parent directory is missing"), "msg: {}", msg)
                 }
@@ -10857,13 +10940,150 @@ exit 1
         }
         // Other failures keep their existing mappings.
         assert!(matches!(
-            upload_failure_error(StatusCode::INSUFFICIENT_STORAGE),
-            ProviderError::ServerError(_)
+            upload_failure_error(StatusCode::INSUFFICIENT_STORAGE, None),
+            ProviderError::QuotaExceeded(_)
         ));
         assert!(matches!(
-            upload_failure_error(StatusCode::BAD_GATEWAY),
+            upload_failure_error(StatusCode::BAD_GATEWAY, None),
             ProviderError::TransferFailed(_)
         ));
+    }
+
+    #[test]
+    fn upload_413_is_a_typed_file_too_large_that_names_the_limit() {
+        match upload_failure_error(StatusCode::PAYLOAD_TOO_LARGE, None) {
+            ProviderError::FileTooLarge(msg) => {
+                assert!(msg.contains("HTTP 413"), "msg: {}", msg);
+                assert!(!msg.contains("Server says:"), "msg: {}", msg);
+            }
+            other => panic!("413 should map to FileTooLarge, got {:?}", other),
+        }
+        match upload_failure_error(StatusCode::PAYLOAD_TOO_LARGE, Some("File exceeds 50 MB")) {
+            ProviderError::FileTooLarge(msg) => {
+                assert!(
+                    msg.ends_with("Server says: File exceeds 50 MB"),
+                    "msg: {}",
+                    msg
+                );
+            }
+            other => panic!("413 should map to FileTooLarge, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn upload_403_with_a_size_limit_reason_is_file_too_large_but_a_plain_403_is_not() {
+        // Real LifetimeCloud free-plan body (probe 2026-11-26).
+        match upload_failure_error(
+            StatusCode::FORBIDDEN,
+            Some("File too large. Max 50MB on Free."),
+        ) {
+            ProviderError::FileTooLarge(msg) => {
+                assert!(msg.contains("HTTP 403"), "msg: {}", msg);
+                assert!(
+                    msg.ends_with("Server says: File too large. Max 50MB on Free."),
+                    "msg: {}",
+                    msg
+                );
+            }
+            other => panic!(
+                "403 with a size-limit reason should map to FileTooLarge, got {:?}",
+                other
+            ),
+        }
+        assert!(matches!(
+            upload_failure_error(StatusCode::FORBIDDEN, Some("Forbidden")),
+            ProviderError::TransferFailed(_)
+        ));
+        assert!(matches!(
+            upload_failure_error(StatusCode::FORBIDDEN, None),
+            ProviderError::TransferFailed(_)
+        ));
+    }
+
+    #[test]
+    fn upload_507_stays_a_non_retried_quota_and_quotes_the_server() {
+        // Real LifetimeCloud file-count body (probe 2026-11-26); the reply
+        // carries an em dash (U+2014), written here as an escape.
+        let reason = "File limit reached \u{2014} upgrade your plan";
+        let err = upload_failure_error(StatusCode::INSUFFICIENT_STORAGE, Some(reason));
+        let ProviderError::QuotaExceeded(msg) = &err else {
+            panic!("507 should map to QuotaExceeded, got {:?}", err)
+        };
+        assert!(msg.contains("HTTP 507"), "msg: {}", msg);
+        assert!(
+            msg.ends_with("Server says: File limit reached \u{2014} upgrade your plan"),
+            "msg: {}",
+            msg
+        );
+        // The whole chain on the rendered error: the text classifier keeps
+        // it a non-retried quota error and the transfer engine maps the
+        // typed variant to RetryDirective::Never.
+        let rendered = err.to_string();
+        let info = crate::sync::classify_sync_error(&rendered, None);
+        assert_eq!(info.kind, crate::sync::SyncErrorKind::QuotaExceeded);
+        assert!(!info.retryable);
+        let transfer = crate::transfer_dag::TransferError::from_provider(&err);
+        assert_eq!(
+            transfer.kind,
+            crate::transfer_dag::TransferErrorKind::QuotaExceeded
+        );
+        assert_eq!(transfer.retry, crate::transfer_dag::RetryDirective::Never);
+    }
+
+    #[test]
+    fn upload_413_chain_is_typed_file_too_large_and_never_retried() {
+        let err = upload_failure_error(StatusCode::PAYLOAD_TOO_LARGE, None);
+        let transfer = crate::transfer_dag::TransferError::from_provider(&err);
+        assert_eq!(
+            transfer.kind,
+            crate::transfer_dag::TransferErrorKind::FileTooLarge
+        );
+        assert_eq!(transfer.retry, crate::transfer_dag::RetryDirective::Never);
+    }
+
+    #[test]
+    fn server_reason_none_without_message_and_sanitized_with_one() {
+        let base = "https://cloud.example.com/remote.php/dav/files/alice/";
+        assert_eq!(server_reason("", base, &[]), None);
+        assert_eq!(server_reason("<html>oops</html>", base, &[]), None);
+        // Over 200 bytes, two lines, or a control character: no reason.
+        assert_eq!(server_reason(&"x".repeat(201), base, &[]), None);
+        assert_eq!(server_reason("one\ntwo", base, &[]), None);
+        assert_eq!(server_reason("bad\u{0007}text", base, &[]), None);
+        // The real LifetimeCloud bodies are short plain text and count.
+        assert_eq!(
+            server_reason("File too large. Max 50MB on Free.", base, &[]),
+            Some("File too large. Max 50MB on Free.".to_string())
+        );
+        // A Sabre body: the base path is replaced by <base>.
+        let sabre = r#"<d:error xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns"><s:message>Quota exceeded for /remote.php/dav/files/alice</s:message></d:error>"#;
+        assert_eq!(
+            server_reason(sabre, base, &[]),
+            Some("Quota exceeded for <base>".to_string())
+        );
+        // A message that echoes the sent password is not shown verbatim.
+        let sent = vec!["Acc0unt&Pass!word".to_string()];
+        let echoed =
+            "<d:error><s:message>Bad credentials Acc0unt&amp;Pass&#x21;word</s:message></d:error>";
+        assert_eq!(
+            server_reason(echoed, base, &sent),
+            Some("Bad credentials [REDACTED]".to_string())
+        );
+        // A plain-text reason naming the base path shows <base> too.
+        assert_eq!(
+            server_reason("quota exceeded for /remote.php/dav/files/alice", base, &[]),
+            Some("quota exceeded for <base>".to_string())
+        );
+        // R1 regression: server_message keeps its placeholders for a
+        // plain-text body; only server_reason shows it.
+        assert_eq!(
+            server_message("Quota full", base, &[]),
+            "a reply of 10 bytes with no message"
+        );
+        assert_eq!(
+            server_reason("Quota full", base, &[]),
+            Some("Quota full".to_string())
+        );
     }
 
     #[test]

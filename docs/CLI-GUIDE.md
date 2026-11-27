@@ -2558,7 +2558,7 @@ given. See [MULTI-USER.md](./MULTI-USER.md) for the partition model.
 | 2 | Not found |
 | 3 | Permission denied |
 | 4 | Transfer failed / partial |
-| 5 | Invalid config / usage error. Also a file larger than the provider accepts (a per-file size limit, as on OpenDrive's free plan): the same upload fails again, so it shares the code `--retries` does not repeat |
+| 5 | Invalid config / usage error. Also a file larger than the provider accepts (a per-file size limit, as on OpenDrive's free plan), or a full storage quota or plan limit (WebDAV 507: storage full or maximum number of files): the same upload fails again, so it shares the code `--retries` does not repeat |
 | 6 | Authentication failed (credentials refused, or the server's host key rejected) |
 | 7 | Not supported |
 | 8 | Timeout or transfer-budget stop, with command-specific outcomes. A SITE reply timeout can follow a command the server applied: verify before retrying a mutation. On sync, a timeout that fails a transfer reports 4; the budget stop reports 8. JSON `over_budget` counts skipped files and can be absent at the exact budget, so inspect the configured limits |

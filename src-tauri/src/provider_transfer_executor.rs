@@ -1849,6 +1849,7 @@ impl UploadAttemptFailure {
                         | ProviderError::HostKeyRejected(_)
                         | ProviderError::PermissionDenied(_)
                         | ProviderError::FileTooLarge(_)
+                        | ProviderError::QuotaExceeded(_)
                         | ProviderError::ReadOnly(_)
                         | ProviderError::RestrictedChar { .. }
                 ) && failure.retryable;

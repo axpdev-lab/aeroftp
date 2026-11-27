@@ -7884,6 +7884,7 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)
         | ProviderError::FileTooLarge(_)
+        | ProviderError::QuotaExceeded(_)
         | ProviderError::RestrictedChar { .. } => 5,
         ProviderError::AuthenticationFailed(_) | ProviderError::HostKeyRejected(_) => 6,
         ProviderError::NotSupported(_) => 7,
@@ -90363,6 +90364,13 @@ mod tests {
         // loop will not pointlessly re-upload the same oversized file.
         assert_eq!(
             provider_error_to_exit_code(&ProviderError::FileTooLarge("test".into())),
+            5
+        );
+        assert!(!is_retryable_exit(5));
+        // A full quota or plan limit (WebDAV 507) is just as deterministic:
+        // same exit code 5, so a retry loop does not re-upload into it.
+        assert_eq!(
+            provider_error_to_exit_code(&ProviderError::QuotaExceeded("test".into())),
             5
         );
         assert!(!is_retryable_exit(5));
