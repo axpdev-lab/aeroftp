@@ -2114,7 +2114,7 @@ mod b3_1 {
     };
     use crate::aerorsync::types::{AerorsyncErrorKind, SessionRole};
 
-    fn mux_frame(payload: &[u8]) -> Vec<u8> {
+    pub(super) fn mux_frame(payload: &[u8]) -> Vec<u8> {
         let header = MuxHeader {
             tag: MuxTag::Data,
             length: payload.len() as u32,
@@ -2125,7 +2125,7 @@ mod b3_1 {
         out
     }
 
-    fn sample_entry(path: &str) -> FileListEntry {
+    pub(super) fn sample_entry(path: &str) -> FileListEntry {
         const XMIT_SAME_UID: u32 = 0x0008;
         const XMIT_SAME_GID: u32 = 0x0010;
         const XMIT_LONG_NAME: u32 = 0x0040;
@@ -2153,7 +2153,7 @@ mod b3_1 {
     /// preamble followed by the sender's app stream, re-muxed into
     /// `MSG_DATA` frames of `chunk` bytes (arbitrary boundaries, as on a
     /// real socket).
-    async fn driver_for_capture(
+    pub(super) async fn driver_for_capture(
         run: &str,
         chunk: usize,
     ) -> AerorsyncDriver<MockRemoteShellTransport> {
@@ -2186,7 +2186,7 @@ mod b3_1 {
     }
 
     /// A driver on a hand-built inbound stream (`preamble + frames`).
-    async fn hand_driver(
+    pub(super) async fn hand_driver(
         frames: Vec<u8>,
         compat_flags: i32,
         preserve_xattrs: bool,
@@ -2216,7 +2216,7 @@ mod b3_1 {
 
     /// Read the next ndx from the state's buffered bytes, pulling frames
     /// only when the buffer runs dry. This is the B3.2 loop's read step.
-    async fn read_next_ndx(
+    pub(super) async fn read_next_ndx(
         d: &mut AerorsyncDriver<MockRemoteShellTransport>,
         state: &mut TreeListState,
         sink: &mut CollectingSink,
@@ -2239,7 +2239,7 @@ mod b3_1 {
 
     /// The test-side B3.2 loop: read ndx, decode announced segments, stop
     /// at the first item ndx or at NDX_FLIST_EOF.
-    async fn drive_segments(
+    pub(super) async fn drive_segments(
         d: &mut AerorsyncDriver<MockRemoteShellTransport>,
         mut state: TreeListState,
         limits: TreeListLimits,
@@ -2405,7 +2405,7 @@ mod b3_1 {
         let first_item = loop {
             let ndx = read_next_ndx(&mut d, &mut state, &mut sink).await;
             match classify_tree_ndx(ndx) {
-                TreeNdx::Segment { dir_ndx } => {
+                TreeNdx::Segment { .. } => {
                     let seg = d
                         .receive_tree_segment(ndx, &mut state, limits, &mut sink)
                         .await
@@ -2587,5 +2587,109 @@ mod b3_1 {
             .collect();
         assert_eq!(got, want);
         assert_eq!(start.initial.entries.len(), reference.entries.len());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// B3.1 (passo 4): session-wide references and the session entry ceiling
+// ---------------------------------------------------------------------------
+
+mod b3_1_coverage {
+    use super::b3_1::{hand_driver, mux_frame, read_next_ndx, sample_entry};
+    use super::*;
+    use crate::aerorsync::events::CollectingSink;
+    use crate::aerorsync::real_wire::{encode_ndx, XattrDatum};
+    use crate::aerorsync::tree_driver::TreeListLimits;
+    use crate::aerorsync::types::AerorsyncErrorKind;
+
+    /// A back-reference in a LATER segment resolves against the one
+    /// session table: Reference(0) in the second segment must decode Ok
+    /// with the exact value interned by the first segment. Red with a
+    /// per-segment SessionTables (B3M03).
+    #[tokio::test]
+    async fn b3_1_reference_resolves_across_segments() {
+        let (mut o, _) = options_from_capture("p9-dl-inc");
+        o.preserve_xattrs = true;
+        let mut e1 = sample_entry("a");
+        e1.xattrs = Some(XattrWireEntry::Literal(vec![XattrPair {
+            name: "user.a".to_string(),
+            datum: XattrDatum::Inline(b"v".to_vec()),
+        }]));
+        let mut e2 = sample_entry("b");
+        e2.xattrs = Some(XattrWireEntry::Reference(0));
+        let mut codec = FileListCodecState::new();
+        let mut payload = encode_file_list_entry(&e1, &o, &mut codec);
+        payload.extend_from_slice(&encode_file_list_terminator(&o, 0));
+        payload.extend_from_slice(&encode_ndx(NDX_FLIST_OFFSET, &mut NdxState::new()));
+        payload.extend_from_slice(&encode_file_list_entry(&e2, &o, &mut codec));
+        payload.extend_from_slice(&encode_file_list_terminator(&o, 0));
+        let mut d = hand_driver(mux_frame(&payload), 0x80 | 1, true).await;
+        let mut sink = CollectingSink::default();
+        let limits = TreeListLimits::default();
+        let start = d
+            .receive_initial_tree_list(limits, &mut sink)
+            .await
+            .expect("the first segment decodes");
+        assert_eq!(start.initial.entries.len(), 1);
+        let mut state = start.state;
+        let ndx = read_next_ndx(&mut d, &mut state, &mut sink).await;
+        let seg = d
+            .receive_tree_segment(ndx, &mut state, limits, &mut sink)
+            .await
+            .expect("Reference(0) resolves from the session table, not a per-segment one");
+        assert_eq!(seg.entries.len(), 1);
+        let resolved = seg.entries[0]
+            .resolved
+            .xattrs
+            .as_ref()
+            .expect("resolved xattrs");
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].name, "user.a");
+        assert_eq!(resolved[0].datum, XattrDatum::Inline(b"v".to_vec()));
+    }
+
+    /// The session entry ceiling counts ACROSS segments: with
+    /// max_entries = 3 and two entries per segment, each segment stays
+    /// under the decoder's own ceiling (2 <= 3) and only the session
+    /// total (4 > 3) trips. Red with the session check removed (B3M07).
+    /// The capture-based 5a does not cover this: at max_entries = 1_000
+    /// the segment decoder's own FileListTooManyEntries fires first.
+    #[tokio::test]
+    async fn b3_1_session_ceiling_counts_across_segments() {
+        let (o, _) = options_from_capture("p9-dl-inc");
+        let mut codec = FileListCodecState::new();
+        let mut payload = Vec::new();
+        for name in ["a", "b"] {
+            payload.extend_from_slice(&encode_file_list_entry(&sample_entry(name), &o, &mut codec));
+        }
+        payload.extend_from_slice(&encode_file_list_terminator(&o, 0));
+        payload.extend_from_slice(&encode_ndx(NDX_FLIST_OFFSET, &mut NdxState::new()));
+        for name in ["c", "d"] {
+            payload.extend_from_slice(&encode_file_list_entry(&sample_entry(name), &o, &mut codec));
+        }
+        payload.extend_from_slice(&encode_file_list_terminator(&o, 0));
+        let mut d = hand_driver(mux_frame(&payload), 0x80 | 1, false).await;
+        let mut sink = CollectingSink::default();
+        let limits = TreeListLimits {
+            max_entries: 3,
+            ..Default::default()
+        };
+        let start = d
+            .receive_initial_tree_list(limits, &mut sink)
+            .await
+            .expect("the first segment (2 entries) is under the ceiling");
+        assert_eq!(start.initial.entries.len(), 2);
+        let mut state = start.state;
+        let ndx = read_next_ndx(&mut d, &mut state, &mut sink).await;
+        let err = d
+            .receive_tree_segment(ndx, &mut state, limits, &mut sink)
+            .await
+            .expect_err("the session total 4 exceeds the ceiling 3");
+        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
+        assert!(
+            err.detail.contains("session limit exceeded: 3"),
+            "unexpected detail: {}",
+            err.detail
+        );
     }
 }
