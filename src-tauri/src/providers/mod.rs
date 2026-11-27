@@ -2155,6 +2155,84 @@ pub(crate) fn reply_with_a_sent_value(bytes: usize) -> String {
     format!("a reply of {bytes} bytes, withheld: it contains a value this session sent")
 }
 
+/// A JSON reply as an error may show it, as `without_sent_values` does for
+/// text. A reply that parses is read as its values, so an echo spelled with
+/// JSON's optional escapes (`\/`, `a`) is the value again: a value sent
+/// is cut out of each string, and a string (or key) holding a short one,
+/// which cannot be cut out of the word it touches, is replaced whole, so
+/// the rest of the reply (a reason code) is still shown. A reply that does
+/// not parse is taken as text, with each value also looked for in the
+/// escaped spelling JSON requires (a `"` in a password echoes as `\"`),
+/// unless it holds a `\` once its entities are decoded, when it is not
+/// shown. Entities are decoded first (`&#47;`), as the sanitizer that
+/// follows would decode them; a string that still holds a `\` after that
+/// (`&#92;u002f`) is replaced whole.
+pub(crate) fn json_reply_without_sent_values(body: &str, sent: &[String]) -> Option<String> {
+    let (long, short): (Vec<String>, Vec<String>) = sent
+        .iter()
+        .filter(|value| !value.is_empty())
+        .cloned()
+        .partition(|value| value.len() >= 8);
+    if let Ok(mut reply) = serde_json::from_str::<serde_json::Value>(body) {
+        scrub_sent_values(&mut reply, &long, &short);
+        return serde_json::to_string(&reply).ok();
+    }
+    // Text that does not parse but holds an escape, once its entities are
+    // decoded, may spell a value in any of JSON's ways (a reply cut short):
+    // it is not shown.
+    let decoded = fully_unescaped(body)?;
+    if (!long.is_empty() || !short.is_empty()) && decoded.contains('\\') {
+        return None;
+    }
+    let mut spellings: Vec<String> = sent.to_vec();
+    spellings.extend(sent.iter().filter_map(|value| {
+        let quoted = serde_json::to_string(value).ok()?;
+        Some(quoted[1..quoted.len() - 1].to_string())
+    }));
+    // `sanitize_api_error` decodes entities after this: the scrub reads the
+    // text already decoded, so `&#47;` cannot bring a value back.
+    without_sent_values(&decoded, &spellings)
+}
+
+fn scrub_sent_values(value: &mut serde_json::Value, long: &[String], short: &[String]) {
+    // Each string is read decoded (`&#47;` is `/`), as `sanitize_api_error`
+    // will read it; one that does not settle goes whole.
+    let any_sent = !long.is_empty() || !short.is_empty();
+    let scrubbed = |text: &str| {
+        let Some(text) = fully_unescaped(text) else {
+            return "[REDACTED]".to_string();
+        };
+        // An escape left after the entities (`&#92;u002f` is `/`) can
+        // spell a value no matcher reads.
+        if (any_sent && text.contains('\\')) || contains_any_spelling(&text, short) {
+            "[REDACTED]".to_string()
+        } else {
+            redact_values(&text, long, "[REDACTED]")
+        }
+    };
+    match value {
+        serde_json::Value::String(text) => *text = scrubbed(text),
+        // A value sent can come back as a bare scalar (`true`, `42`).
+        serde_json::Value::Number(_) | serde_json::Value::Bool(_) | serde_json::Value::Null => {
+            let text = value.to_string();
+            if scrubbed(&text) != text {
+                *value = serde_json::Value::String("[REDACTED]".to_string());
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                scrub_sent_values(item, long, short);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (key, mut item) in std::mem::take(map) {
+                scrub_sent_values(&mut item, long, short);
+                map.insert(scrubbed(&key), item);
+            }
+        }
+    }
+}
+
 /// `text` with each of `values` replaced by `placeholder`, in every spelling
 /// a reflection can take: as given, percent-encoded, and decoded the way the
 /// text was (`fully_unescaped`, so a value holding a literal `&amp;` matches
@@ -6865,6 +6943,88 @@ mod tests {
         assert_eq!(
             without_sent_values("code accepted", &short).as_deref(),
             Some("code accepted")
+        );
+    }
+
+    /// A JSON reply echoing a sent value with an optional escape (`\/`,
+    /// `\u0061`) or with the escape JSON requires (`\"`) shows the value as
+    /// `[REDACTED]`; a string holding a short value is replaced whole, and
+    /// text that is not JSON holding one is not shown.
+    #[test]
+    fn a_sent_value_echoed_in_json_is_redacted_in_every_escape() {
+        let sent = vec!["a/b\"c-secret".to_string()];
+        for body in [
+            r#"{"message":"Invalid value 'a/b\"c-secret'."}"#,
+            r#"{"message":"Invalid value 'a\/b\"c-secret'."}"#,
+            r#"{"message":"Invalid value '\u0061\/b\u0022c-secret'."}"#,
+        ] {
+            let shown = json_reply_without_sent_values(body, &sent).expect("shown");
+            assert!(!shown.contains("secret"), "{body}: {shown}");
+            assert!(shown.contains("Invalid value '[REDACTED]'"), "{shown}");
+        }
+        // An entity the sanitizer decodes afterwards cannot bring it back.
+        let entity = json_reply_without_sent_values(
+            r#"{"message":"Invalid value 'a&#47;b&quot;c-secret'."}"#,
+            &sent,
+        )
+        .expect("shown");
+        assert!(!sanitize_api_error(&entity).contains("secret"), "{entity}");
+        // A backslash behind an entity is still an escape: in a string it
+        // goes whole, in text the reply is not shown.
+        let shown = json_reply_without_sent_values(
+            r#"{"reason":"bad","message":"refused a/b&#92;u0022c-secret"}"#,
+            &sent,
+        )
+        .expect("shown");
+        assert!(!sanitize_api_error(&shown).contains("secret"), "{shown}");
+        assert!(shown.contains("\"reason\":\"bad\""), "{shown}");
+        assert_eq!(
+            json_reply_without_sent_values("refused a/b&#92;u0022c-secret", &sent),
+            None
+        );
+        // A sent value echoed as a bare scalar, anywhere; others stay.
+        let scalars = vec!["true".to_string(), "null".to_string()];
+        let shown = json_reply_without_sent_values(
+            r#"{"password":true,"list":[null,1],"other":false}"#,
+            &scalars,
+        )
+        .map(|shown| serde_json::from_str::<serde_json::Value>(&shown).unwrap());
+        assert_eq!(
+            shown,
+            Some(
+                serde_json::json!({"password": "[REDACTED]", "list": ["[REDACTED]", 1], "other": false})
+            )
+        );
+        assert_eq!(
+            json_reply_without_sent_values("true", &scalars).as_deref(),
+            Some("\"[REDACTED]\"")
+        );
+        // JSON cut short with an escape: not shown.
+        assert_eq!(
+            json_reply_without_sent_values(r#"{"message":"Invalid value 'a\/b\"c-secret'"#, &sent),
+            None
+        );
+        // Not JSON: taken as text.
+        assert_eq!(
+            json_reply_without_sent_values("refused a/b\"c-secret", &sent).as_deref(),
+            Some("refused [REDACTED]")
+        );
+        // A short value is not cut out of its string: the string goes, the
+        // rest of the reply stays.
+        let short = vec!["p/w".to_string()];
+        assert_eq!(
+            json_reply_without_sent_values(
+                r#"{"reason":"invalid_parameter","message":"bad 'p\/w'","p\/w":1}"#,
+                &short
+            )
+            .map(|shown| serde_json::from_str::<serde_json::Value>(&shown).unwrap()),
+            Some(
+                serde_json::json!({"reason": "invalid_parameter", "message": "[REDACTED]", "[REDACTED]": 1})
+            )
+        );
+        assert_eq!(
+            json_reply_without_sent_values("not json: p/w", &short),
+            None
         );
     }
 
