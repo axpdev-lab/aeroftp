@@ -3737,7 +3737,13 @@ fn log_update_detection(version: String) {
 /// it the launch failed with a bare "No such file or directory"; say what is
 /// missing and where the verified package is, before anything is staged.
 fn require_pkexec(downloaded_path: &str) -> Result<(), String> {
-    if local_bridge::which_on_path("pkexec") {
+    require_pkexec_with(local_bridge::which_on_path, downloaded_path)
+}
+
+/// [`require_pkexec`] with the PATH lookup passed in, so a test can take
+/// pkexec away without touching the process environment.
+fn require_pkexec_with(found: impl Fn(&str) -> bool, downloaded_path: &str) -> Result<(), String> {
+    if found("pkexec") {
         return Ok(());
     }
     Err(format!(
@@ -33687,6 +33693,163 @@ mod privileged_update_staging_tests {
     fn staging_rejects_a_missing_source() {
         let missing = Path::new("/definitely-missing-aeroftp-update.deb");
         assert!(stage_privileged_update_package(missing, &"0".repeat(64)).is_err());
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod linux_package_script_tests {
+    //! The rpm requires neither diffutils nor gawk, so the package scripts run
+    //! here on a PATH that holds only the tools they are allowed to use: with
+    //! the host PATH a test would pass even if `cmp` or `awk` came back.
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    const POSTINST: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/deb-postinst.sh");
+    const HELPER: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/aeroftp-update-helper"
+    );
+
+    /// A directory of symlinks to the named host tools, and nothing else.
+    fn restricted_bin(dir: &Path, tools: &[&str]) -> PathBuf {
+        let bin = dir.join("restricted-bin");
+        std::fs::create_dir_all(&bin).expect("restricted bin");
+        for tool in tools {
+            let host = ["/usr/bin", "/bin"]
+                .iter()
+                .map(|d| Path::new(d).join(tool))
+                .find(|p| p.exists())
+                .unwrap_or_else(|| panic!("host tool {tool} not found"));
+            std::os::unix::fs::symlink(host, bin.join(tool)).expect("tool link");
+        }
+        bin
+    }
+
+    /// Payload files: only tested with `-x`, never run (a fake the scripts
+    /// run is a `script_stub`, which keeps clear of ETXTBSY).
+    fn write_exec(path: &Path, body: &[u8]) {
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("dirs");
+        std::fs::write(path, body).expect("write");
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+
+    /// A fresh install as rpm leaves it: the GUI payload at /usr/bin/aeroftp.
+    fn package_root(dir: &Path) -> PathBuf {
+        let root = dir.join("root");
+        write_exec(&root.join("usr/bin/aeroftp"), b"GUI payload");
+        write_exec(
+            &root.join("usr/lib/aeroftp/aeroftp-dispatch"),
+            b"dispatcher",
+        );
+        write_exec(&root.join("usr/lib/aeroftp/aeroftp-cli"), b"cli");
+        root
+    }
+
+    fn run_postinst(root: &Path, bin: &Path) -> std::process::ExitStatus {
+        Command::new("/bin/bash")
+            .arg(POSTINST)
+            .env_clear()
+            .env("PATH", bin)
+            .env("AEROFTP_PACKAGE_ROOT", root)
+            .status()
+            .expect("postinst")
+    }
+
+    const POSTINST_TOOLS: &[&str] = &[
+        "mkdir",
+        "mv",
+        "chmod",
+        "install",
+        "ln",
+        "rm",
+        "find",
+        "sha256sum",
+        "cp",
+        "grep",
+        "sed",
+    ];
+
+    /// Without `cmp` the old `! cmp -s` test was always true, so the second
+    /// run moved the dispatcher over the GUI payload.
+    #[test]
+    fn postinst_run_twice_without_cmp_keeps_the_gui_payload() {
+        let dir = tempfile::tempdir().expect("test dir");
+        let bin = restricted_bin(dir.path(), POSTINST_TOOLS);
+        assert!(!bin.join("cmp").exists());
+        let root = package_root(dir.path());
+        for run in 1..=2 {
+            assert!(run_postinst(&root, &bin).success(), "run {run}");
+            assert_eq!(
+                std::fs::read(root.join("usr/lib/aeroftp/aeroftp.bin")).expect("gui"),
+                b"GUI payload",
+                "run {run}"
+            );
+            assert_eq!(
+                std::fs::read(root.join("usr/bin/aeroftp")).expect("dispatcher"),
+                b"dispatcher",
+                "run {run}"
+            );
+        }
+    }
+
+    /// A file that cannot be hashed stops the script before anything moves:
+    /// guessing "different" would move the dispatcher over the GUI payload.
+    #[test]
+    fn postinst_that_cannot_hash_moves_nothing() {
+        let dir = tempfile::tempdir().expect("test dir");
+        let tools: Vec<&str> = POSTINST_TOOLS
+            .iter()
+            .copied()
+            .filter(|t| *t != "sha256sum")
+            .collect();
+        let bin = restricted_bin(dir.path(), &tools);
+        crate::util::script_stub::install(bin.join("sha256sum"), "exit 1\n");
+        let root = package_root(dir.path());
+        // Exit 1 from digest_of, not 126/127 from a fake that failed to run.
+        assert_eq!(run_postinst(&root, &bin).code(), Some(1));
+        assert_eq!(
+            std::fs::read(root.join("usr/bin/aeroftp")).expect("gui stays"),
+            b"GUI payload"
+        );
+        assert!(!root.join("usr/lib/aeroftp/aeroftp.bin").exists());
+    }
+
+    /// The helper hashed with `awk`, which a minimal rpm system may not have
+    /// (rc 127 live on a Tumbleweed container). It runs here with no awk.
+    #[test]
+    fn update_helper_installs_without_awk() {
+        let dir = tempfile::tempdir().expect("test dir");
+        let bin = restricted_bin(dir.path(), &["mktemp", "cp", "rm", "sha256sum"]);
+        assert!(!bin.join("awk").exists());
+        let called = dir.path().join("dpkg-called");
+        crate::util::script_stub::install(
+            bin.join("dpkg"),
+            format!(": > '{}'\n", called.display()),
+        );
+        let source = dir.path().join("AeroFTP_4.2.8_amd64.deb");
+        std::fs::write(&source, b"verified package").expect("package");
+        let digest = super::sha256_file_hex(&source).expect("digest");
+        let staged = super::stage_privileged_update_package(&source, &digest).expect("staged");
+        let status = Command::new("/bin/bash")
+            .arg(HELPER)
+            .arg(&staged.path)
+            .arg(&staged.sha256)
+            .env_clear()
+            .env("PATH", &bin)
+            .status()
+            .expect("helper");
+        assert!(status.success());
+        assert!(called.exists());
+    }
+
+    #[test]
+    fn a_missing_pkexec_refuses_the_install_and_names_the_package() {
+        let error = super::require_pkexec_with(|_| false, "/home/u/Downloads/AeroFTP.rpm")
+            .expect_err("no pkexec");
+        assert!(error.contains("pkexec is not installed"), "{error}");
+        assert!(error.contains("/home/u/Downloads/AeroFTP.rpm"), "{error}");
+        assert!(super::require_pkexec_with(|tool| tool == "pkexec", "/x.rpm").is_ok());
     }
 }
 
