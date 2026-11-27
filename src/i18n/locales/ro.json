@@ -400,7 +400,8 @@
                 "copyKept": "Folderul inițial {path} nu are echivalent în modul {mode} și a fost păstrat ca atare."
             },
             "fieldPatternInvalid": "Această valoare nu pare corectă pentru acest câmp",
-            "puterUsernameIsEmail": "Aceasta este o adresă de e-mail: Puter are nevoie de numele tău de utilizator Puter (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Aceasta este o adresă de e-mail: Puter are nevoie de numele tău de utilizator Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Resetează la valorile implicite"
         },
         "browser": {
             "remote": "La distanță",

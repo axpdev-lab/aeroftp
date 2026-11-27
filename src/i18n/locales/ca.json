@@ -400,7 +400,8 @@
                 "copyKept": "La carpeta inicial {path} no té cap equivalent en el mode {mode} i s'ha mantingut tal com era."
             },
             "fieldPatternInvalid": "Aquest valor no sembla correcte per a aquest camp",
-            "puterUsernameIsEmail": "Això és una adreça de correu electrònic: Puter necessita el teu nom d'usuari de Puter (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Això és una adreça de correu electrònic: Puter necessita el teu nom d'usuari de Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Restableix el valor predeterminat"
         },
         "browser": {
             "remote": "Remot",

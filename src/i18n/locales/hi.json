@@ -400,7 +400,8 @@
                 "copyKept": "प्रारंभिक फ़ोल्डर {path} का {mode} मोड में कोई समकक्ष नहीं है और उसे जैसा था वैसा ही रखा गया।"
             },
             "fieldPatternInvalid": "यह मान इस फील्ड के लिए सही नहीं है",
-            "puterUsernameIsEmail": "यह एक ईमेल पता है: Puter को आपका Puter उपयोगकर्ता नाम चाहिए (Settings > Account > Username)"
+            "puterUsernameIsEmail": "यह एक ईमेल पता है: Puter को आपका Puter उपयोगकर्ता नाम चाहिए (Settings > Account > Username)",
+            "resetEndpointToDefault": "डिफ़ॉल्ट पर रीसेट करें"
         },
         "browser": {
             "remote": "दूरस्थ",

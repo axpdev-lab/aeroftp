@@ -400,7 +400,8 @@
                 "copyKept": "Началната папка {path} няма съответствие в режим {mode} и е запазена без промяна."
             },
             "fieldPatternInvalid": "Тази стойност не изглежда правилна за това поле",
-            "puterUsernameIsEmail": "Това е имейл адрес: Puter изисква вашето потребителско име в Puter (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Това е имейл адрес: Puter изисква вашето потребителско име в Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Нулиране по подразбиране"
         },
         "browser": {
             "remote": "Отдалечен",

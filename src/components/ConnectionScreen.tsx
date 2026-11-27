@@ -48,6 +48,7 @@ import { isValidOverlayScope, loginRelativeForm, normalizeOverlayAnchor, resolve
 import { overlayEditDiffers } from '../utils/overlayEditDiff';
 import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
+import { ResetEndpointLink } from './common/ResetEndpointLink';
 import { CopySecretButton } from './common/CopySecretButton';
 import { CopyableFormFields } from './common/CopyableFormFields';
 import { loadFourSharedCredentials } from '../utils/fourSharedCredentials';
@@ -6107,6 +6108,24 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className={`w-full px-3 py-2 border rounded-lg text-sm ${advancedUnlocked ? 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600' : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
                                                     placeholder={t('connection.swiftAuthUrl')}
                                                 />
+                                                <ResetEndpointLink
+                                                    provider={selectedProvider}
+                                                    params={connectionParams}
+                                                    fallbackPort={443}
+                                                    onReset={(def) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        server: def.server,
+                                                        port: def.port ?? connectionParams.port ?? 443,
+                                                        // Resetting the auth URL crosses the Blomp
+                                                        // boundary exactly like editing it, so the
+                                                        // opt-in follows the preset again.
+                                                        options: swiftOptionsForAuthUrl(
+                                                            connectionParams.server,
+                                                            def.server,
+                                                            connectionParams.options,
+                                                        ),
+                                                    })}
+                                                />
                                                 {!advancedUnlocked && (
                                                     <button type="button" onClick={() => setShowAdvancedWarning(true)} className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300">
                                                         <Pencil size={10} />{t('common.edit')}
@@ -6460,28 +6479,40 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="flex gap-2">
-                                                    <div className="flex-1 min-w-0">
-                                                        <label className="block text-sm font-medium mb-1.5">{getServerLabel()}</label>
-                                                        <input
-                                                            type="text"
-                                                            value={connectionParams.server}
-                                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
-                                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                            placeholder="https://davXXX.teracloud.jp/dav/"
-                                                        />
+                                                <div>
+                                                    <div className="flex gap-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <label className="block text-sm font-medium mb-1.5">{getServerLabel()}</label>
+                                                            <input
+                                                                type="text"
+                                                                value={connectionParams.server}
+                                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
+                                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                                placeholder="https://davXXX.teracloud.jp/dav/"
+                                                            />
+                                                        </div>
+                                                        <div className="w-24">
+                                                            <label className="block text-sm font-medium mb-1.5">{t('connection.port')}</label>
+                                                            <input
+                                                                type="number"
+                                                                value={connectionParams.port || 443}
+                                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || 443 })}
+                                                                className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
+                                                                min={1}
+                                                                max={65535}
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <div className="w-24">
-                                                        <label className="block text-sm font-medium mb-1.5">{t('connection.port')}</label>
-                                                        <input
-                                                            type="number"
-                                                            value={connectionParams.port || 443}
-                                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || 443 })}
-                                                            className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
-                                                            min={1}
-                                                            max={65535}
-                                                        />
-                                                    </div>
+                                                    <ResetEndpointLink
+                                                        provider={selectedProvider}
+                                                        params={connectionParams}
+                                                        fallbackPort={443}
+                                                        onReset={(def) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            server: def.server,
+                                                            port: def.port ?? connectionParams.port ?? 443,
+                                                        })}
+                                                    />
                                                 </div>
                                             )
                                         )}
@@ -6554,6 +6585,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                     />
                                                                 </div>
                                                             </div>
+                                                            <ResetEndpointLink
+                                                                provider={selectedProvider}
+                                                                params={connectionParams}
+                                                                fallbackPort={getDefaultPort(protocol)}
+                                                                onReset={(def) => onConnectionParamsChange({
+                                                                    ...connectionParams,
+                                                                    server: def.server,
+                                                                    port: def.port ?? connectionParams.port,
+                                                                })}
+                                                            />
                                                             {!advancedUnlocked && (
                                                                 <button
                                                                     type="button"

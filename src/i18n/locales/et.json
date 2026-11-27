@@ -400,7 +400,8 @@
                 "copyKept": "Algkaustal {path} pole režiimis {mode} vastet ja see säilitati muutmata kujul."
             },
             "fieldPatternInvalid": "See väärtus ei tundu selle välja jaoks õige",
-            "puterUsernameIsEmail": "See on e-posti aadress: Puter vajab sinu Puteri kasutajanime (Settings > Account > Username)"
+            "puterUsernameIsEmail": "See on e-posti aadress: Puter vajab sinu Puteri kasutajanime (Settings > Account > Username)",
+            "resetEndpointToDefault": "Lähtesta vaikimisi"
         },
         "browser": {
             "remote": "Kaugserver",

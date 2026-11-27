@@ -400,7 +400,8 @@
                 "copyKept": "{path} başlangıç klasörünün {mode} modunda bir karşılığı yok ve olduğu gibi korundu."
             },
             "fieldPatternInvalid": "Bu değer bu alan için doğru görünmüyor",
-            "puterUsernameIsEmail": "Bu bir e-posta adresi: Puter, Puter kullanıcı adınızı ister (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Bu bir e-posta adresi: Puter, Puter kullanıcı adınızı ister (Settings > Account > Username)",
+            "resetEndpointToDefault": "Varsayılana sıfırla"
         },
         "browser": {
             "remote": "Uzak",

@@ -400,7 +400,8 @@
                 "copyKept": "প্রারম্ভিক ফোল্ডার {path}-এর {mode} মোডে কোনো সমতুল্য নেই এবং এটি যেমন ছিল তেমনই রাখা হয়েছে।"
             },
             "fieldPatternInvalid": "মানটি সঠিক নয়",
-            "puterUsernameIsEmail": "এটি একটি ইমেইল ঠিকানা: Puter আপনার Puter ব্যবহারকারীর নাম চায় (Settings > Account > Username)"
+            "puterUsernameIsEmail": "এটি একটি ইমেইল ঠিকানা: Puter আপনার Puter ব্যবহারকারীর নাম চায় (Settings > Account > Username)",
+            "resetEndpointToDefault": "ডিফল্টে রিসেট করুন"
         },
         "browser": {
             "remote": "রিমোট",

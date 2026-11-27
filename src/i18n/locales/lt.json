@@ -400,7 +400,8 @@
                 "copyKept": "Pradinis aplankas {path} neturi atitikmens {mode} režime ir buvo paliktas toks, koks yra."
             },
             "fieldPatternInvalid": "Ši reikšmė neatrodo teisinga šiam laukui",
-            "puterUsernameIsEmail": "Tai el. pašto adresas: Puter reikia jūsų Puter vartotojo vardo (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Tai el. pašto adresas: Puter reikia jūsų Puter vartotojo vardo (Settings > Account > Username)",
+            "resetEndpointToDefault": "Atkurti numatytąją"
         },
         "browser": {
             "remote": "Nuotolinis",

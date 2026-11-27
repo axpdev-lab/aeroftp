@@ -550,7 +550,8 @@
                 "refused": "La modalità non è stata cambiata",
                 "copyKeptTitle": "Cartella iniziale mantenuta",
                 "copyKept": "La cartella iniziale {path} non ha un equivalente in modalità {mode} ed è stata mantenuta così com'è."
-            }
+            },
+            "resetEndpointToDefault": "Ripristina predefinito"
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",

@@ -33,6 +33,7 @@ import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams, endpointNeedsCleartextConsent, presetNeedsUserEndpoint } from '../providers';
 import { resolvePresetText } from '../providers/presetText';
 import { CopyLinkButton } from './common/CopyLinkButton';
+import { ResetEndpointLink } from './common/ResetEndpointLink';
 import { Bucket } from './connectionMethodIcons';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
 import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, ProtonDriveLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, TwakeLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
@@ -1403,6 +1404,12 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         <p className="text-xs text-gray-500 mt-1">{presetText(endpointField.helpText)}</p>
                                     )}
                                 </div>
+                                <ResetEndpointLink
+                                    provider={providerConfig}
+                                    params={{ options }}
+                                    fallbackPort={443}
+                                    onReset={(def) => onChange({ ...options, endpoint: def.server })}
+                                />
                                 <Checkbox
                                     checked={options.pathStyle ?? providerConfig?.defaults?.pathStyle ?? false}
                                     onChange={(v) => onChange({ ...options, pathStyle: v })}

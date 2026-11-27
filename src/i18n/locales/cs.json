@@ -400,7 +400,8 @@
                 "copyKept": "Počáteční složka {path} nemá v režimu {mode} žádný ekvivalent a zůstala beze změny."
             },
             "fieldPatternInvalid": "Tato hodnota nevypadá pro toto pole správně",
-            "puterUsernameIsEmail": "Toto je e-mailová adresa: Puter potřebuje tvé uživatelské jméno v Puteru (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Toto je e-mailová adresa: Puter potřebuje tvé uživatelské jméno v Puteru (Settings > Account > Username)",
+            "resetEndpointToDefault": "Obnovit výchozí hodnotu"
         },
         "browser": {
             "remote": "Vzdálený",

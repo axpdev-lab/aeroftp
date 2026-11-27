@@ -400,7 +400,8 @@
                 "copyKept": "โฟลเดอร์เริ่มต้น {path} ไม่มีตำแหน่งที่เทียบเท่าในโหมด {mode} จึงคงไว้ตามเดิม"
             },
             "fieldPatternInvalid": "ค่านี้ดูไม่ถูกต้องสำหรับช่องนี้",
-            "puterUsernameIsEmail": "นี่คือที่อยู่อีเมล: Puter ต้องการชื่อผู้ใช้ Puter ของคุณ (Settings > Account > Username)"
+            "puterUsernameIsEmail": "นี่คือที่อยู่อีเมล: Puter ต้องการชื่อผู้ใช้ Puter ของคุณ (Settings > Account > Username)",
+            "resetEndpointToDefault": "รีเซ็ตเป็นค่าเริ่มต้น"
         },
         "browser": {
             "remote": "ระยะไกล",

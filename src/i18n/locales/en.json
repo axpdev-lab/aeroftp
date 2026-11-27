@@ -1765,6 +1765,7 @@
             "azureAccessKey": "Access Key",
             "azureAccountName": "Account Name",
             "azureEndpoint": "Endpoint (optional)",
+            "resetEndpointToDefault": "Reset to default",
             "connectTo": "Connect to {provider}",
             "activeSessions": "Active Sessions",
             "aerocloudConfigured": "AeroCloud is already configured and syncing",

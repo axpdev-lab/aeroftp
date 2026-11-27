@@ -400,7 +400,8 @@
                 "copyKept": "Folda ya mwanzo {path} haina kilinganishi katika hali ya {mode} na imehifadhiwa kama ilivyo."
             },
             "fieldPatternInvalid": "Thamani hii haionekani sawa kwa uwanja huu",
-            "puterUsernameIsEmail": "Hii ni anwani ya barua pepe: Puter inahitaji jina lako la mtumiaji wa Puter (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Hii ni anwani ya barua pepe: Puter inahitaji jina lako la mtumiaji wa Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Rudisha kwa chaguo-msingi"
         },
         "browser": {
             "remote": "Mbali",

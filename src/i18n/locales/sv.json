@@ -400,7 +400,8 @@
                 "copyKept": "Startmappen {path} har ingen motsvarighet i {mode}-läge och behölls som den är."
             },
             "fieldPatternInvalid": "Detta värde ser inte rätt ut för det här fältet",
-            "puterUsernameIsEmail": "Detta är en e-postadress: Puter behöver ditt Puter-användarnamn (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Detta är en e-postadress: Puter behöver ditt Puter-användarnamn (Settings > Account > Username)",
+            "resetEndpointToDefault": "Återställ till standard"
         },
         "browser": {
             "remote": "Fjärr",

@@ -400,7 +400,8 @@
                 "copyKept": "Почетна фасцикла {path} нема еквивалент у режиму {mode} и задржана је непромењена."
             },
             "fieldPatternInvalid": "Ова вредност не изгледа исправно за ово поље",
-            "puterUsernameIsEmail": "Ово је имејл адреса: Puter захтева ваше Puter корисничко име (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Ово је имејл адреса: Puter захтева ваше Puter корисничко име (Settings > Account > Username)",
+            "resetEndpointToDefault": "Врати на подразумевано"
         },
         "browser": {
             "remote": "Удаљено",

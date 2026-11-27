@@ -400,7 +400,8 @@
                 "copyKept": "O cartafol inicial {path} non ten equivalente no modo {mode} e conservouse tal como estaba."
             },
             "fieldPatternInvalid": "Este valor non parece correcto para este campo",
-            "puterUsernameIsEmail": "Isto é un enderezo de correo electrónico: Puter necesita o teu nome de usuario de Puter (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Isto é un enderezo de correo electrónico: Puter necesita o teu nome de usuario de Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Restablecer o valor predeterminado"
         },
         "browser": {
             "remote": "Remoto",

@@ -400,7 +400,8 @@
                 "copyKept": "Nid oes gan y ffolder cychwynnol {path} gyfwerth yn y modd {mode}, a chafodd ei gadw fel y mae."
             },
             "fieldPatternInvalid": "Nid yw'r gwerth hwn yn edrych yn iawn ar gyfer y maes hwn",
-            "puterUsernameIsEmail": "Dyma gyfeiriad e-bost: Mae Puter angen dy enw defnyddiwr Puter (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Dyma gyfeiriad e-bost: Mae Puter angen dy enw defnyddiwr Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Ailosod i'r rhagosodiad"
         },
         "browser": {
             "remote": "Pell",

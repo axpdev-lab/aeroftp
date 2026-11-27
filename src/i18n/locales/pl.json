@@ -400,7 +400,8 @@
                 "copyKept": "Folder początkowy {path} nie ma odpowiednika w trybie {mode} i został zachowany bez zmian."
             },
             "fieldPatternInvalid": "Ta wartość nie wygląda poprawnie dla tego pola",
-            "puterUsernameIsEmail": "To jest adres e-mail: Puter wymaga nazwy użytkownika Puter (Settings > Account > Username)"
+            "puterUsernameIsEmail": "To jest adres e-mail: Puter wymaga nazwy użytkownika Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Przywróć domyślne"
         },
         "browser": {
             "remote": "Zdalny",

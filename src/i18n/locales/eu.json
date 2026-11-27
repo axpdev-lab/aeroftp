@@ -400,7 +400,8 @@
                 "copyKept": "{path} hasierako karpetak ez du baliokiderik {mode} moduan, eta dagoen bezala mantendu da."
             },
             "fieldPatternInvalid": "Balio hau ez da zuzena eremu honetarako",
-            "puterUsernameIsEmail": "Hau e-posta helbide bat da: Puter-ek zure Puter erabiltzaile-izena behar du (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Hau e-posta helbide bat da: Puter-ek zure Puter erabiltzaile-izena behar du (Settings > Account > Username)",
+            "resetEndpointToDefault": "Berrezarri balio lehenetsia"
         },
         "browser": {
             "remote": "Urrunekoa",

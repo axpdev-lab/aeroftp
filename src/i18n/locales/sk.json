@@ -400,7 +400,8 @@
                 "copyKept": "Počiatočný priečinok {path} nemá v režime {mode} žiadny ekvivalent a zostal bez zmeny."
             },
             "fieldPatternInvalid": "Táto hodnota nevyzerá pre toto pole správne",
-            "puterUsernameIsEmail": "Toto je e-mailová adresa: Puter potrebuje vaše používateľské meno v Puteri (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Toto je e-mailová adresa: Puter potrebuje vaše používateľské meno v Puteri (Settings > Account > Username)",
+            "resetEndpointToDefault": "Obnoviť predvolené"
         },
         "browser": {
             "remote": "Vzdialený",

@@ -400,7 +400,8 @@
                 "copyKept": "Le dossier initial {path} n'a pas d'équivalent en mode {mode} et a été conservé tel quel."
             },
             "fieldPatternInvalid": "Cette valeur ne semble pas correcte pour ce champ",
-            "puterUsernameIsEmail": "Ceci est une adresse e-mail : Puter a besoin de votre nom d'utilisateur Puter (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Ceci est une adresse e-mail : Puter a besoin de votre nom d'utilisateur Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Réinitialiser par défaut"
         },
         "browser": {
             "remote": "Distant",

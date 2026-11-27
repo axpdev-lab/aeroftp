@@ -400,7 +400,8 @@
                 "copyKept": "Սկզբնական {path} թղթապանակը {mode} ռեժիմում համարժեք չունի և պահպանվել է անփոփոխ։"
             },
             "fieldPatternInvalid": "սա արպեքը արեւ Անվավեր համար դաշմը",
-            "puterUsernameIsEmail": "սա արեւ Էլ. փոստի հասցե: Puter պեթ դզեր Puter Օգտանուն (Settings > Account > Username)"
+            "puterUsernameIsEmail": "սա արեւ Էլ. փոստի հասցե: Puter պեթ դզեր Puter Օգտանուն (Settings > Account > Username)",
+            "resetEndpointToDefault": "Վերականգնել parcel"
         },
         "browser": {
             "remote": "Հեռավոր",

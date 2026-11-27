@@ -400,7 +400,8 @@
                 "copyKept": "Početna mapa {path} nema ekvivalent u načinu {mode} i zadržana je kakva jest."
             },
             "fieldPatternInvalid": "Ova vrijednost ne izgleda ispravno za ovo polje",
-            "puterUsernameIsEmail": "Ovo je e-mail adresa: Puter treba vaše Puter korisničko ime (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Ovo je e-mail adresa: Puter treba vaše Puter korisničko ime (Settings > Account > Username)",
+            "resetEndpointToDefault": "Vrati na zadano"
         },
         "browser": {
             "remote": "Udaljeno",

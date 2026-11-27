@@ -400,7 +400,8 @@
                 "copyKept": "Startmappen {path} har ingen tilsvarende i {mode}-tilstand og er bevaret, som den er."
             },
             "fieldPatternInvalid": "Denne værdi ser ikke korrekt ud for dette felt",
-            "puterUsernameIsEmail": "Dette er en e-mailadresse: Puter skal bruge dit Puter-brugernavn (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Dette er en e-mailadresse: Puter skal bruge dit Puter-brugernavn (Settings > Account > Username)",
+            "resetEndpointToDefault": "Nulstil til standard"
         },
         "browser": {
             "remote": "Ekstern",

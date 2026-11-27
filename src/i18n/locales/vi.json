@@ -400,7 +400,8 @@
                 "copyKept": "Thư mục ban đầu {path} không có tương đương trong chế độ {mode} và được giữ nguyên."
             },
             "fieldPatternInvalid": "Giá trị này không có vẻ đúng với trường này",
-            "puterUsernameIsEmail": "Đây là một địa chỉ email: Puter cần tên người dùng Puter của bạn (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Đây là một địa chỉ email: Puter cần tên người dùng Puter của bạn (Settings > Account > Username)",
+            "resetEndpointToDefault": "Đặt lại về mặc định"
         },
         "browser": {
             "remote": "Từ xa",

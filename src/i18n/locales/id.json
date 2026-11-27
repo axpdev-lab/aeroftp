@@ -400,7 +400,8 @@
                 "copyKept": "Folder awal {path} tidak memiliki padanan dalam mode {mode} dan dipertahankan apa adanya."
             },
             "fieldPatternInvalid": "Nilai ini tidak terlihat benar untuk kolom ini",
-            "puterUsernameIsEmail": "Ini adalah alamat email: Puter memerlukan nama pengguna Puter Anda (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Ini adalah alamat email: Puter memerlukan nama pengguna Puter Anda (Settings > Account > Username)",
+            "resetEndpointToDefault": "Setel ulang ke default"
         },
         "browser": {
             "remote": "Jarak Jauh",

@@ -400,7 +400,8 @@
                 "copyKept": "A(z) {path} kezdőmappának nincs megfelelője {mode} módban, ezért változatlanul megmaradt."
             },
             "fieldPatternInvalid": "Ez az érték nem tűnik helyesnek ehhez a mezőhöz",
-            "puterUsernameIsEmail": "Ez egy e-mail cím: a Puterhez a Puter felhasználóneved kell (Settings > Account > Username)"
+            "puterUsernameIsEmail": "Ez egy e-mail cím: a Puterhez a Puter felhasználóneved kell (Settings > Account > Username)",
+            "resetEndpointToDefault": "Alapértelmezett visszaállítása"
         },
         "browser": {
             "remote": "Távoli",
