@@ -86,7 +86,9 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
+use crate::providers::{
+    MultipartHandle, ProviderError, RemoteEntry, StorageProvider, UploadedPart,
+};
 use crate::transfer_dag::executor::{
     execute_dag_with_options, DagExecuteOptions, DagNodeRunner, NodeFuture, NodeOutcome,
 };
@@ -343,6 +345,39 @@ impl CopyProviderHandle {
         }
     }
 
+    async fn stat(&self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.stat(path).await
+            }
+            Self::Required(provider) => provider.lock().await.stat(path).await,
+        }
+    }
+
+    async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.list(path).await
+            }
+            Self::Required(provider) => provider.lock().await.list(path).await,
+        }
+    }
+
+    async fn mkdir(&self, path: &str) -> Result<(), ProviderError> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.mkdir(path).await
+            }
+            Self::Required(provider) => provider.lock().await.mkdir(path).await,
+        }
+    }
+
     async fn download(&self, remote: &str, local: &str) -> Result<(), ProviderError> {
         match self {
             Self::Optional(provider) => {
@@ -468,6 +503,134 @@ impl DagObserver for SingleFileMetricsObserver {
     }
 }
 
+/// Execute one production copy: a file through the shaped file DAG, a folder
+/// natively when the provider copies folders, otherwise file by file.
+///
+/// The file DAG's download-then-upload fallback moves one file: given a
+/// folder it failed ("is not a file" on MEGA, "not supported" on Proton).
+pub async fn execute_copy_dag(
+    provider: CopyProviderHandle,
+    from: String,
+    to: String,
+    observer: Arc<dyn DagObserver>,
+) -> Result<CopyDagOutcome, ProviderError> {
+    // A stat the provider cannot answer (S3 has no object at a folder name)
+    // keeps the file path, where such providers handle folders themselves.
+    let source_is_dir = matches!(provider.stat(&from).await, Ok(entry) if entry.is_dir);
+    if !source_is_dir {
+        return execute_copy_file_dag(provider, from, to, observer).await;
+    }
+    let caps = provider.transfer_capabilities().await?;
+    let trigger = if TransferDagBuilder::shaped_copy(&caps).server_side {
+        match provider.server_side_copy(&from, &to).await {
+            Ok(()) => {
+                let metrics = TransferDagMetrics::default();
+                observer.on_metrics(&metrics);
+                return Ok(CopyDagOutcome {
+                    decision: CopyDecision::ServerSide,
+                    metrics,
+                });
+            }
+            Err(error) if crate::copy_fallback::should_attempt_copy_fallback(&error) => {
+                tracing::warn!(
+                    target: "copy_fallback",
+                    error = %error,
+                    "folder server copy refused, copying its files one by one"
+                );
+                CopyFallbackTrigger::ServerRejected {
+                    kind: TransferError::from_provider(&error).kind,
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    } else {
+        CopyFallbackTrigger::CapabilityUnavailable
+    };
+    copy_folder_by_files(provider, &from, &to, observer, trigger).await
+}
+
+/// Copy a folder as its files: create `to`, copy each file through the file
+/// DAG, descend into subfolders. Refused, before any write, into an existing
+/// destination (it would merge two trees, as a native folder copy refuses)
+/// and into the source itself.
+async fn copy_folder_by_files(
+    provider: CopyProviderHandle,
+    from: &str,
+    to: &str,
+    observer: Arc<dyn DagObserver>,
+    trigger: CopyFallbackTrigger,
+) -> Result<CopyDagOutcome, ProviderError> {
+    let from_root = from.trim_end_matches('/');
+    let to_root = to.trim_end_matches('/');
+    if from_root.is_empty() || to_root.is_empty() {
+        return Err(ProviderError::InvalidPath(format!(
+            "cannot copy the folder {from} to {to}"
+        )));
+    }
+    if to_root == from_root || to_root.starts_with(&format!("{from_root}/")) {
+        return Err(ProviderError::InvalidPath(format!(
+            "cannot copy the folder {from} into itself ({to})"
+        )));
+    }
+    if provider.stat(to_root).await.is_ok() {
+        return Err(ProviderError::AlreadyExists(format!(
+            "{to_root} already exists: copying a folder into it would merge the two, nothing was copied"
+        )));
+    }
+    let mut metrics = TransferDagMetrics::default();
+    let mut copied_files: u64 = 0;
+    let mut pending = vec![(from_root.to_string(), to_root.to_string())];
+    let result: Result<(), ProviderError> = async {
+        while let Some((source_dir, target_dir)) = pending.pop() {
+            provider.mkdir(&target_dir).await?;
+            for entry in provider.list(&source_dir).await? {
+                if entry.name.is_empty() || entry.name == "." || entry.name == ".." {
+                    continue;
+                }
+                let source = format!("{source_dir}/{}", entry.name);
+                let target = format!("{target_dir}/{}", entry.name);
+                if entry.is_dir {
+                    pending.push((source, target));
+                    continue;
+                }
+                let outcome =
+                    execute_copy_file_dag(provider.clone(), source, target, Arc::clone(&observer))
+                        .await?;
+                metrics.logical_bytes = metrics
+                    .logical_bytes
+                    .saturating_add(outcome.metrics.logical_bytes);
+                metrics.wire_bytes = metrics
+                    .wire_bytes
+                    .saturating_add(outcome.metrics.wire_bytes);
+                metrics.local_payload_bytes = metrics
+                    .local_payload_bytes
+                    .saturating_add(outcome.metrics.local_payload_bytes);
+                metrics.bytes_transferred = metrics
+                    .bytes_transferred
+                    .saturating_add(outcome.metrics.bytes_transferred);
+                metrics.copy_fallbacks = metrics
+                    .copy_fallbacks
+                    .saturating_add(outcome.metrics.copy_fallbacks);
+                copied_files += 1;
+            }
+        }
+        Ok(())
+    }
+    .await;
+    match result {
+        Ok(()) => Ok(CopyDagOutcome {
+            decision: CopyDecision::DownloadUpload { trigger },
+            metrics,
+        }),
+        Err(error @ ProviderError::Cancelled) => Err(error),
+        Err(error) => Err(ProviderError::Other(format!(
+            "folder copy stopped after {copied_files} files: {error}. {to_root} holds a partial copy, {from_root} is unchanged"
+        ))),
+    }
+}
+
+/// One file. A folder goes through [`execute_copy_dag`].
+///
 /// Execute one production copy through [`TransferDagBuilder::shaped_copy`].
 ///
 /// Capability-unavailable providers run the observable `DownloadFile` then
@@ -476,7 +639,7 @@ impl DagObserver for SingleFileMetricsObserver {
 /// second shaped graph with server copy disabled performs the two payload
 /// legs. Non-recoverable errors retain their typed file scope and never reach
 /// the fallback graph.
-pub async fn execute_copy_dag(
+async fn execute_copy_file_dag(
     provider: CopyProviderHandle,
     from: String,
     to: String,
@@ -1928,7 +2091,9 @@ mod tests {
         server_copy_calls: AtomicU64,
         download_calls: AtomicU64,
         upload_calls: AtomicU64,
+        mkdir_calls: AtomicU64,
         files: StdMutex<HashMap<String, Vec<u8>>>,
+        dirs: StdMutex<std::collections::BTreeSet<String>>,
     }
 
     struct DagCopyMockProvider {
@@ -1988,8 +2153,31 @@ mod tests {
             true
         }
 
-        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-            Ok(Vec::new())
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let prefix = format!("{path}/");
+            let mut entries = Vec::new();
+            for dir in self
+                .state
+                .dirs
+                .lock()
+                .expect("copy mock dirs poisoned")
+                .iter()
+            {
+                if let Some(rest) = dir.strip_prefix(&prefix) {
+                    if !rest.is_empty() && !rest.contains('/') {
+                        entries.push(entry(dir, true, 0));
+                    }
+                }
+            }
+            let files = self.state.files.lock().expect("copy mock files poisoned");
+            for (file, data) in files.iter() {
+                if let Some(rest) = file.strip_prefix(&prefix) {
+                    if !rest.is_empty() && !rest.contains('/') {
+                        entries.push(entry(file, false, data.len() as u64));
+                    }
+                }
+            }
+            Ok(entries)
         }
 
         async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -2048,7 +2236,13 @@ mod tests {
             Ok(())
         }
 
-        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.state.mkdir_calls.fetch_add(1, Ordering::SeqCst);
+            self.state
+                .dirs
+                .lock()
+                .expect("copy mock dirs poisoned")
+                .insert(path.to_string());
             Ok(())
         }
 
@@ -2068,7 +2262,20 @@ mod tests {
             Ok(())
         }
 
-        async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            if self
+                .state
+                .dirs
+                .lock()
+                .expect("copy mock dirs poisoned")
+                .contains(path)
+            {
+                return Ok(entry(path, true, 0));
+            }
+            let files = self.state.files.lock().expect("copy mock files poisoned");
+            if let Some(data) = files.get(path) {
+                return Ok(entry(path, false, data.len() as u64));
+            }
             Err(ProviderError::NotSupported("stat".to_string()))
         }
 
@@ -2114,6 +2321,26 @@ mod tests {
         CopyProviderHandle::optional(Arc::new(Mutex::new(Some(
             Box::new(provider) as Box<dyn StorageProvider>
         ))))
+    }
+
+    fn entry(path: &str, is_dir: bool, size: u64) -> RemoteEntry {
+        let name = path.rsplit('/').next().unwrap_or_default().to_string();
+        if is_dir {
+            RemoteEntry::directory(name, path.to_string())
+        } else {
+            RemoteEntry::file(name, path.to_string(), size)
+        }
+    }
+
+    fn seed_tree(state: &CopyMockState) {
+        {
+            let mut dirs = state.dirs.lock().expect("copy mock dirs poisoned");
+            dirs.insert("/src".to_string());
+            dirs.insert("/src/sub".to_string());
+        }
+        let mut files = state.files.lock().expect("copy mock files poisoned");
+        files.insert("/src/a.txt".to_string(), b"alpha".to_vec());
+        files.insert("/src/sub/b.txt".to_string(), b"beta".to_vec());
     }
 
     #[tokio::test]
@@ -2315,6 +2542,167 @@ mod tests {
         assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
         assert_eq!(state.download_calls.load(Ordering::SeqCst), 0);
         assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_folder_without_native_copy_is_copied_file_by_file() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("folder copy by files");
+
+        {
+            let files = state.files.lock().expect("copy mock files poisoned");
+            assert_eq!(
+                files.get("/dst/a.txt").map(Vec::as_slice),
+                Some(&b"alpha"[..])
+            );
+            assert_eq!(
+                files.get("/dst/sub/b.txt").map(Vec::as_slice),
+                Some(&b"beta"[..])
+            );
+            assert_eq!(
+                files.get("/src/a.txt").map(Vec::as_slice),
+                Some(&b"alpha"[..])
+            );
+            assert_eq!(
+                files.get("/src/sub/b.txt").map(Vec::as_slice),
+                Some(&b"beta"[..])
+            );
+        }
+        {
+            let dirs = state.dirs.lock().expect("copy mock dirs poisoned");
+            assert!(dirs.contains("/dst"));
+            assert!(dirs.contains("/dst/sub"));
+        }
+        assert_eq!(
+            outcome.decision,
+            CopyDecision::DownloadUpload {
+                trigger: CopyFallbackTrigger::CapabilityUnavailable
+            }
+        );
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_folder_whose_native_copy_is_refused_is_copied_file_by_file() {
+        let (provider, state) =
+            DagCopyMockProvider::new(true, Some(ProviderError::NotSupported("folder".into())), 0);
+        seed_tree(&state);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("refused folder copy falls back to files");
+
+        {
+            let files = state.files.lock().expect("copy mock files poisoned");
+            assert_eq!(
+                files.get("/dst/a.txt").map(Vec::as_slice),
+                Some(&b"alpha"[..])
+            );
+            assert_eq!(
+                files.get("/dst/sub/b.txt").map(Vec::as_slice),
+                Some(&b"beta"[..])
+            );
+        }
+        assert!(matches!(
+            outcome.decision,
+            CopyDecision::DownloadUpload {
+                trigger: CopyFallbackTrigger::ServerRejected { .. }
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_folder_the_provider_copies_natively_stays_one_server_copy() {
+        let (provider, state) = DagCopyMockProvider::new(true, None, 0);
+        seed_tree(&state);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("native folder copy");
+
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.download_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_folder_copy_into_an_existing_destination_writes_nothing() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        state
+            .dirs
+            .lock()
+            .expect("copy mock dirs poisoned")
+            .insert("/dst".to_string());
+        let observer = Arc::new(CollectingDagObserver::default());
+        let error = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect_err("existing destination refused");
+
+        assert!(matches!(error, ProviderError::AlreadyExists(_)));
+        assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_folder_copy_into_itself_is_refused() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let error = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/src/inner".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect_err("copy into itself refused");
+
+        assert!(matches!(error, ProviderError::InvalidPath(_)));
+        assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_file_copy_still_takes_the_file_dag() {
+        let (provider, state) = DagCopyMockProvider::new(true, None, 13);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src.bin".to_string(),
+            "/dst.bin".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("file copy DAG");
+
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]
