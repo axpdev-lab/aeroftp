@@ -22,11 +22,15 @@ use crate::aerorsync::real_wire::{
     reassemble_msg_data, AclNamedEntry, AclPrincipal, AclWireEntry, FileListAcls,
     FileListCodecState, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry,
     FileListStreamDecoder, IdNameList, MuxPoll, MuxStreamReader, NdxState, Rdev, RealWireError,
-    RsyncAcl, XattrPair, MAXPATHLEN, MAX_ACL_NAMED_ENTRIES, MAX_ACL_NAME_LEN,
+    RsyncAcl, XattrPair, XattrWireEntry, MAXPATHLEN, MAX_ACL_NAMED_ENTRIES, MAX_ACL_NAME_LEN,
     MAX_FILE_LIST_ENTRY_BYTES, MAX_FULL_DATUM, MAX_XATTR_NAME_LEN, MAX_XATTR_PAIRS, NDX_FLIST_EOF,
     NDX_FLIST_OFFSET, XMIT_EXTENDED_FLAGS, XMIT_GROUP_NAME_FOLLOWS, XMIT_LONG_NAME, XMIT_MOD_NSEC,
     XMIT_SAME_GID, XMIT_SAME_MODE, XMIT_SAME_NAME, XMIT_SAME_RDEV_MAJOR, XMIT_SAME_TIME,
     XMIT_SAME_UID, XMIT_TOP_DIR, XMIT_USER_NAME_FOLLOWS,
+};
+use crate::aerorsync::session_state::{
+    AclTable, SessionTable, SessionTableError, SessionTables, MAX_SESSION_ACLS,
+    MAX_SESSION_ID_NAMES, MAX_SESSION_XATTR_SETS,
 };
 
 const B0C0_REL: &str = "src/aerorsync/capture/artifacts_real/frozen/b0c0";
@@ -1637,4 +1641,386 @@ fn b1_encoder_refuses_a_same_rdev_major_flag_that_lies() {
         &options(true, false),
         &mut FileListCodecState::new(),
     );
+}
+
+// ---------------------------------------------------------------------------
+// Point 3, 4, 5: session tables (12-multi-entry-wire-evidence.md §4, §5, §6)
+// ---------------------------------------------------------------------------
+
+/// Decode one capture's whole session into owned lists plus the app
+/// stream they came from, so re-encode comparisons can slice it.
+fn decode_capture_session(run: &str) -> (Vec<u8>, FileListDecodeOptions, Vec<DecodedList>) {
+    let full = sender_app_stream(run);
+    let start = file_list_start(run, &full);
+    let app = full[start..].to_vec();
+    let (opts, inc) = options_from_capture(run);
+    let lists = decode_session(&app, &opts, inc);
+    (app, opts, lists)
+}
+
+/// Every entry of every list of a session, in wire order.
+fn wire_order_entries(lists: &[DecodedList]) -> Vec<&FileListEntry> {
+    lists.iter().flat_map(|l| l.entries.iter()).collect()
+}
+
+/// One named ACL entry as the captures carry it: numeric id, user
+/// principal, no inline name (ACL_NAME_FOLLOWS not set in these wires).
+fn named_acl_entry(id: u32, access: u8) -> AclNamedEntry {
+    AclNamedEntry {
+        id,
+        principal: AclPrincipal::User,
+        access,
+        name: None,
+    }
+}
+
+/// §4: xattr sets resolve in wire order on `p3-up` and `p3-dl`: set 0 is
+/// the empty set of the directory, set 1 `user.color=red`, set 2
+/// `user.color=blue` + `user.tag=x`, and the last entry is a reference to
+/// set 2 that resolves equal to it.
+#[test]
+fn b2_point3_xattr_sets_resolve_in_wire_order() {
+    let red = vec![XattrPair::inline("user.color", "red".as_bytes())];
+    let blue_tag = vec![
+        XattrPair::inline("user.color", "blue".as_bytes()),
+        XattrPair::inline("user.tag", "x".as_bytes()),
+    ];
+    for run in ["p3-up", "p3-dl"] {
+        let (_app, _opts, lists) = decode_capture_session(run);
+        let entries = wire_order_entries(&lists);
+        assert_eq!(entries.len(), 4, "{run}");
+        assert_eq!(entries[0].path, b"xa".as_slice(), "{run}");
+        assert_eq!(entries[1].path, b"xa/f3".as_slice(), "{run}");
+        assert_eq!(entries[2].path, b"xa/f1".as_slice(), "{run}");
+        assert_eq!(entries[3].path, b"xa/f2".as_slice(), "{run}");
+        // wire shapes: the directory is literal set 0 (empty), the last
+        // entry is the only reference
+        assert_eq!(entries[0].xattrs, Some(XattrWireEntry::Literal(vec![])));
+        assert_eq!(entries[3].xattrs, Some(XattrWireEntry::Reference(2)));
+
+        let mut tables = SessionTables::new();
+        let resolved: Vec<_> = entries
+            .iter()
+            .map(|e| tables.resolve_entry(e).expect("{run}: resolve"))
+            .collect();
+        assert_eq!(resolved[0].xattrs, Some(vec![]), "{run}: set 0");
+        assert_eq!(resolved[1].xattrs, Some(red.clone()), "{run}: set 1");
+        assert_eq!(resolved[2].xattrs, Some(blue_tag.clone()), "{run}: set 2");
+        assert_eq!(
+            resolved[3].xattrs,
+            Some(blue_tag.clone()),
+            "{run}: reference to set 2 resolves equal to set 2"
+        );
+    }
+}
+
+/// §5: ACL references resolve in wire order on `p4-up` and `p4-dl` (same
+/// shape, verified): `u:12345:rw-` plus the mask-covered group bits on
+/// f3, `u:12345:r--` on f1, and f2's reference to access index 2 resolves
+/// equal to f1's ACL.
+#[test]
+fn b2_point4_acl_references_resolve_in_wire_order() {
+    let f3_acl = RsyncAcl {
+        group_obj: Some(4),
+        names: vec![named_acl_entry(12345, 6)],
+        ..RsyncAcl::default()
+    };
+    let f1_acl = RsyncAcl {
+        names: vec![named_acl_entry(12345, 4)],
+        ..RsyncAcl::default()
+    };
+    for run in ["p4-up", "p4-dl"] {
+        let (_app, _opts, lists) = decode_capture_session(run);
+        let entries = wire_order_entries(&lists);
+        assert_eq!(entries.len(), 4, "{run}");
+        assert_eq!(entries[0].path, b"ac".as_slice(), "{run}");
+        assert_eq!(entries[1].path, b"ac/f3".as_slice(), "{run}");
+        assert_eq!(entries[2].path, b"ac/f1".as_slice(), "{run}");
+        assert_eq!(entries[3].path, b"ac/f2".as_slice(), "{run}");
+        assert_eq!(
+            entries[3].acls.as_ref().expect("-A session").access,
+            AclWireEntry::Reference(2),
+            "{run}: f2 is the only access reference"
+        );
+
+        let mut tables = SessionTables::new();
+        let resolved: Vec<_> = entries
+            .iter()
+            .map(|e| tables.resolve_entry(e).expect("{run}: resolve"))
+            .collect();
+        assert_eq!(
+            resolved[0].acl_access,
+            Some(RsyncAcl::empty()),
+            "{run}: ac access"
+        );
+        assert_eq!(
+            resolved[0].acl_default,
+            Some(RsyncAcl::empty()),
+            "{run}: ac default"
+        );
+        assert_eq!(resolved[1].acl_access, Some(f3_acl.clone()), "{run}: f3");
+        assert_eq!(resolved[2].acl_access, Some(f1_acl.clone()), "{run}: f1");
+        assert_eq!(
+            resolved[3].acl_access,
+            Some(f1_acl.clone()),
+            "{run}: f2 via the reference to index 2"
+        );
+        assert_eq!(
+            resolved[1].acl_default, None,
+            "{run}: files carry no default ACL"
+        );
+    }
+}
+
+/// §6: `da/sub` resolves DEFAULT 0 after two access literals on `p5-up`
+/// and `p5-dl`: access and default have separate index spaces.
+#[test]
+fn b2_point5_default_acl_has_its_own_index_space() {
+    let da_default = RsyncAcl {
+        user_obj: Some(7),
+        group_obj: Some(7),
+        mask_obj: Some(7),
+        other_obj: Some(5),
+        names: vec![named_acl_entry(12345, 7)],
+    };
+    let sub_access = RsyncAcl {
+        names: vec![named_acl_entry(12345, 7)],
+        ..RsyncAcl::default()
+    };
+    let f_access = RsyncAcl {
+        group_obj: Some(7),
+        names: vec![named_acl_entry(12345, 7)],
+        ..RsyncAcl::default()
+    };
+    for run in ["p5-up", "p5-dl"] {
+        let (_app, _opts, lists) = decode_capture_session(run);
+        let entries = wire_order_entries(&lists);
+        assert_eq!(entries.len(), 3, "{run}");
+        assert_eq!(entries[0].path, b"da".as_slice(), "{run}");
+        assert_eq!(entries[1].path, b"da/sub".as_slice(), "{run}");
+        assert_eq!(entries[2].path, b"da/f".as_slice(), "{run}");
+        assert_eq!(
+            entries[1].acls.as_ref().expect("-A session").default,
+            Some(AclWireEntry::Reference(0)),
+            "{run}: da/sub default is a reference to default 0"
+        );
+
+        let mut tables = SessionTables::new();
+        let resolved: Vec<_> = entries
+            .iter()
+            .map(|e| tables.resolve_entry(e).expect("{run}: resolve"))
+            .collect();
+        // two access literals were emitted (da, da/sub) before the
+        // default reference: with one shared table, index 0 would resolve
+        // to da's EMPTY access ACL instead of da's default
+        assert_eq!(
+            resolved[0].acl_access,
+            Some(RsyncAcl::empty()),
+            "{run}: da access"
+        );
+        assert_eq!(
+            resolved[0].acl_default,
+            Some(da_default.clone()),
+            "{run}: da default"
+        );
+        assert_eq!(
+            resolved[1].acl_access,
+            Some(sub_access.clone()),
+            "{run}: da/sub access"
+        );
+        assert_eq!(
+            resolved[1].acl_default,
+            Some(da_default.clone()),
+            "{run}: da/sub default 0 in its own space"
+        );
+        assert_eq!(
+            resolved[2].acl_access,
+            Some(f_access.clone()),
+            "{run}: da/f access"
+        );
+        assert_eq!(resolved[2].acl_default, None, "{run}: da/f has no default");
+    }
+}
+
+/// The strong oracle: for every p3/p4/p5 capture, resolve each entry with
+/// one receiving `SessionTables`, rebuild the wire entries from the
+/// resolved metadata with `intern_acl`/`intern_xattrs` on a FRESH sending
+/// `SessionTables`, and re-encode: the bytes must equal the capture. This
+/// proves wire order, the two ACL index spaces and first-equal interning
+/// together.
+#[test]
+fn b2_session_tables_reencode_every_capture_byte_for_byte() {
+    for run in ["p3-dl", "p3-up", "p4-dl", "p4-up", "p5-dl", "p5-up"] {
+        let (app, opts, lists) = decode_capture_session(run);
+        let mut receive = SessionTables::new();
+        let mut send = SessionTables::new();
+        let mut state = FileListCodecState::new();
+        for (i, list) in lists.iter().enumerate() {
+            let mut bytes = Vec::new();
+            for entry in &list.entries {
+                let resolved = receive.resolve_entry(entry).expect("{run}: resolve");
+                let mut rebuilt = entry.clone();
+                if entry.acls.is_some() {
+                    let access = send
+                        .intern_acl(
+                            AclTable::Access,
+                            resolved.acl_access.clone().expect("access"),
+                        )
+                        .expect("{run}: intern access");
+                    let default = resolved.acl_default.clone().map(|d| {
+                        send.intern_acl(AclTable::Default, d)
+                            .expect("{run}: intern default")
+                    });
+                    rebuilt.acls = Some(FileListAcls { access, default });
+                }
+                if entry.xattrs.is_some() {
+                    rebuilt.xattrs = Some(
+                        send.intern_xattrs(resolved.xattrs.clone().expect("xattrs"))
+                            .expect("{run}: intern xattrs"),
+                    );
+                }
+                bytes.extend_from_slice(&encode_file_list_entry(&rebuilt, &opts, &mut state));
+            }
+            bytes.extend_from_slice(&encode_file_list_terminator(&opts, list.io_error));
+            assert_eq!(
+                bytes,
+                app[list.start..list.end],
+                "{run}: list {i} rebuilt from resolved metadata must re-encode byte for byte"
+            );
+        }
+    }
+}
+
+/// A reference past the end of the access ACL table.
+#[test]
+fn b2_acl_access_reference_out_of_range() {
+    let mut tables = SessionTables::new();
+    let mut entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    entry.acls = Some(FileListAcls {
+        access: AclWireEntry::Reference(0),
+        default: None,
+    });
+    assert_eq!(
+        tables.resolve_entry(&entry),
+        Err(SessionTableError::ReferenceOutOfRange {
+            table: SessionTable::AclAccess,
+            index: 0,
+            len: 0,
+        })
+    );
+}
+
+/// A reference past the end of the DEFAULT ACL table, with the access
+/// table non-empty: the two spaces are separate.
+#[test]
+fn b2_acl_default_reference_out_of_range_in_its_own_space() {
+    let mut tables = SessionTables::new();
+    let mut entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    entry.acls = Some(FileListAcls {
+        access: AclWireEntry::Literal(RsyncAcl::empty()),
+        default: Some(AclWireEntry::Reference(0)),
+    });
+    assert_eq!(
+        tables.resolve_entry(&entry),
+        Err(SessionTableError::ReferenceOutOfRange {
+            table: SessionTable::AclDefault,
+            index: 0,
+            len: 0,
+        })
+    );
+}
+
+/// A reference past the end of the xattr set table.
+#[test]
+fn b2_xattr_reference_out_of_range() {
+    let mut tables = SessionTables::new();
+    let mut entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    entry.xattrs = Some(XattrWireEntry::Reference(5));
+    assert_eq!(
+        tables.resolve_entry(&entry),
+        Err(SessionTableError::ReferenceOutOfRange {
+            table: SessionTable::XattrSet,
+            index: 5,
+            len: 0,
+        })
+    );
+}
+
+/// The ACL table refuses the literal past its cap (`TableFull`).
+#[test]
+fn b2_acl_table_full_at_cap() {
+    let mut tables = SessionTables::new();
+    let mut entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    entry.acls = Some(FileListAcls {
+        access: AclWireEntry::Literal(RsyncAcl::empty()),
+        default: None,
+    });
+    for _ in 0..MAX_SESSION_ACLS {
+        tables.resolve_entry(&entry).expect("under the cap");
+    }
+    assert_eq!(
+        tables.resolve_entry(&entry),
+        Err(SessionTableError::TableFull {
+            table: SessionTable::AclAccess,
+            cap: MAX_SESSION_ACLS,
+        })
+    );
+}
+
+/// The xattr table refuses the set past its cap (`TableFull`).
+#[test]
+fn b2_xattr_table_full_at_cap() {
+    let mut tables = SessionTables::new();
+    let mut entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    entry.xattrs = Some(XattrWireEntry::Literal(vec![XattrPair::inline(
+        "user.color",
+        "red".as_bytes(),
+    )]));
+    for _ in 0..MAX_SESSION_XATTR_SETS {
+        tables.resolve_entry(&entry).expect("under the cap");
+    }
+    assert_eq!(
+        tables.resolve_entry(&entry),
+        Err(SessionTableError::TableFull {
+            table: SessionTable::XattrSet,
+            cap: MAX_SESSION_XATTR_SETS,
+        })
+    );
+}
+
+/// The id-name map refuses a new key past its cap (`TableFull`); an
+/// existing id is overwritten without counting against the cap.
+#[test]
+fn b2_id_names_table_full_at_cap() {
+    let mut tables = SessionTables::new();
+    let big = IdNameList {
+        names: (1..=MAX_SESSION_ID_NAMES as i64)
+            .map(|id| (id, format!("u{id}")))
+            .collect(),
+        id0_name: None,
+    };
+    tables
+        .record_id_names(&big, &IdNameList::default())
+        .expect("at the cap");
+    assert_eq!(tables.uid_name(MAX_SESSION_ID_NAMES as i64), Some("u50000"));
+    let one_more = IdNameList {
+        names: vec![(999_999, "one-more".to_string())],
+        id0_name: None,
+    };
+    assert_eq!(
+        tables.record_id_names(&one_more, &IdNameList::default()),
+        Err(SessionTableError::TableFull {
+            table: SessionTable::IdNames,
+            cap: MAX_SESSION_ID_NAMES,
+        })
+    );
+    // re-recording an existing id is an overwrite, not a new key
+    let again = IdNameList {
+        names: vec![(1, "renamed".to_string())],
+        id0_name: None,
+    };
+    tables
+        .record_id_names(&again, &IdNameList::default())
+        .expect("overwrite under the cap");
+    assert_eq!(tables.uid_name(1), Some("renamed"));
 }
