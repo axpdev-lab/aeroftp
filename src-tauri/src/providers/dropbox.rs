@@ -22,6 +22,81 @@ use super::{
 
 /// Dropbox API endpoints
 const API_BASE: &str = "https://api.dropboxapi.com/2";
+
+/// The Dropbox root holds no shared link of its own: an empty path asks
+/// Dropbox for every link of the account.
+fn refuse_root_share(full_path: &str) -> Result<(), ProviderError> {
+    if full_path.is_empty() || full_path == "/" {
+        return Err(ProviderError::InvalidPath(
+            "the Dropbox root has no shared link; pick a file or a folder".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn dropbox_other_access(level: &str) -> ProviderError {
+    ProviderError::Other(format!(
+        "The file already has a shared link with {} access, and Dropbox cannot change the access of an existing link; revoke it and create the link again",
+        if level == "editor" { "edit" } else { "view" }
+    ))
+}
+
+fn dropbox_unstated_access() -> ProviderError {
+    ProviderError::Other(
+        "Dropbox does not say the access of the file's existing shared link, so it is not handed out as the one asked for; revoke it and create the link again".to_string(),
+    )
+}
+
+/// A Dropbox reply as an error shows it: without the password sent, in
+/// any JSON spelling, and withheld when that password is too short to cut
+/// out.
+fn dropbox_reply_shown(text: &str, sent: &[String]) -> String {
+    match super::json_reply_without_sent_values(text, sent) {
+        Some(shown) => sanitize_api_error(&shown),
+        None => super::reply_with_a_sent_value(text.len()),
+    }
+}
+
+/// A shared link as Dropbox describes one (`SharedLinkMetadata`).
+#[derive(Debug, Deserialize)]
+struct DropboxSharedLink {
+    url: String,
+    #[serde(default)]
+    expires: Option<String>,
+    #[serde(default)]
+    link_permissions: Option<serde_json::Value>,
+}
+
+impl DropboxSharedLink {
+    fn permission_tag(&self, field: &str) -> Option<&str> {
+        self.link_permissions
+            .as_ref()?
+            .get(field)?
+            .get(".tag")?
+            .as_str()
+    }
+
+    /// `viewer` or `editor`, when Dropbox says.
+    fn access_level(&self) -> Option<&str> {
+        self.permission_tag("link_access_level")
+    }
+
+    /// Whether the link asks for a password: `require_password`, or the
+    /// older visibility (`password`, `team_and_password`); `None` when the
+    /// answer says neither.
+    fn password_protected(&self) -> Option<bool> {
+        if let Some(required) = self
+            .link_permissions
+            .as_ref()
+            .and_then(|lp| lp.get("require_password"))
+            .and_then(serde_json::Value::as_bool)
+        {
+            return Some(required);
+        }
+        self.permission_tag("resolved_visibility")
+            .map(|tag| matches!(tag, "password" | "team_and_password"))
+    }
+}
 const CONTENT_BASE: &str = "https://content.dropboxapi.com/2";
 
 /// Threshold above which legacy `upload()` switches to the upload session
@@ -809,6 +884,213 @@ impl DropboxProvider {
         serde_json::from_str(&text?).map_err(|e| {
             ProviderError::Other(format!("Parse error: {}", super::json_parse_error(&e)))
         })
+    }
+
+    /// The Dropbox path of `path` for a shared-link call.
+    fn share_path(&self, path: &str) -> String {
+        if path.starts_with('/') {
+            self.normalize_path(path)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, path))
+        }
+    }
+
+    /// The shared links of the item at `full_path` itself. Without
+    /// `direct_only`, Dropbox also lists the links of every folder above it,
+    /// so the first link of a file could be its folder's: revoking the
+    /// file's link revoked the folder's, and a new link for the file came
+    /// back as the folder's.
+    async fn direct_shared_links(
+        &self,
+        full_path: &str,
+    ) -> Result<Vec<DropboxSharedLink>, ProviderError> {
+        // The root is no item: an empty path is how Dropbox is asked for
+        // every link of the account.
+        refuse_root_share(full_path)?;
+        let body = serde_json::json!({ "path": full_path, "direct_only": true });
+        let url = format!("{}/sharing/list_shared_links", self.rpc_api_base());
+        let response = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Failed to list share links: {}",
+                sanitize_api_error(&text)
+            )));
+        }
+        #[derive(Deserialize)]
+        struct ListResult {
+            links: Vec<DropboxSharedLink>,
+            // Required: a listing that does not say it is whole is not.
+            has_more: bool,
+        }
+        let result: ListResult = response
+            .json()
+            .await
+            .map_http_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+        // A part of the links cannot say which one is the only one, nor that
+        // all were revoked.
+        if result.has_more {
+            return Err(ProviderError::Other(
+                "Dropbox listed the item's shared links only in part, so none is picked"
+                    .to_string(),
+            ));
+        }
+        Ok(result.links)
+    }
+
+    async fn revoke_shared_link(&self, link_url: &str) -> Result<(), ProviderError> {
+        let body = serde_json::json!({ "url": link_url });
+        let url = format!("{}/sharing/revoke_shared_link", self.rpc_api_base());
+        let response = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Failed to revoke share link: {}",
+                dropbox_reply_shown(&text, &[link_url.to_string()])
+            )));
+        }
+        Ok(())
+    }
+
+    /// The link a `shared_link_already_exists` answer is about: the one
+    /// the answer names, or else the file's only direct link with the access
+    /// asked for. Its access must be stated, by the answer or by the file's
+    /// listed row for that URL: Dropbox does not change the access of an
+    /// existing link, so one of another or of an unknown level is not
+    /// handed out. Several candidates are an error: the pick would follow
+    /// the listing's order.
+    async fn conflicting_link(
+        &self,
+        full_path: &str,
+        conflict: &serde_json::Value,
+        access: &str,
+    ) -> Result<DropboxSharedLink, ProviderError> {
+        let named = conflict
+            .pointer("/error/shared_link_already_exists/metadata")
+            .cloned()
+            .and_then(|metadata| serde_json::from_value::<DropboxSharedLink>(metadata).ok());
+        let link = match named {
+            Some(link) if link.access_level().is_some() => link,
+            named => {
+                let links = self.direct_shared_links(full_path).await?;
+                if let Some(named) = named {
+                    links
+                        .into_iter()
+                        .find(|listed| listed.url == named.url)
+                        .unwrap_or(named)
+                } else {
+                    let other = links
+                        .iter()
+                        .find_map(|link| link.access_level())
+                        .map(str::to_string);
+                    let listed = links.len();
+                    let mut exact: Vec<DropboxSharedLink> = links
+                        .into_iter()
+                        .filter(|link| link.access_level() == Some(access))
+                        .collect();
+                    match (exact.len(), other) {
+                        (1, _) => exact.remove(0),
+                        (0, Some(level)) => return Err(dropbox_other_access(&level)),
+                        (0, None) if listed == 0 => {
+                            return Err(ProviderError::Other(
+                                "Dropbox reports a shared link for the file but lists none"
+                                    .to_string(),
+                            ))
+                        }
+                        (0, None) => return Err(dropbox_unstated_access()),
+                        _ => {
+                            return Err(ProviderError::Other(
+                                "The file has several shared links that could be the one asked for; change the one meant in Dropbox, or revoke them and create the link again".to_string(),
+                            ))
+                        }
+                    }
+                }
+            }
+        };
+        match link.access_level() {
+            Some(level) if level == access => Ok(link),
+            Some(level) => Err(dropbox_other_access(level)),
+            None => Err(dropbox_unstated_access()),
+        }
+    }
+
+    /// `link` as it carries what was asked. What the answer states counts
+    /// first: an access other than asked, or a password it says is off, is
+    /// final. What it leaves out (the access, the protection, the expiry) is
+    /// read from the file's listed row for the same URL. `Err` names what is
+    /// not confirmed: an access other than asked or not stated, a password
+    /// not confirmed, an expiry absent, past, or later than the one sent.
+    async fn confirmed_link(
+        &self,
+        link: DropboxSharedLink,
+        full_path: &str,
+        access: &str,
+        password: bool,
+        deadline: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<DropboxSharedLink, &'static str> {
+        if link.access_level().is_some_and(|level| level != access) {
+            return Err("the access asked for");
+        }
+        if password && link.password_protected() == Some(false) {
+            return Err("the password");
+        }
+        let unstated = link.access_level().is_none()
+            || (password && link.password_protected().is_none())
+            || (deadline.is_some() && link.expires.is_none());
+        let row = if unstated {
+            self.direct_shared_links(full_path)
+                .await
+                .ok()
+                .and_then(|links| links.into_iter().find(|listed| listed.url == link.url))
+        } else {
+            None
+        };
+        let level = link
+            .access_level()
+            .or_else(|| row.as_ref().and_then(|row| row.access_level()));
+        match level {
+            Some(level) if level == access => {}
+            Some(_) => return Err("the access asked for"),
+            None => return Err("a stated access level"),
+        }
+        let protected = link
+            .password_protected()
+            .or_else(|| row.as_ref().and_then(|row| row.password_protected()));
+        if password && protected != Some(true) {
+            return Err("the password");
+        }
+        let expires = link
+            .expires
+            .clone()
+            .or_else(|| row.as_ref().and_then(|row| row.expires.clone()));
+        if let Some(deadline) = deadline {
+            let now = chrono::Utc::now();
+            let kept = expires
+                .as_deref()
+                .and_then(|expires| chrono::DateTime::parse_from_rfc3339(expires).ok())
+                .map(|expires| expires.with_timezone(&chrono::Utc))
+                .is_some_and(|expires| expires > now && expires <= deadline);
+            if !kept {
+                return Err("the expiry");
+            }
+        }
+        Ok(DropboxSharedLink { expires, ..link })
     }
 
     fn rpc_api_base(&self) -> &str {
@@ -1928,32 +2210,40 @@ impl StorageProvider for DropboxProvider {
         path: &str,
         options: ShareLinkOptions,
     ) -> Result<ShareLinkResult, ProviderError> {
-        let full_path = if path.starts_with('/') {
-            self.normalize_path(path)
-        } else {
-            self.normalize_path(&format!("{}/{}", self.current_path, path))
-        };
+        let full_path = self.share_path(path);
+        refuse_root_share(&full_path)?;
 
-        // Try to create a shared link
         // Dropbox API: access "viewer"/"editor", password (Pro+ only), expires (Pro+ only)
         let access = match options.permissions.as_deref() {
             Some("edit") => "editor",
             _ => "viewer",
         };
-        let mut settings = serde_json::json!({
-            "access": access,
-            "allow_download": true,
-            "audience": "public",
-            "requested_visibility": "public"
+        let password = options.password.clone().filter(|pw| !pw.is_empty());
+        let sent: Vec<String> = password.iter().cloned().collect();
+        // A whole second, as sent: the expiry Dropbox keeps is compared with
+        // exactly this.
+        let deadline = options.expires_in_secs.and_then(|secs| {
+            chrono::DateTime::from_timestamp(chrono::Utc::now().timestamp() + secs as i64, 0)
         });
-        if let Some(secs) = options.expires_in_secs {
-            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
-            settings["expires"] =
-                serde_json::Value::String(expires_at.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+        // What was asked for, sent both to a new link and, when the file
+        // already has one, to that link: a request never comes back with
+        // less than it asked. The password is set by `require_password`
+        // alone: the older `requested_visibility: password` also opens a
+        // team-only link to anyone who holds the password.
+        let mut asked = serde_json::json!({ "access": access });
+        if let Some(deadline) = deadline {
+            asked["expires"] =
+                serde_json::Value::String(deadline.format("%Y-%m-%dT%H:%M:%SZ").to_string());
         }
-        if let Some(ref pw) = options.password {
-            settings["link_password"] = serde_json::json!(pw);
-            settings["requested_visibility"] = serde_json::json!("password");
+        if let Some(ref pw) = password {
+            asked["link_password"] = serde_json::json!(pw);
+            asked["require_password"] = serde_json::json!(true);
+        }
+        let mut settings = asked.clone();
+        settings["allow_download"] = serde_json::json!(true);
+        settings["audience"] = serde_json::json!("public");
+        if password.is_none() {
+            settings["requested_visibility"] = serde_json::json!("public");
         }
         let body = serde_json::json!({
             "path": full_path,
@@ -1961,7 +2251,10 @@ impl StorageProvider for DropboxProvider {
         });
 
         // Dropbox API: sharing/create_shared_link_with_settings
-        let url = format!("{}/sharing/create_shared_link_with_settings", API_BASE);
+        let url = format!(
+            "{}/sharing/create_shared_link_with_settings",
+            self.rpc_api_base()
+        );
 
         let response = self
             .client
@@ -1976,16 +2269,43 @@ impl StorageProvider for DropboxProvider {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
 
-        // If link already exists, get it instead
-        if status == 409 && text.contains("shared_link_already_exists") {
-            // Get existing link
-            let body = serde_json::json!({
-                "path": full_path,
-                "direct_only": false
+        // The file already has a link: that link gets the settings asked
+        // for. Returning it as it was handed out a link without the
+        // password, the expiry or the access level the user had just chosen
+        // (deep-scan item 52).
+        // Only Dropbox's own tag says the file already has a link: the
+        // phrase elsewhere in another 409 is not that answer.
+        let conflict = (status == 409)
+            .then(|| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .flatten()
+            .filter(|reply| {
+                reply
+                    .pointer("/error/.tag")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("shared_link_already_exists")
             });
-
-            let url = format!("{}/sharing/list_shared_links", API_BASE);
-
+        if let Some(conflict) = conflict {
+            let existing = self.conflicting_link(&full_path, &conflict, access).await?;
+            // A plain link asked for: the existing one is it. Changing
+            // settings Dropbox does not offer the account (Basic has none)
+            // would refuse a link that exists.
+            if password.is_none() && deadline.is_none() {
+                info!("Retrieved the existing share link of {}", path);
+                return Ok(ShareLinkResult {
+                    url: existing.url,
+                    password: None,
+                    expires_at: existing.expires,
+                });
+            }
+            let mut asked = asked;
+            if let Some(settings) = asked.as_object_mut() {
+                settings.remove("access");
+            }
+            let body = serde_json::json!({ "url": existing.url, "settings": asked });
+            let url = format!(
+                "{}/sharing/modify_shared_link_settings",
+                self.rpc_api_base()
+            );
             let response = self
                 .client
                 .post(&url)
@@ -1995,38 +2315,42 @@ impl StorageProvider for DropboxProvider {
                 .send()
                 .await
                 .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !response.status().is_success() {
-                return Err(ProviderError::Other(
-                    "Failed to get existing share link".to_string(),
-                ));
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            if !status.is_success() {
+                let mut secret = sent.clone();
+                secret.push(existing.url.clone());
+                return Err(ProviderError::Other(format!(
+                    "The file's existing shared link could not take the settings asked for: {} - {}",
+                    status,
+                    dropbox_reply_shown(&text, &secret)
+                )));
             }
-
-            #[derive(Deserialize)]
-            struct SharedLink {
-                url: String,
-            }
-            #[derive(Deserialize)]
-            struct SharedLinksResult {
-                links: Vec<SharedLink>,
-            }
-
-            let result: SharedLinksResult = response.json().await.map_http_err(|e| {
-                ProviderError::Other(format!("Failed to parse response: {}", e))
+            let link: DropboxSharedLink = serde_json::from_str(&text).map_err(|e| {
+                ProviderError::Other(format!(
+                    "Dropbox accepted the new settings of the file's existing shared link but its answer could not be read ({}), so the link may have changed; check it in Dropbox before trying again",
+                    super::json_parse_error(&e)
+                ))
             })?;
-
-            if let Some(link) = result.links.first() {
-                info!("Retrieved existing share link for {}: {}", path, link.url);
-                return Ok(ShareLinkResult {
-                    url: link.url.clone(),
-                    password: None,
-                    expires_at: None,
-                });
-            }
-
-            return Err(ProviderError::Other(
-                "No existing share link found".to_string(),
-            ));
+            // The link existed before this request, so it is not revoked; the
+            // change went through, so the link may differ from before.
+            let link = self
+                .confirmed_link(link, &full_path, access, password.is_some(), deadline)
+                .await
+                .map_err(|missing| {
+                    ProviderError::Other(format!(
+                        "Dropbox changed the settings of the file's existing shared link but does not confirm {missing}; check the link in Dropbox"
+                    ))
+                })?;
+            info!(
+                "Applied the requested settings to the share link of {}",
+                path
+            );
+            return Ok(ShareLinkResult {
+                url: link.url,
+                password: None,
+                expires_at: link.expires,
+            });
         }
 
         if !status.is_success() {
@@ -2038,106 +2362,68 @@ impl StorageProvider for DropboxProvider {
             return Err(ProviderError::Other(format!(
                 "Failed to create share link: {} - {}",
                 status,
-                sanitize_api_error(&text)
+                dropbox_reply_shown(&text, &sent)
             )));
         }
 
-        #[derive(Deserialize)]
-        struct CreateLinkResponse {
-            url: String,
-        }
-
-        let result: CreateLinkResponse = serde_json::from_str(&text).map_err(|e| {
+        // Dropbox answered yes: a link may exist even when its answer cannot
+        // be read, and nothing here can name it to revoke.
+        let result: DropboxSharedLink = serde_json::from_str(&text).map_err(|e| {
             ProviderError::Other(format!(
-                "Failed to parse response: {}",
+                "Dropbox accepted the link request but its answer could not be read ({}), so a link may have been made; check the file's links in Dropbox before trying again",
                 super::json_parse_error(&e)
             ))
         })?;
 
-        info!("Created share link for {}: {}", path, result.url);
+        // A new link Dropbox does not confirm with the access, the password
+        // and the expiry asked for is not handed out.
+        let url = result.url.clone();
+        let result = match self
+            .confirmed_link(result, &full_path, access, password.is_some(), deadline)
+            .await
+        {
+            Ok(result) => result,
+            Err(missing) => {
+                let removed = match self.revoke_shared_link(&url).await {
+                    Ok(()) => "it was revoked again",
+                    Err(_) => "revoking it failed too, so revoke it in Dropbox",
+                };
+                return Err(ProviderError::Other(format!(
+                    "Dropbox created the shared link without {missing}; {removed}"
+                )));
+            }
+        };
+        info!("Created a share link for {}", path);
         Ok(ShareLinkResult {
             url: result.url,
             password: None,
-            expires_at: None,
+            expires_at: result.expires,
         })
     }
 
     async fn list_share_links(&mut self, path: &str) -> Result<Vec<ShareLinkInfo>, ProviderError> {
-        let full_path = if path.starts_with('/') {
-            self.normalize_path(path)
-        } else {
-            self.normalize_path(&format!("{}/{}", self.current_path, path))
-        };
-
-        let body = serde_json::json!({
-            "path": full_path,
-            "direct_only": false
-        });
-
-        let url = format!("{}/sharing/list_shared_links", API_BASE);
-        let response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Failed to list share links: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
-        #[derive(Deserialize)]
-        struct DropboxSharedLink {
-            #[serde(default)]
-            id: Option<String>,
-            url: String,
-            #[serde(default)]
-            expires: Option<String>,
-            #[serde(default)]
-            link_permissions: Option<serde_json::Value>,
-        }
-        #[derive(Deserialize)]
-        struct ListResult {
-            links: Vec<DropboxSharedLink>,
-        }
-
-        let result: ListResult = response
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
-
-        let links = result
-            .links
+        let full_path = self.share_path(path);
+        let links = self
+            .direct_shared_links(&full_path)
+            .await?
             .into_iter()
             .map(|link| {
-                let permissions = link
+                let visibility = link
                     .link_permissions
                     .as_ref()
                     .and_then(|lp| lp.get("resolved_visibility"))
                     .and_then(|v| v.get(".tag"))
                     .and_then(|t| t.as_str())
                     .map(|s| s.to_string());
+                // The link's URL is its identity: Dropbox's `id` names the
+                // file, which every link of it shares.
                 ShareLinkInfo {
-                    id: link.id.unwrap_or_else(|| link.url.clone()),
+                    id: link.url.clone(),
+                    password_protected: link.password_protected() == Some(true),
                     url: link.url,
                     created_at: None,
                     expires_at: link.expires,
-                    password_protected: link
-                        .link_permissions
-                        .as_ref()
-                        .and_then(|lp| lp.get("resolved_visibility"))
-                        .and_then(|v| v.get(".tag"))
-                        .and_then(|t| t.as_str())
-                        .map(|s| s == "password")
-                        .unwrap_or(false),
-                    permissions,
+                    permissions: visibility,
                 }
             })
             .collect();
@@ -2146,79 +2432,55 @@ impl StorageProvider for DropboxProvider {
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
-        let full_path = if path.starts_with('/') {
-            self.normalize_path(path)
-        } else {
-            self.normalize_path(&format!("{}/{}", self.current_path, path))
-        };
-
-        // First get the existing share link URL
-        let body = serde_json::json!({
-            "path": full_path,
-            "direct_only": false
-        });
-
-        let url = format!("{}/sharing/list_shared_links", API_BASE);
-        let response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
+        // Unsharing the file drops every link of it: a view link and an
+        // edit link can stand side by side, and revoking the first listed
+        // left the other open.
+        let full_path = self.share_path(path);
+        let links = self.direct_shared_links(&full_path).await?;
+        if links.is_empty() {
             return Err(ProviderError::Other(
-                "Failed to list share links".to_string(),
+                "No share link found to remove".to_string(),
             ));
         }
-
-        #[derive(Deserialize)]
-        struct SharedLink {
-            url: String,
+        let total = links.len();
+        let mut failed = 0;
+        let mut first_error = None;
+        for link in &links {
+            if let Err(error) = self.revoke_shared_link(&link.url).await {
+                failed += 1;
+                first_error.get_or_insert(error);
+            }
         }
-        #[derive(Deserialize)]
-        struct SharedLinksResult {
-            links: Vec<SharedLink>,
-        }
-
-        let result: SharedLinksResult = response
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
-
-        let link_url = result
-            .links
-            .first()
-            .ok_or_else(|| ProviderError::Other("No share link found to remove".to_string()))?;
-
-        // Revoke the shared link
-        let body = serde_json::json!({
-            "url": link_url.url
-        });
-
-        let url = format!("{}/sharing/revoke_shared_link", API_BASE);
-        let response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
+        if let Some(error) = first_error {
             return Err(ProviderError::Other(format!(
-                "Failed to revoke share link: {}",
-                sanitize_api_error(&text)
+                "{failed} of the file's {total} shared links could not be revoked: {error}"
             )));
         }
+        info!("Revoked {} share link(s) for {}", total, path);
+        Ok(())
+    }
 
-        info!("Revoked share link for {}", path);
+    async fn remove_share_link_by_id(
+        &mut self,
+        path: &str,
+        link_id: &str,
+    ) -> Result<(), ProviderError> {
+        // The id `list_share_links` handed out is the link's URL, and the
+        // link revoked is that one, not the first the path lists. The URL
+        // opens the file, so it is named in no error and no log.
+        let full_path = self.share_path(path);
+        let link = self
+            .direct_shared_links(&full_path)
+            .await?
+            .into_iter()
+            .find(|link| link.url == link_id)
+            .ok_or_else(|| {
+                ProviderError::NotFound(
+                    "The share link to revoke is no longer listed for this file".to_string(),
+                )
+            })?;
+        self.revoke_shared_link(&link.url).await?;
+        info!("Revoked a share link for {}", path);
         Ok(())
     }
 
@@ -3344,6 +3606,430 @@ mod tests {
         let mut provider = fixture_connected();
         provider.content_base_override = Some(format!("http://{addr}"));
         (provider, calls)
+    }
+
+    type DropboxCalls = std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>;
+
+    /// A Dropbox double for shared links. A create answers `created`
+    /// (status, body); without it the file already has a link and a create
+    /// answers 409 `shared_link_already_exists`, naming `named` in its
+    /// metadata when given. The file's own links are `own` (at
+    /// `access_level`) and `second` (at `second_level`, unstated when
+    /// `None`); a modify answers with the expiry it was sent. Every call is
+    /// recorded as `path body`.
+    async fn dropbox_sharing(
+        access_level: &'static str,
+        second_level: Option<&'static str>,
+        created: Option<(u16, &'static str)>,
+        named: Option<&'static str>,
+    ) -> (DropboxProvider, DropboxCalls) {
+        use std::sync::Arc;
+        let calls: DropboxCalls = Arc::default();
+        let seen = Arc::clone(&calls);
+        let second_permissions = match second_level {
+            Some(level) => format!(
+                r#"{{"link_access_level":{{".tag":"{level}"}},"resolved_visibility":{{".tag":"team_and_password"}}}}"#
+            ),
+            None => r#"{"resolved_visibility":{".tag":"team_and_password"}}"#.to_string(),
+        };
+        let app = axum::Router::new().fallback(axum::routing::post(
+            move |uri: axum::http::Uri, body: String| {
+                let seen = Arc::clone(&seen);
+                let second_permissions = second_permissions.clone();
+                async move {
+                    let sent: serde_json::Value = serde_json::from_str(&body).unwrap();
+                    seen.lock().unwrap().push((uri.path().to_string(), sent.clone()));
+                    match uri.path() {
+                        "/sharing/create_shared_link_with_settings" => match (created, named) {
+                            (Some((status, link)), _) => (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                link.to_string(),
+                            ),
+                            (None, Some(url)) => (
+                                axum::http::StatusCode::CONFLICT,
+                                format!(
+                                    r#"{{"error":{{".tag":"shared_link_already_exists","shared_link_already_exists":{{".tag":"metadata","metadata":{{"url":"{url}","link_permissions":{{}}}}}}}},"error_summary":"shared_link_already_exists/metadata/.."}}"#
+                                ),
+                            ),
+                            (None, None) => (
+                                axum::http::StatusCode::CONFLICT,
+                                r#"{"error":{".tag":"shared_link_already_exists"},"error_summary":"shared_link_already_exists/.."}"#.to_string(),
+                            ),
+                        },
+                        "/sharing/list_shared_links" if sent["path"] == "/partial.txt" => (
+                            axum::http::StatusCode::OK,
+                            r#"{"links":[{"url":"https://www.dropbox.com/scl/fi/own","link_permissions":{"link_access_level":{".tag":"viewer"}}}]}"#.to_string(),
+                        ),
+                        "/sharing/modify_shared_link_settings"
+                            if sent["settings"]["link_password"] == "garble-password" =>
+                        {
+                            (axum::http::StatusCode::OK, "not json".to_string())
+                        }
+                        "/sharing/list_shared_links" if sent["path"] == "/more.txt" => (
+                            axum::http::StatusCode::OK,
+                            r#"{"links":[],"has_more":true}"#.to_string(),
+                        ),
+                        "/sharing/list_shared_links" => (
+                            axum::http::StatusCode::OK,
+                            format!(
+                                r#"{{"links":[{{"id":"id:file","url":"https://www.dropbox.com/scl/fi/own","expires":"2026-12-01T00:00:00Z","link_permissions":{{"link_access_level":{{".tag":"{access_level}"}},"require_password":true}}}},{{"id":"id:file","url":"https://www.dropbox.com/scl/fi/second","link_permissions":{second_permissions}}}],"has_more":false}}"#
+                            ),
+                        ),
+                        "/sharing/modify_shared_link_settings" => (
+                            axum::http::StatusCode::OK,
+                            serde_json::json!({
+                                "url": sent["url"],
+                                "expires": sent["settings"]["expires"],
+                                "link_permissions": {
+                                    "link_access_level": {".tag": "viewer"},
+                                    "require_password": true
+                                }
+                            })
+                            .to_string(),
+                        ),
+                        // A refusal that repeats the link, `/` escaped.
+                        "/sharing/revoke_shared_link"
+                            if sent["url"].as_str().unwrap().contains("echo") =>
+                        {
+                            (
+                                axum::http::StatusCode::BAD_REQUEST,
+                                format!(
+                                    r#"{{"error_summary":"shared_link_access_denied/..","url":"{}"}}"#,
+                                    sent["url"].as_str().unwrap().replace('/', "\\/")
+                                ),
+                            )
+                        }
+                        "/sharing/revoke_shared_link" => {
+                            (axum::http::StatusCode::OK, "null".to_string())
+                        }
+                        _ => (axum::http::StatusCode::NOT_FOUND, String::new()),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        (provider, calls)
+    }
+
+    fn called(calls: &DropboxCalls, path: &str) -> Vec<serde_json::Value> {
+        calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(p, _)| p == path)
+            .map(|(_, body)| body.clone())
+            .collect()
+    }
+
+    /// Requested 183 (deep-scan item 52): a file that already has a link gets
+    /// the password and expiry asked for on that link, instead of the link as
+    /// it was, and the link changed is the one Dropbox names, never the first
+    /// listed; its access level, which Dropbox does not change on an
+    /// existing link, is never handed out other than asked; only the file's
+    /// own links are looked up (a folder's link above it is not the file's);
+    /// the password is set without widening who the link is for; and the
+    /// link revoked is the one picked, by its URL (every link of a file has
+    /// the file's id), which no error repeats.
+    #[tokio::test]
+    async fn an_existing_dropbox_link_takes_the_settings_asked_for() {
+        let restricted = ShareLinkOptions {
+            password: Some("pw-long-secret".into()),
+            expires_in_secs: Some(3600),
+            permissions: None,
+        };
+        let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
+        let made = p
+            .create_share_link("/a.txt", restricted.clone())
+            .await
+            .unwrap();
+        assert_eq!(made.url, "https://www.dropbox.com/scl/fi/own");
+        let modify = called(&calls, "/sharing/modify_shared_link_settings");
+        assert_eq!(modify.len(), 1);
+        assert_eq!(modify[0]["url"], "https://www.dropbox.com/scl/fi/own");
+        let settings = &modify[0]["settings"];
+        assert_eq!(settings["link_password"], "pw-long-secret");
+        assert_eq!(settings["require_password"], true);
+        assert_eq!(made.expires_at.as_deref(), settings["expires"].as_str());
+        // Neither the access level, which Dropbox does not modify, nor an
+        // audience or a visibility, which would widen a team-only link.
+        for key in ["access", "audience", "requested_visibility"] {
+            assert!(settings.get(key).is_none(), "{key}: {settings}");
+        }
+        for body in called(&calls, "/sharing/list_shared_links") {
+            assert_eq!(body["direct_only"], true, "{body}");
+        }
+
+        // The link the conflict names is the one changed, whatever the
+        // listing's order.
+        let (mut p, calls) = dropbox_sharing(
+            "viewer",
+            Some("viewer"),
+            None,
+            Some("https://www.dropbox.com/scl/fi/second"),
+        )
+        .await;
+        p.create_share_link("/a.txt", restricted.clone())
+            .await
+            .unwrap();
+        let modify = called(&calls, "/sharing/modify_shared_link_settings");
+        assert_eq!(modify[0]["url"], "https://www.dropbox.com/scl/fi/second");
+        // Unnamed, two links of the level asked: none is picked.
+        let (mut p, calls) = dropbox_sharing("viewer", Some("viewer"), None, None).await;
+        let err = p
+            .create_share_link("/a.txt", restricted.clone())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("several shared links"), "{err}");
+        assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
+
+        // A plain link asked for: the existing view link as it is.
+        let (mut p, calls) = dropbox_sharing("viewer", Some("editor"), None, None).await;
+        let made = p
+            .create_share_link("/a.txt", ShareLinkOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(made.url, "https://www.dropbox.com/scl/fi/own");
+        assert_eq!(made.expires_at.as_deref(), Some("2026-12-01T00:00:00Z"));
+        assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
+        // Existing edit links are not handed out for a view link.
+        let (mut p, calls) = dropbox_sharing("editor", Some("editor"), None, None).await;
+        let err = p
+            .create_share_link("/a.txt", ShareLinkOptions::default())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("with edit access"), "{err}");
+        assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
+
+        // A new link Dropbox reports as open, or does not confirm as
+        // protected when read again, or gives no expiry while one was asked,
+        // is revoked, not handed out; the password is set without a
+        // visibility.
+        for (link, missing) in [
+            (
+                r#"{"url":"https://www.dropbox.com/scl/fi/new","link_permissions":{"link_access_level":{".tag":"viewer"},"require_password":false}}"#,
+                "without the password",
+            ),
+            (
+                r#"{"url":"https://www.dropbox.com/scl/fi/new","link_permissions":{"link_access_level":{".tag":"viewer"}}}"#,
+                "without the password",
+            ),
+            (
+                r#"{"url":"https://www.dropbox.com/scl/fi/new","link_permissions":{"link_access_level":{".tag":"viewer"},"require_password":true}}"#,
+                "without the expiry",
+            ),
+            (
+                r#"{"url":"https://www.dropbox.com/scl/fi/new","expires":"2020-01-01T00:00:00Z","link_permissions":{"link_access_level":{".tag":"viewer"},"require_password":true}}"#,
+                "without the expiry",
+            ),
+            (
+                r#"{"url":"https://www.dropbox.com/scl/fi/new","link_permissions":{"link_access_level":{".tag":"editor"},"require_password":true}}"#,
+                "without the access asked for",
+            ),
+            (
+                r#"{"url":"https://www.dropbox.com/scl/fi/new","link_permissions":{"require_password":true}}"#,
+                "without a stated access level",
+            ),
+            (
+                r#"{"url":"https://www.dropbox.com/scl/fi/new","expires":"2099-01-01T00:00:00Z","link_permissions":{"link_access_level":{".tag":"viewer"},"require_password":true}}"#,
+                "without the expiry",
+            ),
+        ] {
+            let (mut p, calls) = dropbox_sharing("viewer", None, Some((200, link)), None).await;
+            let err = p
+                .create_share_link("/a.txt", restricted.clone())
+                .await
+                .unwrap_err();
+            assert!(err.to_string().contains(missing), "{link}: {err}");
+            let revoked = called(&calls, "/sharing/revoke_shared_link");
+            assert_eq!(revoked.len(), 1, "{link}");
+            assert_eq!(revoked[0]["url"], "https://www.dropbox.com/scl/fi/new");
+            let create = called(&calls, "/sharing/create_shared_link_with_settings");
+            assert!(create[0]["settings"].get("requested_visibility").is_none());
+        }
+        // A protection the answer does not state, confirmed by the listing.
+        let (mut p, _) = dropbox_sharing(
+            "viewer",
+            None,
+            Some((
+                200,
+                r#"{"url":"https://www.dropbox.com/scl/fi/own","link_permissions":{}}"#,
+            )),
+            None,
+        )
+        .await;
+        let password_only = ShareLinkOptions {
+            password: Some("pw-long-secret".into()),
+            ..Default::default()
+        };
+        p.create_share_link("/a.txt", password_only).await.unwrap();
+        // Dropbox repeating the refused password: not in the error.
+        let (mut p, _) = dropbox_sharing(
+            "viewer",
+            None,
+            Some((400, r#"{"error_summary":"settings_error/invalid_settings","user_message":"pw-long-secret"}"#)),
+            None,
+        )
+        .await;
+        let err = p
+            .create_share_link("/a.txt", restricted.clone())
+            .await
+            .unwrap_err();
+        assert!(!err.to_string().contains("long-secret"), "{err}");
+
+        // A password the answer says is off is final, even when the listed
+        // row (here `own`, protected) says otherwise.
+        let (mut p, calls) = dropbox_sharing(
+            "viewer",
+            None,
+            Some((
+                200,
+                r#"{"url":"https://www.dropbox.com/scl/fi/own","link_permissions":{"require_password":false}}"#,
+            )),
+            None,
+        )
+        .await;
+        let err = p
+            .create_share_link(
+                "/a.txt",
+                ShareLinkOptions {
+                    password: Some("pw-long-secret".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("without the password"), "{err}");
+        assert!(called(&calls, "/sharing/list_shared_links").is_empty());
+        // A modify Dropbox accepted with an answer that cannot be read: the
+        // existing link may have changed, and it is not revoked.
+        let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
+        let err = p
+            .create_share_link(
+                "/a.txt",
+                ShareLinkOptions {
+                    password: Some("garble-password".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("may have changed"), "{err}");
+        assert!(called(&calls, "/sharing/revoke_shared_link").is_empty());
+        // An answer Dropbox accepted but that cannot be read: a link may
+        // exist, and none is revoked blind.
+        let (mut p, calls) = dropbox_sharing("viewer", None, Some((200, "not json")), None).await;
+        let err = p
+            .create_share_link("/a.txt", restricted.clone())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("may have been made"), "{err}");
+        assert!(called(&calls, "/sharing/revoke_shared_link").is_empty());
+        // Another 409 that merely holds the phrase changes no link.
+        let (mut p, calls) = dropbox_sharing(
+            "viewer",
+            None,
+            Some((
+                409,
+                r#"{"error":{".tag":"settings_error"},"user_message":"not shared_link_already_exists"}"#,
+            )),
+            None,
+        )
+        .await;
+        assert!(p
+            .create_share_link("/a.txt", restricted.clone())
+            .await
+            .is_err());
+        assert!(called(&calls, "/sharing/list_shared_links").is_empty());
+        assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
+        // A named link whose access neither the answer nor the listing
+        // states is not handed out.
+        let (mut p, calls) = dropbox_sharing(
+            "viewer",
+            None,
+            None,
+            Some("https://www.dropbox.com/scl/fi/ghost"),
+        )
+        .await;
+        let err = p
+            .create_share_link("/a.txt", ShareLinkOptions::default())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("does not say the access"), "{err}");
+        assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
+        // The root is no item: nothing is listed, made or revoked for it.
+        let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
+        for root in ["/", ""] {
+            assert!(matches!(
+                p.remove_share_link(root).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                p.create_share_link(root, ShareLinkOptions::default()).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+        }
+        assert!(calls.lock().unwrap().is_empty(), "root: nothing sent");
+        // A listing in part, or one that does not say it is whole, picks and
+        // revokes nothing.
+        assert!(p.list_share_links("/more.txt").await.is_err());
+        assert!(p.remove_share_link("/more.txt").await.is_err());
+        assert!(p.remove_share_link("/partial.txt").await.is_err());
+        assert!(called(&calls, "/sharing/revoke_shared_link").is_empty());
+        // A refused revoke repeating the link does not show it.
+        let err = p
+            .revoke_shared_link("https://www.dropbox.com/scl/fi/echo?rlkey=SECRETKEY")
+            .await
+            .unwrap_err();
+        assert!(!err.to_string().contains("SECRETKEY"), "{err}");
+
+        // Listed by URL, with the protection either field reports; revoked by
+        // that URL; the file id, shared by both links, picks neither, and the
+        // refusal names no URL.
+        let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
+        let listed = p.list_share_links("/a.txt").await.unwrap();
+        let ids: Vec<_> = listed.iter().map(|l| l.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "https://www.dropbox.com/scl/fi/own",
+                "https://www.dropbox.com/scl/fi/second"
+            ]
+        );
+        assert!(listed.iter().all(|l| l.password_protected));
+        p.remove_share_link_by_id("/a.txt", "https://www.dropbox.com/scl/fi/second")
+            .await
+            .unwrap();
+        let err = p
+            .remove_share_link_by_id("/a.txt", "https://www.dropbox.com/scl/fi/gone")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::NotFound(_)), "{err:?}");
+        assert!(!err.to_string().contains("scl/fi"), "{err}");
+        assert!(p
+            .remove_share_link_by_id("/a.txt", "id:file")
+            .await
+            .is_err());
+        let revoked = called(&calls, "/sharing/revoke_shared_link");
+        assert_eq!(revoked.len(), 1);
+        assert_eq!(revoked[0]["url"], "https://www.dropbox.com/scl/fi/second");
+        // Unsharing the file revokes every link of it.
+        let (mut p, calls) = dropbox_sharing("viewer", Some("editor"), None, None).await;
+        p.remove_share_link("/a.txt").await.unwrap();
+        let revoked: Vec<_> = called(&calls, "/sharing/revoke_shared_link")
+            .into_iter()
+            .map(|body| body["url"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            revoked,
+            [
+                "https://www.dropbox.com/scl/fi/own",
+                "https://www.dropbox.com/scl/fi/second"
+            ]
+        );
     }
 
     /// Round 2 of the 4.2.1 review: `rmdir` was `delete`, which Dropbox
