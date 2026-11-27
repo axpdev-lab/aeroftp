@@ -522,8 +522,12 @@ fn folder_copy_path(path: &str) -> Result<String, ProviderError> {
 /// Refuses, before any write and for the native and the file-by-file copy
 /// alike, a folder copy from or to the root, into the source itself, or onto
 /// a path that exists (it would merge two trees). Only `NotFound` means the
-/// destination is free: any other `stat` error is returned as it is. The
-/// checks compare the [`folder_copy_path`] forms; `stat` gets `to` as given.
+/// destination is free: any other `stat` error is returned as it is. On an
+/// object store a folder can exist with no object at its name (`dst/a.txt`
+/// and no `dst/` marker), so after `NotFound` the destination is listed too:
+/// entries mean it exists, an empty listing or `NotFound` means it is free,
+/// any other error is returned. The checks compare the [`folder_copy_path`]
+/// forms; `stat` and `list` get `to` as given.
 async fn folder_copy_preflight(
     provider: &CopyProviderHandle,
     from: &str,
@@ -545,7 +549,14 @@ async fn folder_copy_preflight(
         Ok(_) => Err(ProviderError::AlreadyExists(format!(
             "{to}: copying a folder onto it would merge the two, nothing was copied"
         ))),
-        Err(ProviderError::NotFound(_)) => Ok(()),
+        Err(ProviderError::NotFound(_)) => match provider.list(to).await {
+            Ok(entries) if entries.is_empty() => Ok(()),
+            Ok(_) => Err(ProviderError::AlreadyExists(format!(
+                "{to} holds objects: copying a folder onto it would merge the two, nothing was copied"
+            ))),
+            Err(ProviderError::NotFound(_)) => Ok(()),
+            Err(error) => Err(error),
+        },
         Err(error) => Err(error),
     }
 }
@@ -685,7 +696,15 @@ pub async fn execute_copy_dag(
     folder_copy_preflight(&provider, &from, &to).await?;
     let caps = provider.transfer_capabilities().await?;
     let trigger = if TransferDagBuilder::shaped_copy(&caps).server_side {
-        match provider.server_side_copy(&from, &to).await {
+        // The native copy takes the endpoint's job slot, as a file copy's
+        // graph does; the slot is given back before a file-by-file fallback,
+        // whose per-file graphs take their own.
+        let endpoint = provider.endpoint_identity().await?;
+        let job_lease = crate::transfer_dag::governor::global()
+            .acquire_job(endpoint, TransferPriority::Foreground, Vec::new())
+            .await;
+        let native = job_lease.scope(provider.server_side_copy(&from, &to)).await;
+        match native {
             Ok(()) => {
                 let metrics = TransferDagMetrics::default();
                 observer.on_metrics(&metrics);
@@ -2258,6 +2277,9 @@ mod tests {
         list_denied: StdMutex<Option<String>>,
         listed: StdMutex<Vec<String>>,
         server_copy_args: StdMutex<Vec<(String, String)>>,
+        /// An endpoint of the test's own, so a test that fills its job slots
+        /// never blocks the other tests' mocks.
+        endpoint_host: StdMutex<Option<String>>,
         extra_entries: StdMutex<HashMap<String, Vec<RemoteEntry>>>,
     }
 
@@ -2304,6 +2326,17 @@ mod tests {
 
         fn display_name(&self) -> String {
             "dag-copy-mock".to_string()
+        }
+
+        fn endpoint_identity(&self) -> crate::transfer_dag::EndpointIdentity {
+            let host = self
+                .state
+                .endpoint_host
+                .lock()
+                .expect("copy mock endpoint poisoned")
+                .clone()
+                .unwrap_or_else(|| self.display_name());
+            crate::transfer_dag::EndpointIdentity::new("s3", host, "")
         }
 
         async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -2989,6 +3022,79 @@ mod tests {
         let files = state.files.lock().expect("copy mock files poisoned");
         assert!(!files.contains_key("/out"), "the file /reports was copied");
         assert!(!files.contains_key("/out/"), "the file /reports was copied");
+    }
+
+    /// On an object store `dst/a.txt` can exist with no `dst/` marker: `stat`
+    /// answers `NotFound`, so the listing decides, and the copy is refused
+    /// before it overwrites `dst/a.txt`.
+    #[tokio::test]
+    async fn a_destination_holding_objects_without_a_marker_is_refused() {
+        for native in [true, false] {
+            let (provider, state) = DagCopyMockProvider::new(native, None, 0);
+            seed_tree(&state);
+            state
+                .files
+                .lock()
+                .expect("copy mock files poisoned")
+                .insert("/dst/a.txt".to_string(), b"theirs".to_vec());
+            let observer = Arc::new(CollectingDagObserver::default());
+            let error = execute_copy_dag(
+                copy_handle(provider),
+                "/src".to_string(),
+                "/dst".to_string(),
+                Arc::clone(&observer) as Arc<dyn DagObserver>,
+            )
+            .await
+            .expect_err("a destination holding objects is refused");
+            assert!(
+                matches!(error, ProviderError::AlreadyExists(_)),
+                "{error:?}"
+            );
+            assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+            let files = state.files.lock().expect("copy mock files poisoned");
+            assert_eq!(
+                files.get("/dst/a.txt").map(Vec::as_slice),
+                Some(&b"theirs"[..])
+            );
+        }
+    }
+
+    /// A native folder copy takes the endpoint's job slot: with every slot
+    /// held it does not start, and it runs once one is given back.
+    #[tokio::test]
+    async fn a_native_folder_copy_waits_for_the_endpoint_slot() {
+        let host = "native-folder-copy-lease.test";
+        let (provider, state) = DagCopyMockProvider::new(true, None, 0);
+        seed_tree(&state);
+        *state
+            .endpoint_host
+            .lock()
+            .expect("copy mock endpoint poisoned") = Some(host.to_string());
+        let endpoint = crate::transfer_dag::governor::global()
+            .endpoint(&crate::transfer_dag::EndpointIdentity::new("s3", host, ""));
+        let mut held = Vec::new();
+        while endpoint.available_ops() > 0 {
+            held.push(endpoint.acquire_op().await);
+        }
+        let observer: Arc<dyn DagObserver> = Arc::new(CollectingDagObserver::default());
+        let copy = tokio::spawn(execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            observer,
+        ));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(
+            state.server_copy_calls.load(Ordering::SeqCst),
+            0,
+            "the native copy started with every endpoint slot held"
+        );
+        drop(held);
+        let outcome = copy.await.expect("copy task").expect("native folder copy");
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
