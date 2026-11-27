@@ -1455,8 +1455,7 @@ where
                 detail: format!(
                     "xattr back-reference {} reached the commit path",
                     *i as i64 + 1
-                )
-                .into(),
+                ),
             });
         }
         _ => None,
