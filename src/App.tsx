@@ -616,6 +616,7 @@ import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarge
 import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
 import { probeAliveArgs, reusesOpenTab } from './utils/probeAliveArgs';
+import { serverCopySource } from './utils/serverCopySource';
 import type { BackendMark, ConnectReceipt } from './utils/backendMark';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
 
@@ -14956,7 +14957,11 @@ const App: React.FC = () => {
                   toPath: finalDest,
                 });
               } else {
-                await invoke('provider_server_copy', { from, to: finalDest, expectedGuiTarget });
+                await invoke('provider_server_copy', {
+                  from: serverCopySource(from, !!file.is_dir, liveConnectionParams.protocol, isCryptOverlayActive()),
+                  to: finalDest,
+                  expectedGuiTarget,
+                });
               }
             } catch (e) {
               notify.error(t('toast.copyFailed'), `${file.name}: ${String(e)}`);

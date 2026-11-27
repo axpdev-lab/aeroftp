@@ -2660,9 +2660,6 @@ impl S3Provider {
         to: &str,
         record_validation: bool,
     ) -> Result<(), ProviderError> {
-        let from_key = from.trim_start_matches('/');
-        let to_key = to.trim_start_matches('/');
-
         // HEAD source up front so we know whether to take the single-PUT
         // CopyObject path or compose the copy as a multipart sequence of
         // UploadPartCopy operations (`copy_via_multipart` also keeps Filebase
@@ -2671,6 +2668,21 @@ impl S3Provider {
         // for the PUT to fail downstream. The caller has already waited for
         // write-back on the Filen Desktop preset. HEAD transfers headers only.
         let source_meta = self.stat(from).await?;
+        self.copy_with_source_meta(from, to, record_validation, source_meta)
+            .await
+    }
+
+    /// [`Self::copy_prepared_source`] once the source HEAD is known, so a
+    /// caller that has already read it does not send it twice.
+    async fn copy_with_source_meta(
+        &mut self,
+        from: &str,
+        to: &str,
+        record_validation: bool,
+        source_meta: RemoteEntry,
+    ) -> Result<(), ProviderError> {
+        let from_key = from.trim_start_matches('/');
+        let to_key = to.trim_start_matches('/');
         let source_size = source_meta.size;
 
         if !self.copy_via_multipart(source_size) {
@@ -2755,7 +2767,16 @@ impl S3Provider {
     /// merge the two folders. A key the server refuses to copy for a
     /// capability reason (a multipart copy a gateway does not implement) goes
     /// through the download and upload the single-file copy falls back to.
-    async fn copy_folder_keys(&mut self, from: &str, to: &str) -> Result<bool, ProviderError> {
+    ///
+    /// `slashless_marker` is set when HEAD found a gateway's zero-byte
+    /// directory marker at the folder's name without the slash (the object
+    /// `rmdir` also removes): it is copied first, to the destination's name.
+    async fn copy_folder_keys(
+        &mut self,
+        from: &str,
+        to: &str,
+        slashless_marker: bool,
+    ) -> Result<bool, ProviderError> {
         let from_trimmed = from.trim_matches('/');
         let to_trimmed = to.trim_matches('/');
         if from_trimmed.is_empty() {
@@ -2783,24 +2804,36 @@ impl S3Provider {
         }
 
         let to_prefix = format!("{to_trimmed}/");
-        for (copied, key) in keys.iter().enumerate() {
+        let mut copies: Vec<(String, String)> = Vec::with_capacity(keys.len() + 1);
+        if slashless_marker {
+            copies.push((from_trimmed.to_string(), to_trimmed.to_string()));
+        }
+        copies.extend(
+            keys.iter()
+                .map(|key| (key.clone(), format!("{to_prefix}{}", &key[prefix.len()..]))),
+        );
+        let total = copies.len();
+        for (copied, (key, target_key)) in copies.iter().enumerate() {
             let source = format!("/{key}");
-            let target = format!("/{to_prefix}{}", &key[prefix.len()..]);
+            let target = format!("/{target_key}");
             let step = match self
                 .server_side_copy_recorded(&source, &target, false)
                 .await
             {
-                Err(error)
-                    if !key.ends_with('/')
-                        && crate::copy_fallback::should_attempt_copy_fallback(&error) =>
-                {
-                    crate::copy_fallback::copy_via_download_upload(self, &source, &target).await
+                // A copy refused for a capability reason: a file goes through
+                // download and upload, a marker carries no data and is
+                // written the way `mkdir` writes it.
+                Err(error) if crate::copy_fallback::should_attempt_copy_fallback(&error) => {
+                    if key.ends_with('/') || key == from_trimmed {
+                        self.put_folder_marker_as_copy(target_key).await
+                    } else {
+                        crate::copy_fallback::copy_via_download_upload(self, &source, &target).await
+                    }
                 }
                 other => other,
             };
             if let Err(error) = step {
-                let message =
-                    partial_folder_copy_message(copied, keys.len(), from, to, key, &error);
+                let message = partial_folder_copy_message(copied, total, from, to, key, &error);
                 // The copy pipeline answers a capability error with a
                 // download and upload of the source, which for a folder
                 // would only fail again as "not found" and lose this message.
@@ -2816,9 +2849,7 @@ impl S3Provider {
         }
         info!(
             "Copied folder {} to {} ({} objects, server-side)",
-            from,
-            to,
-            keys.len()
+            from, to, total
         );
         Ok(true)
     }
@@ -8194,30 +8225,68 @@ impl StorageProvider for S3Provider {
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         // A trailing slash names a folder. Copied as one key it was only the
         // marker: an empty folder, reported as a success. (The rename loop
         // copies its marker through `server_side_copy_recorded`, not here.)
         if from.len() > 1 && from.ends_with('/') {
-            return if self.copy_folder_keys(from, to).await? {
+            return if self.copy_folder_keys(from, to, false).await? {
                 Ok(())
             } else {
                 Err(ProviderError::NotFound(from.to_string()))
             };
         }
-        match self.server_side_copy_recorded(from, to, false).await {
+        if self.config.filen_desktop_bridge {
+            self.prepare_file_move(from).await?;
+        }
+        // One HEAD decides, and a file copy reuses it: no extra request.
+        match self.stat(from).await {
+            // A gateway's zero-byte directory marker at the slashless name
+            // (`rmdir` removes the same object): with keys under `from/` it is
+            // a folder, and copying the marker alone wrote an empty folder
+            // and reported success. Without keys it is an empty folder, and
+            // the marker copy is the whole copy.
+            Ok(meta)
+                if meta.size == 0
+                    && meta
+                        .mime_type
+                        .as_deref()
+                        .is_some_and(is_s3_directory_content_type) =>
+            {
+                if self.copy_folder_keys(from, to, true).await? {
+                    Ok(())
+                } else {
+                    self.copy_with_source_meta(from, to, false, meta).await
+                }
+            }
+            Ok(meta) => self.copy_with_source_meta(from, to, false, meta).await,
             // No object has this key. A folder has none either: it is the
             // keys under `from/`, so the GUI's Copy of a folder ended here as
             // "Path not found" (#1633). Copy them, or keep the NotFound when
             // nothing is there. An object and a folder of the same name can
-            // both exist; the object is what the key names, so it wins.
+            // both exist; the object is what the key names, so it wins (the
+            // GUI sends a folder with its trailing slash).
             Err(ProviderError::NotFound(missing)) => {
-                if self.copy_folder_keys(from, to).await? {
+                if self.copy_folder_keys(from, to, false).await? {
                     Ok(())
                 } else {
                     Err(ProviderError::NotFound(missing))
                 }
             }
-            other => other,
+            // Filen's S3 bridge answers HEAD on a folder name with 401/403
+            // (#368, the case the rename branch maps). The listing decides:
+            // keys under `from/` make it a folder, otherwise the HEAD error
+            // stands.
+            Err(error @ ProviderError::ServerError(_)) if self.is_filen_s3_endpoint() => {
+                if self.copy_folder_keys(from, to, false).await? {
+                    Ok(())
+                } else {
+                    Err(error)
+                }
+            }
+            Err(error) => Err(error),
         }
     }
 
@@ -14773,7 +14842,27 @@ mod tests {
         objects: &[(&str, &[u8])],
         refuse_copy: &[(&str, u16, &str)],
     ) -> (S3Provider, FolderBucket) {
+        folder_bucket_with(objects, refuse_copy, FolderBucketQuirks::default()).await
+    }
+
+    /// Gateway behaviours the folder copy must handle.
+    #[derive(Default, Clone)]
+    struct FolderBucketQuirks {
+        /// Keys whose HEAD names `application/x-directory`: a gateway's
+        /// slashless directory marker.
+        directory_typed: Vec<String>,
+        /// HEAD on a key the bucket does not hold answers 403, as Filen's S3
+        /// bridge does on a folder name (#368).
+        forbid_missing_head: bool,
+    }
+
+    async fn folder_bucket_with(
+        objects: &[(&str, &[u8])],
+        refuse_copy: &[(&str, u16, &str)],
+        quirks: FolderBucketQuirks,
+    ) -> (S3Provider, FolderBucket) {
         use std::sync::{Arc, Mutex};
+        let quirks = Arc::new(quirks);
         let store: Arc<Mutex<std::collections::BTreeMap<String, Vec<u8>>>> = Arc::new(Mutex::new(
             objects
                 .iter()
@@ -14792,6 +14881,7 @@ mod tests {
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let (store, seen, refuse) =
                     (Arc::clone(&served), Arc::clone(&seen), Arc::clone(&refuse));
+                let quirks = Arc::clone(&quirks);
                 async move {
                     let method = req.method().as_str().to_string();
                     let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
@@ -14848,12 +14938,19 @@ mod tests {
                             )
                         }
                         ("HEAD", _, _) => match objects.get(&key) {
-                            Some(bytes) => axum::response::Response::builder()
-                                .status(200)
-                                .header("content-length", bytes.len().to_string())
-                                .header("etag", "\"tag\"")
-                                .body(axum::body::Body::empty())
-                                .unwrap(),
+                            Some(bytes) => {
+                                let builder = axum::response::Response::builder()
+                                    .status(200)
+                                    .header("content-length", bytes.len().to_string())
+                                    .header("etag", "\"tag\"");
+                                let builder = if quirks.directory_typed.contains(&key) {
+                                    builder.header("content-type", "application/x-directory")
+                                } else {
+                                    builder
+                                };
+                                builder.body(axum::body::Body::empty()).unwrap()
+                            }
+                            None if quirks.forbid_missing_head => reply(403, Vec::new()),
                             None => reply(404, Vec::new()),
                         },
                         ("GET", None, _) => match objects.get(&key) {
@@ -15121,6 +15218,110 @@ mod tests {
         );
         assert!(bucket.get("docs/sub/b.txt").is_some());
         assert!(bucket.get("dest/docs/sub/b.txt").is_none());
+    }
+
+    /// A gateway that keeps a folder as a zero-byte `application/x-directory`
+    /// object at the slashless name (the one `rmdir` also removes): HEAD
+    /// answers 200 for `docs`, and copying that object alone wrote an empty
+    /// folder and reported success. The folder is copied, marker included.
+    #[tokio::test]
+    async fn server_copy_of_a_folder_behind_a_slashless_marker_copies_its_keys() {
+        let objects: &[(&str, &[u8])] = &[
+            ("docs", b""),
+            ("docs/a.txt", b"alpha"),
+            ("docs/sub/b.txt", b"beta"),
+        ];
+        let (mut provider, bucket) = folder_bucket_with(
+            objects,
+            &[],
+            FolderBucketQuirks {
+                directory_typed: vec!["docs".to_string()],
+                ..FolderBucketQuirks::default()
+            },
+        )
+        .await;
+        provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect("folder copy");
+        assert!(bucket.get("dest/docs").is_some(), "{:?}", bucket.log());
+        assert_eq!(
+            bucket.get("dest/docs/sub/b.txt").as_deref(),
+            Some(&b"beta"[..])
+        );
+    }
+
+    /// An empty folder behind a slashless marker is the marker: one copy.
+    #[tokio::test]
+    async fn an_empty_folder_behind_a_slashless_marker_copies_the_marker() {
+        let (mut provider, bucket) = folder_bucket_with(
+            &[("empty", b"")],
+            &[],
+            FolderBucketQuirks {
+                directory_typed: vec!["empty".to_string()],
+                ..FolderBucketQuirks::default()
+            },
+        )
+        .await;
+        provider
+            .server_copy("/empty", "/dest/empty")
+            .await
+            .expect("marker copy");
+        assert!(bucket.get("dest/empty").is_some(), "{:?}", bucket.log());
+    }
+
+    /// Filen's bridge answers HEAD on a folder name with 403. The listing
+    /// decides: keys under the prefix make it a folder; with none the HEAD
+    /// error stands.
+    #[tokio::test]
+    async fn server_copy_of_a_folder_on_the_filen_bridge_survives_a_403_head() {
+        let quirks = FolderBucketQuirks {
+            forbid_missing_head: true,
+            ..FolderBucketQuirks::default()
+        };
+        let (mut provider, bucket) = folder_bucket_with(SOURCE_FOLDER, &[], quirks.clone()).await;
+        provider.config.region = "filen".to_string();
+        assert!(provider.is_filen_s3_endpoint());
+        provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect("folder copy");
+        assert!(
+            bucket.get("dest/docs/sub/b.txt").is_some(),
+            "{:?}",
+            bucket.log()
+        );
+
+        let (mut provider, _bucket) = folder_bucket_with(SOURCE_FOLDER, &[], quirks).await;
+        provider.config.region = "filen".to_string();
+        let err = provider
+            .server_copy("/nothing", "/dest/nothing")
+            .await
+            .expect_err("nothing there");
+        assert!(err.to_string().contains("403"), "{err}");
+    }
+
+    /// A marker whose CopyObject is refused for a capability reason is
+    /// written the way `mkdir` writes it, and the files still follow.
+    #[tokio::test]
+    async fn a_refused_marker_copy_is_written_as_a_marker() {
+        let (mut provider, bucket) = folder_bucket(
+            SOURCE_FOLDER,
+            &[(
+                "docs/",
+                501,
+                "<Error><Code>NotImplemented</Code><Message>server-side copy not supported</Message></Error>",
+            )],
+        )
+        .await;
+        provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect("folder copy with the marker written");
+        let log = bucket.log();
+        assert!(log.contains(&"PUT dest/docs/".to_string()), "{log:?}");
+        assert!(bucket.get("dest/docs/a.txt").is_some(), "{log:?}");
+        assert!(!log.contains(&"GET docs/".to_string()), "{log:?}");
     }
 
     /// The GUI path: `provider_server_copy` runs the copy DAG, which calls
