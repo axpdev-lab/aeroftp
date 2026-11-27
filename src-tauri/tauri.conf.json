@@ -87,7 +87,8 @@
                     "gstreamer1.0-plugins-bad"
                 ],
                 "recommends": [
-                    "python3-nautilus"
+                    "python3-nautilus",
+                    "pkexec"
                 ],
                 "files": {
                     "/usr/share/doc/aeroftp/THIRD-PARTY-NOTICES.md": "../THIRD-PARTY-NOTICES.md",
@@ -151,6 +152,9 @@
             "rpm": {
                 "depends": [
                     "libacl.so.1()(64bit)"
+                ],
+                "recommends": [
+                    "/usr/bin/pkexec"
                 ],
                 "files": {
                     "/usr/share/doc/aeroftp/THIRD-PARTY-NOTICES.md": "../THIRD-PARTY-NOTICES.md",

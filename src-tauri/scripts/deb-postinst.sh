@@ -29,9 +29,19 @@ if [ ! -x "$LIB_DIR/aeroftp-cli" ]; then
     exit 1
 fi
 
+# True when the two files have the same bytes. coreutils only: the .rpm does
+# not require diffutils, and without `cmp` the old `! cmp -s` test was always
+# true, so a second run moved the dispatcher over the GUI payload.
+same_content() {
+    local a b
+    a="$(sha256sum < "$1")" || return 1
+    b="$(sha256sum < "$2")" || return 1
+    [ "${a%% *}" = "${b%% *}" ]
+}
+
 # Tauri installs the GUI payload as /usr/bin/aeroftp. Move that real GUI
 # payload under /usr/lib/aeroftp and put the dispatcher at /usr/bin/aeroftp.
-if [ -f "$DISPATCH_BIN" ] && ! cmp -s "$DISPATCH_BIN" "$DISPATCH_SRC"; then
+if [ -f "$DISPATCH_BIN" ] && ! same_content "$DISPATCH_BIN" "$DISPATCH_SRC"; then
     mv -f "$DISPATCH_BIN" "$GUI_BIN"
     chmod 0755 "$GUI_BIN"
 fi

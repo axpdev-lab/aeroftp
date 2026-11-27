@@ -43,7 +43,15 @@ case "$FILE" in
         ;;
 esac
 
-ACTUAL_SHA256="$(sha256sum "$FILE" | awk '{print $1}')"
+# The digest of a file, from coreutils alone: minimal openSUSE and Fedora
+# images have no awk. Hashing stdin keeps sha256sum from escaping the name.
+sha256_of() {
+    local out
+    out="$(sha256sum < "$1")" || return 1
+    printf '%s\n' "${out%% *}"
+}
+
+ACTUAL_SHA256="$(sha256_of "$FILE")"
 if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
     echo "Error: Package hash mismatch" >&2
     exit 1
@@ -53,7 +61,7 @@ TMP_COPY="$(mktemp /var/tmp/aeroftp-update-XXXXXX.pkg)"
 trap 'rm -f "$TMP_COPY"' EXIT
 cp --preserve=mode "$FILE" "$TMP_COPY"
 
-COPIED_SHA256="$(sha256sum "$TMP_COPY" | awk '{print $1}')"
+COPIED_SHA256="$(sha256_of "$TMP_COPY")"
 if [ "$COPIED_SHA256" != "$EXPECTED_SHA256" ]; then
     echo "Error: Package copy hash mismatch" >&2
     exit 1

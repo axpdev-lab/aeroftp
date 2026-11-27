@@ -3340,6 +3340,126 @@ fn current_appimage() -> Option<PathBuf> {
     )
 }
 
+/// The distribution families whose native package format is rpm, as
+/// `/etc/os-release` names them in `ID` or `ID_LIKE`: Fedora, RHEL and their
+/// rebuilds (`ID_LIKE="rhel centos fedora"`), openSUSE and SLES
+/// (`ID_LIKE="opensuse suse"`), Mageia and PCLinuxOS (`mandriva`), openEuler.
+const RPM_OS_RELEASE_FAMILIES: &[&str] = &[
+    "fedora",
+    "rhel",
+    "centos",
+    "suse",
+    "opensuse",
+    "sles",
+    "mageia",
+    "mandriva",
+    "openeuler",
+];
+
+/// True when `/etc/os-release` places this system in an rpm family, by its
+/// `ID` or any word of its `ID_LIKE`. Values may be quoted; the comparison
+/// ignores case (openEuler writes `ID=openEuler`).
+fn os_release_is_rpm_family(os_release: &str) -> bool {
+    os_release
+        .lines()
+        .filter_map(|line| {
+            let (key, value) = line.split_once('=')?;
+            matches!(key.trim(), "ID" | "ID_LIKE").then_some(value)
+        })
+        .flat_map(|value| {
+            value
+                .trim()
+                .trim_matches(|c| c == '"' || c == '\'')
+                .split_whitespace()
+                .map(str::to_ascii_lowercase)
+                .collect::<Vec<_>>()
+        })
+        .any(|word| RPM_OS_RELEASE_FAMILIES.contains(&word.as_str()))
+}
+
+/// The package format of a Linux install that is not a Snap, a Flatpak or an
+/// AppImage, so the updater fetches the artifact the system can install.
+///
+/// The package manager that owns this executable answers first: rpm, then
+/// dpkg. That is how the app was installed, whatever the distribution. When
+/// neither owns it (a build run from a checkout, an executable replaced on
+/// disk by an update while it runs) the distribution decides: the Red Hat
+/// and Fedora release files or an rpm family in `/etc/os-release` mean rpm,
+/// a pacman system means `pacman` (notify-only, see
+/// [`update_download_supported`]), and anything else keeps the `deb` default.
+///
+/// Before #1632 only the two release files counted, so openSUSE, which ships
+/// neither, was offered the `.deb`.
+///
+/// Every probe is a parameter so the branches are unit-testable without the
+/// real package managers or filesystem.
+fn linux_package_format(
+    owned_by_rpm: impl FnOnce() -> bool,
+    owned_by_dpkg: impl FnOnce() -> bool,
+    path_exists: impl Fn(&str) -> bool,
+    os_release: Option<&str>,
+) -> &'static str {
+    if owned_by_rpm() {
+        return "rpm";
+    }
+    if owned_by_dpkg() {
+        return "deb";
+    }
+    if path_exists("/etc/redhat-release")
+        || path_exists("/etc/fedora-release")
+        || os_release.is_some_and(os_release_is_rpm_family)
+    {
+        return "rpm";
+    }
+    // Arch and its derivatives (Manjaro, EndeavourOS, Artix). The AUR package
+    // is installed by pacman, which the in-app updater cannot drive. Report a
+    // format that `update_download_supported` excludes so the updater degrades
+    // to notify-only, exactly as it already does for Snap and Flatpak.
+    if is_pacman_system(&path_exists) {
+        return "pacman";
+    }
+    "deb"
+}
+
+/// The files whose owning package tells how this executable was installed:
+/// the executable itself and, beside it, the dispatcher.
+///
+/// The GUI runs as `/usr/lib/aeroftp/aeroftp.bin`. The .deb lists that file,
+/// but in the .rpm the GUI payload is `/usr/bin/aeroftp` and the postinstall
+/// moves it to `aeroftp.bin`, a path rpm does not know. Both packages list
+/// `/usr/lib/aeroftp/aeroftp-dispatch`, so that file answers for either.
+///
+/// The kernel appends ` (deleted)` to `/proc/self/exe` once an update has
+/// replaced the file on disk; the suffix is dropped so the query names the
+/// installed path.
+fn current_package_paths() -> Vec<std::ffi::OsString> {
+    let Ok(exe) = std::env::current_exe() else {
+        return Vec::new();
+    };
+    let exe = match exe.to_str().and_then(|s| s.strip_suffix(" (deleted)")) {
+        Some(stripped) => PathBuf::from(stripped),
+        None => exe,
+    };
+    let dispatcher = exe.with_file_name("aeroftp-dispatch");
+    let mut paths = vec![exe.into_os_string()];
+    if dispatcher.is_file() {
+        paths.push(dispatcher.into_os_string());
+    }
+    paths
+}
+
+/// True when `program` runs and exits 0. A program that is not installed is
+/// `false`, as is any failure to spawn it.
+fn command_succeeds(program: &str, args: &[&std::ffi::OsStr]) -> bool {
+    std::process::Command::new(program)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
 /// Detect how the app was installed (deb, appimage, snap, flatpak, rpm, exe, dmg)
 fn detect_install_format() -> String {
     let os = std::env::consts::OS;
@@ -3357,22 +3477,22 @@ fn detect_install_format() -> String {
             if current_appimage().is_some() {
                 return "appimage".to_string();
             }
-            // Check for RPM-based distros (Fedora, CentOS, RHEL)
-            if std::path::Path::new("/etc/redhat-release").exists()
-                || std::path::Path::new("/etc/fedora-release").exists()
-            {
-                return "rpm".to_string();
-            }
-            // Check for Arch and its derivatives (Manjaro, EndeavourOS, Artix).
-            // The AUR package is installed by pacman, and the in-app updater can
-            // only install a .deb through pkexec. Report a format that
-            // `update_download_supported` excludes so the updater degrades to
-            // notify-only, exactly as it already does for Snap and Flatpak.
-            if is_pacman_system(|path| std::path::Path::new(path).exists()) {
-                return "pacman".to_string();
-            }
-            // Default to DEB for Debian/Ubuntu based
-            "deb".to_string()
+            let paths = current_package_paths();
+            linux_package_format(
+                || {
+                    paths.iter().any(|path| {
+                        command_succeeds("rpm", &["-qf".as_ref(), "--quiet".as_ref(), path])
+                    })
+                },
+                || {
+                    paths
+                        .iter()
+                        .any(|path| command_succeeds("dpkg-query", &["-S".as_ref(), path]))
+                },
+                |path| std::path::Path::new(path).exists(),
+                std::fs::read_to_string("/etc/os-release").ok().as_deref(),
+            )
+            .to_string()
         }
         "windows" => portable::detect_windows_install_format(),
         "macos" => "dmg".to_string(),
@@ -3518,7 +3638,11 @@ async fn resolve_hostname(hostname: String, port: u16) -> Result<String, String>
 #[tauri::command]
 async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
     let current_version = app.package_info().version.to_string();
-    let install_format = detect_install_format();
+    // Off the async runtime: on Linux the format comes from asking rpm and
+    // dpkg who owns this executable.
+    let install_format = tokio::task::spawn_blocking(detect_install_format)
+        .await
+        .map_err(|error| format!("Install format detection failed: {error}"))?;
 
     info!(
         "Checking for updates... Current: v{}, Format: {}",
@@ -3605,6 +3729,21 @@ async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
 #[tauri::command]
 fn log_update_detection(version: String) {
     info!("New version detected: v{}", version);
+}
+
+/// The .deb and .rpm updates run the helper as root through pkexec, which is
+/// its own package on openSUSE and on Debian and Ubuntu since 0.105-33, and
+/// a minimal install can lack it. Both packages recommend it (#1632). Without
+/// it the launch failed with a bare "No such file or directory"; say what is
+/// missing and where the verified package is, before anything is staged.
+fn require_pkexec(downloaded_path: &str) -> Result<(), String> {
+    if local_bridge::which_on_path("pkexec") {
+        return Ok(());
+    }
+    Err(format!(
+        "pkexec is not installed, so AeroFTP cannot ask for permission to install the update. \
+         Install pkexec with your package manager, or install {downloaded_path} with it directly."
+    ))
 }
 
 /// A8-03: Validate that update file path is in Downloads, temp directory, or
@@ -4136,6 +4275,7 @@ async fn install_deb_update(
     if !helper.exists() {
         return Err("Secure update helper not found; aborting privileged install".to_string());
     }
+    require_pkexec(&downloaded_path)?;
 
     // Fail closed AND derive the helper's hash from the verified artifact: only
     // install bytes this process downloaded and Sigstore-verified, and pass the
@@ -4184,6 +4324,7 @@ async fn install_rpm_update(
     if !helper.exists() {
         return Err("Secure update helper not found; aborting privileged install".to_string());
     }
+    require_pkexec(&downloaded_path)?;
 
     // Fail closed AND derive the helper's hash from the verified artifact: only
     // install bytes this process downloaded and Sigstore-verified, and pass the
@@ -33546,6 +33687,100 @@ mod privileged_update_staging_tests {
     fn staging_rejects_a_missing_source() {
         let missing = Path::new("/definitely-missing-aeroftp-update.deb");
         assert!(stage_privileged_update_package(missing, &"0".repeat(64)).is_err());
+    }
+}
+
+#[cfg(test)]
+mod linux_package_format_tests {
+    use super::{detect_install_format, linux_package_format, os_release_is_rpm_family};
+
+    /// Live check of the real probes, for an installed system: copy this test
+    /// binary over `/usr/lib/aeroftp/aeroftp.bin` (where the GUI runs) and run
+    /// it with `AEROFTP_EXPECT_INSTALL_FORMAT=rpm` (or `deb`) and `--ignored`.
+    #[test]
+    #[ignore = "needs an installed .deb or .rpm, see the doc comment"]
+    fn installed_package_format_matches_expectation() {
+        let expected = std::env::var("AEROFTP_EXPECT_INSTALL_FORMAT")
+            .expect("set AEROFTP_EXPECT_INSTALL_FORMAT");
+        assert_eq!(detect_install_format(), expected);
+    }
+
+    const OPENSUSE_TUMBLEWEED: &str =
+        "NAME=\"openSUSE Tumbleweed\"\nID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\n";
+    const SLES: &str = "NAME=\"SLES\"\nID=\"sles\"\nID_LIKE=\"suse\"\n";
+    const FEDORA: &str = "NAME=\"Fedora Linux\"\nID=fedora\n";
+    const ROCKY: &str = "NAME=\"Rocky Linux\"\nID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n";
+    const MAGEIA: &str = "NAME=\"Mageia\"\nID=mageia\nID_LIKE=\"mandriva fedora\"\n";
+    const OPENEULER: &str = "NAME=\"openEuler\"\nID=\"openEuler\"\n";
+    const UBUNTU: &str = "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n";
+    const ARCH: &str = "NAME=\"Arch Linux\"\nID=arch\n";
+
+    fn no_files(_: &str) -> bool {
+        false
+    }
+
+    /// #1632: openSUSE has neither Red Hat release file. Its rpm install was
+    /// detected as `deb` and offered the `.deb`.
+    #[test]
+    fn opensuse_without_ownership_is_rpm() {
+        let format = linux_package_format(|| false, || false, no_files, Some(OPENSUSE_TUMBLEWEED));
+        assert_eq!(format, "rpm");
+    }
+
+    /// The owning package manager is the answer, whatever the distribution says.
+    #[test]
+    fn rpm_ownership_wins() {
+        let format =
+            linux_package_format(|| true, || panic!("dpkg not asked"), no_files, Some(UBUNTU));
+        assert_eq!(format, "rpm");
+    }
+
+    #[test]
+    fn dpkg_ownership_wins_over_an_rpm_family() {
+        let format = linux_package_format(|| false, || true, no_files, Some(OPENSUSE_TUMBLEWEED));
+        assert_eq!(format, "deb");
+    }
+
+    /// The release files still count when os-release is missing.
+    #[test]
+    fn red_hat_release_files_still_mean_rpm() {
+        for marker in ["/etc/redhat-release", "/etc/fedora-release"] {
+            let format = linux_package_format(|| false, || false, |path| path == marker, None);
+            assert_eq!(format, "rpm", "{marker}");
+        }
+    }
+
+    #[test]
+    fn debian_family_keeps_the_deb_default() {
+        assert_eq!(
+            linux_package_format(|| false, || false, no_files, Some(UBUNTU)),
+            "deb"
+        );
+        assert_eq!(
+            linux_package_format(|| false, || false, no_files, None),
+            "deb"
+        );
+    }
+
+    #[test]
+    fn arch_stays_notify_only() {
+        let format = linux_package_format(
+            || false,
+            || false,
+            |path| path == "/etc/arch-release",
+            Some(ARCH),
+        );
+        assert_eq!(format, "pacman");
+    }
+
+    #[test]
+    fn rpm_families_by_id_or_id_like() {
+        for os_release in [OPENSUSE_TUMBLEWEED, SLES, FEDORA, ROCKY, MAGEIA, OPENEULER] {
+            assert!(os_release_is_rpm_family(os_release), "{os_release}");
+        }
+        for os_release in [UBUNTU, ARCH, "", "ID_LIKE=\n", "VERSION_ID=\"fedora\"\n"] {
+            assert!(!os_release_is_rpm_family(os_release), "{os_release}");
+        }
     }
 }
 

@@ -6,6 +6,7 @@
 # capability explicitly because Tauri does not auto-scan extra `files`.
 # Snap must contain libacl.so.1. AppImage must keep the system-library
 # contract: its CLI payload needs libacl.so.1, but must not bundle it.
+# Both .deb and .rpm also recommend pkexec, which the in-app updater runs.
 #
 # --require-bundles: fail if an expected artifact class is missing.
 # SNAP_FILE: optional path to a .snap to inspect.
@@ -91,6 +92,14 @@ if require_or_skip ".deb" "$DEB"; then
   else
     echo "OK: $(basename "$DEB") Depends includes libacl1"
   fi
+  # The in-app updater installs through pkexec (install_deb_update), which
+  # Debian and Ubuntu ship as its own package since 0.105-33 (#1632).
+  recommends="$(dpkg-deb -f "$DEB" Recommends || true)"
+  if ! printf '%s\n' "$recommends" | grep -Eq '(^|,)[[:space:]]*pkexec([, ]|$)'; then
+    fail "$DEB Recommends does not declare pkexec: $recommends"
+  else
+    echo "OK: $(basename "$DEB") Recommends includes pkexec"
+  fi
   tmp="$(mktemp -d)"
   dpkg-deb -x "$DEB" "$tmp/deb"
   deb_cli="$tmp/deb/usr/lib/aeroftp/aeroftp-cli"
@@ -114,6 +123,13 @@ if require_or_skip ".rpm" "$RPM"; then
     fail "$RPM does not auto-require libacl.so.1: $reqs"
   else
     echo "OK: $(basename "$RPM") Requires libacl.so.1"
+  fi
+  # The in-app updater installs through pkexec (install_rpm_update). By file,
+  # because the package differs: polkit on Fedora, pkexec on openSUSE (#1632).
+  if ! rpm -qp --recommends "$RPM" | grep -qx '/usr/bin/pkexec'; then
+    fail "$RPM does not recommend /usr/bin/pkexec: $(rpm -qp --recommends "$RPM" | tr '\n' ' ')"
+  else
+    echo "OK: $(basename "$RPM") Recommends /usr/bin/pkexec"
   fi
   if ! rpm -qpl "$RPM" | grep -qx '/usr/lib/aeroftp/aeroftp-cli'; then
     fail "$RPM does not contain /usr/lib/aeroftp/aeroftp-cli"
