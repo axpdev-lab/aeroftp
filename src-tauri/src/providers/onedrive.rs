@@ -2504,7 +2504,7 @@ impl StorageProvider for OneDriveProvider {
             .web_url
             .ok_or_else(|| ProviderError::Other("No share URL in response".to_string()))?;
 
-        info!("Created share link for {}: {}", path, url);
+        info!("Created share link for {}", path);
         Ok(ShareLinkResult {
             url,
             password: None,
