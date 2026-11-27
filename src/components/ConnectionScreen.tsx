@@ -66,6 +66,7 @@ import { loadSavedServerProfiles, readSavedServerProfilesForWrite, revertConvert
 import { carryFavoriteServer } from '../utils/favoriteServers';
 import { carryServerGroups } from '../utils/serverGroups';
 import { getStorageDedupKey } from '../utils/storageDedup';
+import { legacyPuterProfileForEdit } from '../utils/puterProfile';
 import { warnIfSavedByOtherAccount } from '../utils/crossUserDedupWarning';
 import { useActivityLog } from '../hooks/useActivityLog';
 import { logger } from '../utils/logger';
@@ -2362,11 +2363,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             providerId: profile.providerId,
         });
 
+        // A Puter profile saved in the old token form shows the account in the
+        // username field and saves back in the new form (owner, 2026-11-27).
+        const puterLegacy = legacyPuterProfileForEdit(profile.providerId, profile.host, profile.username);
+
         // Immediately update form with new profile data (password empty initially)
         onConnectionParamsChange({
-            server: profile.host,
+            server: puterLegacy?.server ?? profile.host,
             port: profile.port,
-            username: profile.username,
+            username: puterLegacy?.username ?? profile.username,
             password: profile.password || '', // Set immediately, will be updated if stored
             protocol: effectiveProtocol,
             providerId: profile.providerId,
