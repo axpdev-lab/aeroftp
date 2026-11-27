@@ -33,6 +33,27 @@ use super::{
     StorageProvider, TrashEntry, UploadedPart,
 };
 
+/// What an error may show of a key the server listed: a listed name can
+/// repeat a value this session sent (its session token), so that value is
+/// removed, or the key is withheld when it cannot be cut out.
+fn listed_key_text(key: &str, sent: &SentSecrets) -> String {
+    if sent.missing_token {
+        return "a listed key, withheld: a session token it may repeat is no longer known"
+            .to_string();
+    }
+    match super::without_sent_values(key, &sent.values) {
+        Some(shown) => shown,
+        None => "a listed key, withheld: it contains a value this session sent".to_string(),
+    }
+}
+
+/// Whether `to` is the folder `from` itself or a path inside it (both keys
+/// without their slashes), or the bucket root: a folder copied there would
+/// copy into itself.
+fn folder_copy_into_itself(from: &str, to: &str) -> bool {
+    to.is_empty() || to == from || to.starts_with(&format!("{from}/"))
+}
+
 /// What a folder rename that stopped halfway tells the user. A retry is refused
 /// while the destination holds objects, so the message says where each kind of
 /// object is and what clearing may touch. Objects moved by the metadata rename
@@ -2621,12 +2642,15 @@ impl S3Provider {
     /// unanswered DELETE may still have deleted server-side, so a transport
     /// failure is reported as unconfirmed, never as "kept".
     async fn delete_if_match(&mut self, key: &str, etag: &str) -> Result<(), ProviderError> {
+        // A rename deletes listed keys, whose names can repeat this
+        // session's token: the errors name the key without it.
+        let shown = listed_key_text(key, &self.sent_secrets());
         let response = self
             .s3_request_ext(Method::DELETE, key, None, None, &[("if-match", etag)])
             .await
             .map_err(|e| {
                 ProviderError::Other(format!(
-                    "deleting {key} is unconfirmed: the request failed before an answer \
+                    "deleting {shown} is unconfirmed: the request failed before an answer \
                      arrived ({e}); the server may already have deleted it, so inspect \
                      both folders before retrying"
                 ))
@@ -2635,16 +2659,16 @@ impl S3Provider {
         match response.status() {
             StatusCode::OK | StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
             StatusCode::PRECONDITION_FAILED => Err(ProviderError::Other(format!(
-                "rename source {key} changed after it was validated as an empty marker; \
+                "rename source {shown} changed after it was validated as an empty marker; \
                  the conditional delete was refused (412), so it was not deleted and \
                  the destination holds only the marker copy"
             ))),
-            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(key.to_string())),
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(shown)),
             // Like an unanswered request, a 5xx may already have deleted the
             // object server-side: only the 412 confirms preservation, so a
             // server error is reported as unconfirmed, never as "kept".
             status if status.is_server_error() => Err(ProviderError::Other(format!(
-                "deleting {key} is unconfirmed: the server answered {status}, so it may \
+                "deleting {shown} is unconfirmed: the server answered {status}, so it may \
                  already have deleted it; inspect both folders before retrying"
             ))),
             status => Err(ProviderError::ServerError(format!(
@@ -2806,7 +2830,7 @@ impl S3Provider {
         if keys.is_empty() {
             return Ok(false);
         }
-        if to_trimmed.is_empty() || to_trimmed == from_trimmed || to_trimmed.starts_with(&prefix) {
+        if folder_copy_into_itself(from_trimmed, to_trimmed) {
             return Err(ProviderError::InvalidPath(format!(
                 "cannot copy the folder {from} into itself ({to})"
             )));
@@ -2851,7 +2875,9 @@ impl S3Provider {
                 other => other,
             };
             if let Err(error) = step {
-                let message = partial_folder_copy_message(copied, total, from, to, key, &error);
+                let shown_key = listed_key_text(key, &self.sent_secrets());
+                let message =
+                    partial_folder_copy_message(copied, total, from, to, &shown_key, &error);
                 // The copy pipeline answers a capability error with a
                 // download and upload of the source, which for a folder
                 // would only fail again as "not found" and lose this message.
@@ -3297,7 +3323,7 @@ impl S3Provider {
                         keys.len(),
                         from,
                         to,
-                        old_key,
+                        &listed_key_text(old_key, &self.sent_secrets()),
                         &e,
                     )));
                 }
@@ -3324,13 +3350,14 @@ impl S3Provider {
                     }
                 }
                 for (key, etag) in validated {
+                    let shown = listed_key_text(&key, &self.sent_secrets());
                     self.delete_if_match(&key, &etag).await.map_err(|e| {
                         ProviderError::Other(format!(
                             "rename copied {} objects to {}, but deleting the validated marker \
                              {} failed, so the rename is incomplete: {e}",
                             to_delete.len(),
                             to,
-                            key
+                            shown
                         ))
                     })?;
                 }
@@ -6262,6 +6289,12 @@ impl S3Provider {
         meta: RemoteEntry,
     ) -> Result<(), ProviderError> {
         let to_trimmed = to.trim_matches('/');
+        let marker_trimmed = marker.trim_matches('/');
+        if folder_copy_into_itself(marker_trimmed, to_trimmed) {
+            return Err(ProviderError::InvalidPath(format!(
+                "cannot copy the folder /{marker_trimmed} into itself (/{to_trimmed})"
+            )));
+        }
         if self.key_or_folder_exists(to_trimmed).await? {
             return Err(ProviderError::AlreadyExists(format!(
                 "/{to_trimmed} already exists, and on S3 copying a folder into it would merge \
@@ -15440,6 +15473,93 @@ mod tests {
         );
     }
 
+    /// A key the server lists can repeat this session's token. The error of
+    /// a folder copy that stops on it, before the first confirmed copy and
+    /// after one, names the key without the token.
+    #[tokio::test]
+    async fn a_failed_folder_copy_never_shows_a_sent_token_in_the_listed_key() {
+        const TOKEN: &str = "SESSIONabc123token";
+        let failing = format!("docs/z-{TOKEN}.txt");
+        for objects in [
+            vec![(failing.as_str(), &b"z"[..])],
+            vec![("docs/a.txt", &b"alpha"[..]), (failing.as_str(), &b"z"[..])],
+        ] {
+            let (mut provider, _) = folder_bucket_with(
+                &objects,
+                &[(
+                    failing.as_str(),
+                    500,
+                    "<Error><Code>InternalError</Code></Error>",
+                )],
+                FolderBucketQuirks::default(),
+            )
+            .await;
+            provider.config.session_token = Some(secrecy::SecretString::from(TOKEN.to_string()));
+            let text = provider
+                .server_copy("/docs", "/dest/docs")
+                .await
+                .expect_err("the copy of the listed key fails")
+                .to_string();
+            assert!(!text.contains(TOKEN), "{text}");
+            assert!(text.contains("docs/z-[REDACTED].txt"), "{text}");
+            let expected = if objects.len() == 1 {
+                "before any copy was confirmed".to_string()
+            } else {
+                "confirmed 1 of 2 objects".to_string()
+            };
+            assert!(text.contains(&expected), "{text}");
+        }
+    }
+
+    /// The same for a folder rename that stops on a listed key.
+    #[tokio::test]
+    async fn a_failed_folder_rename_never_shows_a_sent_token_in_the_listed_key() {
+        const TOKEN: &str = "SESSIONabc123token";
+        let failing = format!("src/unreadable-{TOKEN}.txt");
+        let (mut provider, _, _) =
+            provider_on_memory_bucket(&[("src/a.txt", "a"), (failing.as_str(), "b")]).await;
+        provider.config.session_token = Some(secrecy::SecretString::from(TOKEN.to_string()));
+        let text = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the second copy fails")
+            .to_string();
+        assert!(!text.contains(TOKEN), "{text}");
+        assert!(text.contains("unreadable-[REDACTED].txt"), "{text}");
+    }
+
+    /// An empty folder kept as a slashless marker is not copied into itself:
+    /// `/empty/` to `/empty/child` writes nothing, and a sibling copy still
+    /// goes through.
+    #[tokio::test]
+    async fn an_empty_folder_marker_is_not_copied_into_itself() {
+        let quirks = FolderBucketQuirks {
+            directory_typed: vec!["empty".to_string()],
+            ..FolderBucketQuirks::default()
+        };
+        let (mut provider, bucket) =
+            folder_bucket_with(&[("empty", b"")], &[], quirks.clone()).await;
+        let outcome = provider.server_copy("/empty/", "/empty/child").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
+        let writes: Vec<String> = bucket
+            .log()
+            .into_iter()
+            .filter(|entry| entry.starts_with("PUT") || entry.starts_with("COPY"))
+            .collect();
+        assert!(writes.is_empty(), "{writes:?}");
+        assert!(bucket.get("empty/child").is_none());
+
+        let (mut provider, bucket) = folder_bucket_with(&[("empty", b"")], &[], quirks).await;
+        provider
+            .server_copy("/empty/", "/empty-copy")
+            .await
+            .expect("a sibling copy");
+        assert!(bucket.get("empty-copy").is_some(), "{:?}", bucket.log());
+    }
+
     /// A slash-ending key can hold bytes. When its copy is refused for a
     /// capability reason, the bytes go through download and upload: writing
     /// an empty marker in its place would lose them.
@@ -15741,6 +15861,29 @@ mod tests {
                 .any(|r| r == "PUT /test-bucket/dst/ sse=aws:kms kms=key-1"),
             "{log:?}"
         );
+    }
+
+    /// A rename that stops on the conditional delete of a listed marker
+    /// names the key without this session's token: a token too short to cut
+    /// out withholds the key.
+    #[tokio::test]
+    async fn a_refused_marker_delete_never_shows_a_sent_token() {
+        let (mut provider, _) = provider_for_marker_double(MarkerDouble {
+            refuse_marker_copy: true,
+            initial_delete_marker_etag: "\"marker-v2\"".to_string(),
+            ..MarkerDouble::default()
+        })
+        .await;
+        // The marker is `src/`: a token spelled `src` is in its name.
+        provider.config.session_token = Some(secrecy::SecretString::from("src".to_string()));
+        let text = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the marker changed after validation")
+            .to_string();
+        assert!(text.contains("refused (412)"), "{text}");
+        assert!(!text.contains("src/"), "{text}");
+        assert!(text.contains("a listed key, withheld"), "{text}");
     }
 
     /// Content written to the marker after the validating HEAD is never
