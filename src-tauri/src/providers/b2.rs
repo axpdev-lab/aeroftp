@@ -150,6 +150,10 @@ struct AuthorizeResponse {
     account_id: String,
     authorization_token: String,
     api_info: ApiInfo,
+    /// When the application key stops working, in milliseconds since the
+    /// epoch; `None` for a key that does not expire.
+    #[serde(default)]
+    application_key_expiration_timestamp: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -160,9 +164,23 @@ struct ApiInfo {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct AllowedInfo {
+    #[serde(default)]
+    capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct StorageApiInfo {
     api_url: String,
     download_url: String,
+    /// The S3-compatible endpoint (`https://s3.<region>.backblazeb2.com`),
+    /// where a share link can be signed for one object.
+    #[serde(default)]
+    s3_api_url: String,
+    /// What the key may do (`allowed.capabilities`, `shareFiles` among them).
+    #[serde(default)]
+    allowed: Option<AllowedInfo>,
     // Phase 2 (large-file upload): kept here so the wire shape is complete.
     #[allow(dead_code)]
     #[serde(default)]
@@ -612,16 +630,6 @@ struct ListFileVersionsResponse {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GetDownloadAuthorizationResponse {
-    #[allow(dead_code)]
-    bucket_id: String,
-    #[allow(dead_code)]
-    file_name_prefix: String,
-    authorization_token: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct UnfinishedFileWire {
     file_id: String,
     file_name: String,
@@ -666,6 +674,16 @@ pub struct B2Provider {
     account_id: String,
     api_url: String,
     download_url: String,
+    s3_api_url: String,
+    /// The key's capabilities as `b2_authorize_account` reported them;
+    /// `None` until it has answered, or when it named none.
+    key_capabilities: Option<Vec<String>>,
+    /// When the key stops working, in milliseconds since the epoch.
+    key_expires_at_ms: Option<i64>,
+    /// The S3-compatible origin a test points at its own double; `None`
+    /// signs for the endpoint the account reported.
+    #[cfg(test)]
+    s3_origin_override: Option<String>,
     auth_token: SecretString,
     bucket_id: String,
     /// Drives the header budget. Unread until `resolve_bucket_id` has run, and
@@ -706,6 +724,11 @@ impl B2Provider {
             account_id: String::new(),
             api_url: String::new(),
             download_url: String::new(),
+            s3_api_url: String::new(),
+            key_capabilities: None,
+            key_expires_at_ms: None,
+            #[cfg(test)]
+            s3_origin_override: None,
             auth_token: SecretString::new(String::new().into()),
             bucket_id: String::new(),
             bucket_budget: BucketBudget::UNREAD,
@@ -781,6 +804,13 @@ impl B2Provider {
         self.account_id = parsed.account_id;
         self.api_url = parsed.api_info.storage_api.api_url;
         self.download_url = parsed.api_info.storage_api.download_url;
+        self.s3_api_url = parsed.api_info.storage_api.s3_api_url;
+        self.key_capabilities = parsed
+            .api_info
+            .storage_api
+            .allowed
+            .map(|allowed| allowed.capabilities);
+        self.key_expires_at_ms = parsed.application_key_expiration_timestamp;
         self.auth_token = SecretString::new(parsed.authorization_token.into());
         Ok(())
     }
@@ -2531,53 +2561,98 @@ impl B2Provider {
         Ok(())
     }
 
-    /// `b2_get_download_authorization` mints a download token for any object
-    /// whose key starts with `file_name_prefix`, valid for `valid_duration_seconds`.
-    /// The bucket must be private: public buckets reject this call.
-    async fn get_download_authorization(
+    /// A presigned S3 `GET` of object `key` alone, valid `valid` seconds.
+    /// The URL is opened once for its first byte before it is handed out: a
+    /// link the S3-compatible endpoint refuses for this key (B2 refuses the
+    /// master application key there) would only fail for whoever gets it.
+    async fn presigned_object_url(
         &self,
-        file_name_prefix: &str,
-        valid_duration_seconds: u64,
-    ) -> Result<GetDownloadAuthorizationResponse, ProviderError> {
-        let url = format!("{}/b2api/v4/b2_get_download_authorization", self.api_url);
-        let body = serde_json::json!({
-            "bucketId": self.bucket_id,
-            "fileNamePrefix": file_name_prefix,
-            "validDurationInSeconds": valid_duration_seconds,
-        });
-        let req = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header()?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .build()
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("get_download_authorization build: {}", e))
-            })?;
-        let resp = send_with_retry(
-            &self.client,
-            req,
-            &self.retry_config.clone().for_safe_operation(),
-        )
-        .await
-        .map_http_err(|e| {
-            ProviderError::ConnectionFailed(format!("get_download_authorization send: {}", e))
+        key: &str,
+        valid: u64,
+        signed_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<String, ProviderError> {
+        const NO_EXACT_LINK: &str = "B2 can share one file only through its S3-compatible endpoint, and a B2 download token would also open every file whose name starts with this one, so no link is made";
+        let region = b2_s3_region(&self.s3_api_url).ok_or_else(|| {
+            ProviderError::NotSupported(format!(
+                "{NO_EXACT_LINK}: the account reported no S3-compatible endpoint"
+            ))
         })?;
-        let status = resp.status();
-        if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(
-                status,
-                &text,
-                "b2_get_download_authorization",
-            ));
-        }
-        resp.json::<GetDownloadAuthorizationResponse>()
+        // The origin is built from the region alone: what the account
+        // reported is not put in front of a signed path as it came.
+        let origin = format!("https://s3.{region}.backblazeb2.com");
+        #[cfg(test)]
+        let origin = self.s3_origin_override.clone().unwrap_or(origin);
+        let url = format!(
+            "{}/{}/{}",
+            origin,
+            urlencoding::encode(&self.config.bucket),
+            encode_path_segments(key)
+        );
+        let parsed =
+            url::Url::parse(&url).map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+        // A `.` or `..` segment is removed by the parser and by every HTTP
+        // client: the signed path, and the file opened, would be another.
+        super::s3::refuse_rewritten_path(&url, &parsed)?;
+        let presigned = super::s3::sigv4_presigned_get_url(
+            &url,
+            &parsed,
+            region,
+            &self.config.application_key_id,
+            self.config.application_key.expose_secret(),
+            None,
+            signed_at,
+            valid,
+        );
+        // A redirect is not followed: the answer that counts is the
+        // endpoint's own, and the signed query is not sent on to another host.
+        let probe_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| ProviderError::Other(format!("{NO_EXACT_LINK}: {e}")))?;
+        let probe = probe_client
+            .get(&presigned)
+            .header(reqwest::header::RANGE, "bytes=0-0")
+            .send()
             .await
-            .map_http_err(|e| {
-                ProviderError::ServerError(format!("get_download_authorization parse: {}", e))
-            })
+            .map_err(|_| {
+                ProviderError::ConnectionFailed(format!(
+                    "{NO_EXACT_LINK}: the S3-compatible endpoint did not answer"
+                ))
+            })?;
+        let status = probe.status();
+        // 416 with `bytes */0`: an empty object has no first byte, and the
+        // link opens it. A 416 that does not say so proves nothing.
+        let empty_object = status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE
+            && probe
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|range| range.to_str().ok())
+                == Some("bytes */0");
+        if status.is_success() || empty_object {
+            // A link that expired while the probe was answered opens nothing.
+            if chrono::Utc::now() >= signed_at + chrono::Duration::seconds(valid as i64) {
+                return Err(ProviderError::Other(format!(
+                    "{NO_EXACT_LINK}: the link expired before it could be checked; ask for a longer one"
+                )));
+            }
+            return Ok(presigned);
+        }
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(ProviderError::NotFound(key.to_string()));
+        }
+        // Only a refusal of the key points at the key; any other answer (a
+        // redirect, a 429, a 5xx) is the endpoint's, and says nothing of it.
+        if matches!(status.as_u16(), 401 | 403) {
+            return Err(ProviderError::PermissionDenied(format!(
+                "{NO_EXACT_LINK}: the S3-compatible endpoint refused the link (HTTP {}); it refuses the master application key, so use an application key that is not the master key",
+                status.as_u16()
+            )));
+        }
+        Err(ProviderError::ServerError(format!(
+            "{NO_EXACT_LINK}: the S3-compatible endpoint answered HTTP {} to the link",
+            status.as_u16()
+        )))
     }
 
     /// `b2_list_unfinished_large_files` paginated page. Used by the cleanup
@@ -4050,36 +4125,81 @@ impl StorageProvider for B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        // A key made without `shareFiles` was meant not to hand out links:
+        // the S3-compatible endpoint would sign one with `readFiles` alone.
+        if !self
+            .key_capabilities
+            .as_ref()
+            .is_some_and(|caps| caps.iter().any(|cap| cap == "shareFiles"))
+        {
+            return Err(ProviderError::PermissionDenied(
+                "The B2 application key has no shareFiles capability, so no share link is made"
+                    .to_string(),
+            ));
+        }
+        // The link reads the object with the key: without `readFiles` the
+        // endpoint refuses it, so the reason is said before anything is
+        // signed.
+        if !self
+            .key_capabilities
+            .as_ref()
+            .is_some_and(|caps| caps.iter().any(|cap| cap == "readFiles"))
+        {
+            return Err(ProviderError::PermissionDenied(
+                "The B2 application key has no readFiles capability, so a share link would not open"
+                    .to_string(),
+            ));
+        }
+        // B2 keeps `d//a.txt` and `d/a.txt` as two names, and the path is
+        // resolved with its empty segments removed: the link would be for
+        // the other file.
+        // `reports/` names the folder: resolved, it would be the file
+        // `reports` beside it.
+        if path.len() > 1 && path.ends_with('/') {
+            return Err(ProviderError::InvalidPath(format!(
+                "{path}: a B2 share link is made for a file, not a folder"
+            )));
+        }
+        if path.contains("//") {
+            return Err(ProviderError::InvalidPath(format!(
+                "{path}: a B2 name with an empty segment cannot be told from the one without it, so no link is made"
+            )));
+        }
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
+        // No object: the empty name signs the bucket's listing.
+        if key.is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "a B2 share link is made for a file, not the bucket".to_string(),
+            ));
+        }
         // B2 caps validity at 1s..604800s (7 days). Default to 24h.
         const DEFAULT_VALID_SECONDS: u64 = 86_400;
         const MAX_VALID_SECONDS: u64 = 604_800;
-        let valid = options
+        let mut valid = options
             .expires_in_secs
             .unwrap_or(DEFAULT_VALID_SECONDS)
             .clamp(1, MAX_VALID_SECONDS);
-        let auth = match self.get_download_authorization(&key, valid).await {
-            Ok(r) => r,
-            Err(e) if is_b2_token_failure(&e) => {
-                if self.maybe_reauth(&e).await {
-                    self.get_download_authorization(&key, valid).await?
-                } else {
-                    return Err(e);
-                }
+        // One whole-second instant caps, signs and dates the link.
+        let signed_at = chrono::DateTime::from_timestamp(chrono::Utc::now().timestamp(), 0)
+            .unwrap_or_else(chrono::Utc::now);
+        // The link works only while the key that signed it does.
+        if let Some(expires_ms) = self.key_expires_at_ms {
+            let left = (expires_ms / 1000).saturating_sub(signed_at.timestamp());
+            if left < 1 {
+                return Err(ProviderError::AuthenticationFailed(
+                    "The B2 application key has expired, so no share link is made".to_string(),
+                ));
             }
-            Err(e) => return Err(e),
-        };
-        // Build a shareable URL: the download authorization token is passed
-        // as the `Authorization` query param on the standard download endpoint.
-        let url = format!(
-            "{}/file/{}/{}?Authorization={}",
-            self.download_url,
-            urlencoding::encode(&self.config.bucket),
-            encode_path_segments(&key),
-            urlencoding::encode(&auth.authorization_token),
-        );
-        let expires_at = chrono::Utc::now()
+            valid = valid.min(left as u64);
+        }
+        // A B2 download token opens every file whose name starts with the
+        // one it was asked for (`report.pdf` also opens `report.pdf.bak`,
+        // and any such name uploaded while the link lives): B2 grants by name
+        // prefix only. The link is signed instead for this object alone on
+        // the S3-compatible endpoint, with the same key, or none is made.
+        let url = self.presigned_object_url(&key, valid, signed_at).await?;
+        let expires_at = signed_at
             .checked_add_signed(chrono::Duration::seconds(valid as i64))
             .map(|dt| dt.to_rfc3339());
         Ok(ShareLinkResult {
@@ -4427,6 +4547,21 @@ fn b2_clean_sha1(raw: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// The region of a B2 S3-compatible endpoint, `us-west-004` in
+/// `https://s3.us-west-004.backblazeb2.com`.
+fn b2_s3_region(s3_api_url: &str) -> Option<&str> {
+    let host = s3_api_url
+        .strip_prefix("https://")?
+        .trim_end_matches('/')
+        .strip_suffix(".backblazeb2.com")?;
+    host.strip_prefix("s3.").filter(|region| {
+        !region.is_empty()
+            && region
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    })
 }
 
 pub(crate) fn encode_path_segments(key: &str) -> String {
@@ -6222,15 +6357,6 @@ mod tests {
         assert!(parsed.next_file_id.is_none());
     }
 
-    #[test]
-    fn get_download_authorization_response_parses() {
-        let body = r#"{
-            "bucketId":"abcd","fileNamePrefix":"public/","authorizationToken":"4_xxxx"
-        }"#;
-        let parsed: GetDownloadAuthorizationResponse = serde_json::from_str(body).unwrap();
-        assert_eq!(parsed.authorization_token, "4_xxxx");
-    }
-
     // ── Phase 5 (Tier 2: large-file rename via b2_copy_part) ──────────────
 
     #[test]
@@ -6773,6 +6899,280 @@ mod tests {
         provider.bucket_id = "bucket".into();
         provider.connected = true;
         (provider, ops, copies)
+    }
+
+    /// Requested 183 (deep-scan item 48): a B2 download token opens every
+    /// file whose name starts with the one asked for, including names
+    /// uploaded while the link lives, so a link is only the one signed on the
+    /// S3-compatible endpoint for the object alone; without that endpoint no
+    /// link is made, and a name the URL parser would rewrite to another
+    /// object (`a/../b`) is refused before anything is signed.
+    #[tokio::test]
+    async fn a_b2_link_opens_only_the_file_it_was_made_for() {
+        assert_eq!(
+            b2_s3_region("https://s3.us-west-004.backblazeb2.com"),
+            Some("us-west-004")
+        );
+        assert_eq!(
+            b2_s3_region("https://s3.eu-central-003.backblazeb2.com/"),
+            Some("eu-central-003")
+        );
+        for url in [
+            "",
+            "http://s3.us-west-004.backblazeb2.com",
+            "https://s3.evil.example",
+            "https://s3..backblazeb2.com",
+            // A delimiter in the region would move the signed path's host.
+            "https://s3.x@evil.example/.backblazeb2.com",
+            "https://s3.us-west-004?.backblazeb2.com",
+            "https://s3.us-west-004#.backblazeb2.com",
+        ] {
+            assert_eq!(b2_s3_region(url), None, "{url}");
+        }
+        let mut provider = B2Provider::connected_test_fixture();
+        // A key without `shareFiles` hands out no link.
+        provider.key_capabilities = Some(vec!["readFiles".into(), "listFiles".into()]);
+        let err = provider
+            .create_share_link("/d/report.pdf", ShareLinkOptions::default())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::PermissionDenied(_)), "{err:?}");
+        // Nor one with `shareFiles` but without `readFiles`.
+        provider.key_capabilities = Some(vec!["shareFiles".into()]);
+        let err = provider
+            .create_share_link("/d/report.pdf", ShareLinkOptions::default())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("readFiles"), "{err:?}");
+        provider.key_capabilities = Some(vec!["readFiles".into(), "shareFiles".into()]);
+        let err = provider
+            .create_share_link("/d/report.pdf", ShareLinkOptions::default())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::NotSupported(_)), "{err:?}");
+        provider.s3_api_url = "https://s3.us-west-004.backblazeb2.com".into();
+        let err = provider
+            .create_share_link("/d/x/../private.txt", ShareLinkOptions::default())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::InvalidPath(_)), "{err:?}");
+        // `d//report.pdf` is another B2 name than `d/report.pdf`, and the
+        // bucket root is no file: neither is signed.
+        for path in ["/d//report.pdf", "/", "", "/d/"] {
+            let err = provider
+                .create_share_link(path, ShareLinkOptions::default())
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, ProviderError::InvalidPath(_)),
+                "{path}: {err:?}"
+            );
+        }
+        // A key that has expired signs nothing that would open.
+        provider.key_expires_at_ms = Some(chrono::Utc::now().timestamp_millis() - 1_000);
+        let err = provider
+            .create_share_link("/d/report.pdf", ShareLinkOptions::default())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, ProviderError::AuthenticationFailed(_)),
+            "{err:?}"
+        );
+        // The S3 link signs the object's own path.
+        let url = "https://s3.us-west-004.backblazeb2.com/test-bucket/d/report.pdf";
+        let signed = super::super::s3::sigv4_presigned_get_url(
+            url,
+            &url::Url::parse(url).unwrap(),
+            "us-west-004",
+            "test-id",
+            "test-key",
+            None,
+            chrono::Utc::now(),
+            3600,
+        );
+        assert!(
+            signed.starts_with(&format!(
+                "{url}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=test-id%2F"
+            )),
+            "{signed}"
+        );
+        assert!(
+            signed.contains("%2Fus-west-004%2Fs3%2Faws4_request&"),
+            "{signed}"
+        );
+    }
+
+    /// The probe of a signed link takes the endpoint's own answer: a
+    /// redirect is not followed (the signed query would go on to another
+    /// place, and its 200 would vouch for a file the endpoint did not
+    /// serve), a first byte is a link that opens, and a link signed by a key
+    /// that expires sooner lasts only as long as the key.
+    #[tokio::test]
+    async fn a_b2_link_is_vouched_for_by_the_endpoint_itself() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let followed = Arc::new(AtomicUsize::new(0));
+        let seen = followed.clone();
+        let app = axum::Router::new()
+            .route(
+                "/test-bucket/d/moved.pdf",
+                axum::routing::get(|| async {
+                    (
+                        axum::http::StatusCode::FOUND,
+                        [(axum::http::header::LOCATION, "/elsewhere")],
+                    )
+                }),
+            )
+            .route(
+                "/elsewhere",
+                axum::routing::get(move || {
+                    let seen = seen.clone();
+                    async move {
+                        seen.fetch_add(1, Ordering::SeqCst);
+                        "x"
+                    }
+                }),
+            )
+            .route(
+                "/test-bucket/d/empty.pdf",
+                axum::routing::get(|| async {
+                    (
+                        axum::http::StatusCode::RANGE_NOT_SATISFIABLE,
+                        [(axum::http::header::CONTENT_RANGE, "bytes */0")],
+                    )
+                }),
+            )
+            .route(
+                "/test-bucket/d/odd.pdf",
+                axum::routing::get(|| async { axum::http::StatusCode::RANGE_NOT_SATISFIABLE }),
+            )
+            .route(
+                "/test-bucket/d/slow.pdf",
+                axum::routing::get(|| async {
+                    tokio::time::sleep(Duration::from_millis(2_100)).await;
+                    (axum::http::StatusCode::PARTIAL_CONTENT, "x")
+                }),
+            )
+            .route(
+                "/test-bucket/d/busy.pdf",
+                axum::routing::get(|| async { axum::http::StatusCode::SERVICE_UNAVAILABLE }),
+            )
+            .route(
+                "/test-bucket/d/report.pdf",
+                axum::routing::get(|| async { (axum::http::StatusCode::PARTIAL_CONTENT, "x") }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = B2Provider::connected_test_fixture();
+        provider.s3_api_url = "https://s3.us-west-004.backblazeb2.com".into();
+        provider.s3_origin_override = Some(origin.clone());
+        provider.key_capabilities = Some(vec!["readFiles".into(), "shareFiles".into()]);
+
+        let moved = provider
+            .create_share_link("/d/moved.pdf", ShareLinkOptions::default())
+            .await;
+        assert!(
+            matches!(moved, Err(ProviderError::ServerError(_))),
+            "{moved:?}"
+        );
+        assert_eq!(followed.load(Ordering::SeqCst), 0);
+        // A busy endpoint is no refusal of the key.
+        let busy = provider
+            .create_share_link("/d/busy.pdf", ShareLinkOptions::default())
+            .await;
+        match busy {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(
+                    message.contains("503") && !message.contains("master"),
+                    "{message}"
+                )
+            }
+            other => panic!("{other:?}"),
+        }
+
+        // An empty object opens (416 `bytes */0`); a bare 416 proves nothing.
+        provider
+            .create_share_link("/d/empty.pdf", ShareLinkOptions::default())
+            .await
+            .expect("an empty object is a link that opens");
+        let odd = provider
+            .create_share_link("/d/odd.pdf", ShareLinkOptions::default())
+            .await;
+        assert!(odd.is_err(), "{odd:?}");
+        // A one-second link answered after it expired is not handed out.
+        let late = provider
+            .create_share_link(
+                "/d/slow.pdf",
+                ShareLinkOptions {
+                    expires_in_secs: Some(1),
+                    ..Default::default()
+                },
+            )
+            .await;
+        assert!(
+            late.as_ref()
+                .is_err_and(|e| e.to_string().contains("expired before")),
+            "{late:?}"
+        );
+
+        provider.key_expires_at_ms = Some(chrono::Utc::now().timestamp_millis() + 600_000);
+        let link = provider
+            .create_share_link("/d/report.pdf", ShareLinkOptions::default())
+            .await
+            .expect("a first byte is a link that opens");
+        server.abort();
+        assert!(
+            link.url
+                .starts_with(&format!("{origin}/test-bucket/d/report.pdf?")),
+            "{}",
+            link.url
+        );
+        let signed_for = link
+            .url
+            .split('&')
+            .find_map(|pair| pair.strip_prefix("X-Amz-Expires="))
+            .and_then(|secs| secs.parse::<u64>().ok())
+            .expect("X-Amz-Expires");
+        assert!((598..=600).contains(&signed_for), "{signed_for}");
+        let expires_at = chrono::DateTime::parse_from_rfc3339(link.expires_at.as_deref().unwrap())
+            .unwrap()
+            .timestamp();
+        assert!(expires_at <= chrono::Utc::now().timestamp() + 600);
+        // The reported expiry is the signed one: X-Amz-Date plus X-Amz-Expires.
+        let signed_date = link
+            .url
+            .split(['?', '&'])
+            .find_map(|pair| pair.strip_prefix("X-Amz-Date="))
+            .expect("X-Amz-Date");
+        let signed_date = chrono::NaiveDateTime::parse_from_str(signed_date, "%Y%m%dT%H%M%SZ")
+            .unwrap()
+            .and_utc()
+            .timestamp();
+        assert_eq!(expires_at, signed_date + signed_for as i64);
+
+        // What b2_authorize_account says of the key is what is kept.
+        let parsed: AuthorizeResponse = serde_json::from_value(serde_json::json!({
+            "accountId": "a",
+            "authorizationToken": "t",
+            "applicationKeyExpirationTimestamp": 1_900_000_000_000_i64,
+            "apiInfo": {"storageApi": {
+                "apiUrl": "https://api", "downloadUrl": "https://f",
+                "s3ApiUrl": "https://s3.us-west-004.backblazeb2.com",
+                "allowed": {"capabilities": ["readFiles", "shareFiles"], "buckets": null, "namePrefix": null}
+            }}
+        }))
+        .unwrap();
+        assert_eq!(
+            parsed.api_info.storage_api.allowed.unwrap().capabilities,
+            ["readFiles", "shareFiles"]
+        );
+        assert_eq!(
+            parsed.application_key_expiration_timestamp,
+            Some(1_900_000_000_000)
+        );
     }
 
     #[tokio::test]
