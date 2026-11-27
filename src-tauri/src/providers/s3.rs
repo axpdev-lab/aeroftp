@@ -15730,6 +15730,15 @@ mod tests {
             assert!(!line.contains(TOKEN), "{line}");
             assert!(line.contains("p-[REDACTED]"), "{line}");
         }
+        // A token holding `/` and `+`: the request URL keeps the slash and
+        // encodes the rest, a spelling neither raw nor fully encoded.
+        const MIXED: &str = "SESSIONabc/def+TOKEN=";
+        provider.config.session_token = Some(secrecy::SecretString::from(MIXED.to_string()));
+        let request = provider.build_url(&format!("p-{MIXED}/a.txt"));
+        assert!(!request.contains(MIXED), "{request}");
+        let url = provider.logged_url(&request);
+        assert!(!url.contains("SESSIONabc"), "{url}");
+        assert!(url.contains("p-[REDACTED]/a.txt"), "{url}");
         // A token too short to cut out withholds the URL.
         provider.config.session_token = Some(secrecy::SecretString::from("docs".to_string()));
         let url = provider.logged_url("http://127.0.0.1/test-bucket/docs/a.txt");

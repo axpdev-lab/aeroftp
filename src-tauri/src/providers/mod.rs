@@ -2184,31 +2184,62 @@ pub(crate) fn contains_any_spelling(text: &str, values: &[String]) -> bool {
 /// One regex for every spelling of `values`, longest first; `None` when
 /// there is no value.
 fn spellings_of(values: &[String]) -> Option<Result<regex::Regex, regex::Error>> {
-    let mut forms: Vec<String> = values
+    let mut forms: Vec<(usize, String)> = values
         .iter()
         .filter(|value| !value.is_empty())
         .flat_map(|value| {
             [
-                Some(value.clone()),
-                Some(urlencoding::encode(value).into_owned()),
-                fully_unescaped(value),
+                Some((value.len(), mixed_spelling_pattern(value))),
+                Some((value.len(), spelling_pattern(value))),
+                Some(urlencoding::encode(value).into_owned())
+                    .map(|form| (form.len(), spelling_pattern(&form))),
+                fully_unescaped(value).map(|form| (form.len(), spelling_pattern(&form))),
             ]
             .into_iter()
             .flatten()
         })
         .collect();
-    forms.sort_by_key(|form| std::cmp::Reverse(form.len()));
-    forms.dedup();
-    if forms.is_empty() {
+    forms.sort_by_key(|(len, _)| std::cmp::Reverse(*len));
+    let mut alternatives: Vec<String> = Vec::with_capacity(forms.len());
+    for (_, pattern) in forms {
+        if !alternatives.contains(&pattern) {
+            alternatives.push(pattern);
+        }
+    }
+    if alternatives.is_empty() {
         return None;
     }
-    let alternatives: Vec<String> = forms.iter().map(|form| spelling_pattern(form)).collect();
     // Too large a pattern is an error: the callers then say nothing of the
     // text rather than risk it.
     Some(regex::Regex::new(&format!(
         "(?:{})",
         alternatives.join("|")
     )))
+}
+
+/// A regex matching `value` with any of its characters percent-encoded and the
+/// others left as they are, in either letter case: a URL builder encodes some
+/// characters of a path segment (`+`, `=`) and leaves others (`/`), so a value
+/// holding both reaches the URL in a spelling that is neither the raw nor the
+/// fully encoded one. Unreserved characters are never encoded, so they match
+/// only as themselves.
+fn mixed_spelling_pattern(value: &str) -> String {
+    let mut pattern = String::new();
+    for c in value.chars() {
+        let mut utf8 = [0; 4];
+        let literal = regex::escape(c.encode_utf8(&mut utf8));
+        if c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_' | '~') {
+            pattern.push_str(&literal);
+        } else {
+            let encoded: String = c
+                .encode_utf8(&mut utf8)
+                .bytes()
+                .map(|byte| format!("%(?i:{byte:02X})"))
+                .collect();
+            pattern.push_str(&format!("(?:{literal}|{encoded})"));
+        }
+    }
+    pattern
 }
 
 /// A regex matching `form` exactly, except that each `%XX` escape matches in
@@ -6834,7 +6865,8 @@ mod tests {
     }
 
     /// A sent value is found in every spelling of its reflection: percent
-    /// escapes in either case, and a value holding a literal entity against
+    /// escapes in either case, any mix of encoded and raw characters, and a
+    /// value holding a literal entity against
     /// its decoded echo. A short value is left alone.
     #[test]
     fn a_sent_value_is_redacted_in_every_spelling() {
@@ -6844,6 +6876,10 @@ mod tests {
             "FQoGZXIvYXdzE%2Bsent%2Ftoken%3D%3D",
             "FQoGZXIvYXdzE%2bsent%2ftoken%3d%3d",
             "FQoGZXIvYXdzE%2Bsent%2ftoken%3D%3d",
+            // A URL builder that keeps `/` and encodes the rest of a segment.
+            "FQoGZXIvYXdzE%2Bsent/token%3D%3D",
+            "FQoGZXIvYXdzE+sent%2Ftoken==",
+            "FQoGZXIvYXdzE%2bsent/token=%3d",
         ] {
             assert_eq!(
                 without_sent_values(&format!("token [{echo}] expired"), &sent).as_deref(),
