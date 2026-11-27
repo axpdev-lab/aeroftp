@@ -87,16 +87,21 @@ fn partial_folder_copy_message(
     failed_key: &str,
     cause: &dyn std::fmt::Display,
 ) -> String {
+    // A reply can be lost after the server wrote the copy: the failed key is
+    // reported as possibly present at the destination, the count as the
+    // copies the server confirmed.
     if copied == 0 {
         format!(
             "copy of the folder {from} ({total} objects) to {to} failed on {failed_key} before \
-             any object was copied; {from} is unchanged: {cause}"
+             any copy was confirmed; {from} is unchanged, and {failed_key} may still have been \
+             written under {to}, in which case a retry is refused until it is removed: {cause}"
         )
     } else {
         format!(
-            "copy of the folder {from} to {to} copied {copied} of {total} objects before \
-             {failed_key} failed; {from} is unchanged, the {copied} copies stay under {to}, \
-             and a retry is refused until {to} is removed: {cause}"
+            "copy of the folder {from} to {to} confirmed {copied} of {total} objects before \
+             {failed_key} failed; {from} is unchanged, the {copied} confirmed copies stay under \
+             {to}, {failed_key} may also have been written there, and a retry is refused until \
+             {to} is removed: {cause}"
         )
     }
 }
@@ -2585,6 +2590,16 @@ impl S3Provider {
     /// not named 0 yields `None`. `If-Match` compares strong tags only, so a
     /// weak or missing ETag yields `None` too: without it no delete can be
     /// bound to this validation.
+    /// Whether a HEAD of `key` names its length as exactly 0. A missing or
+    /// unreadable length proves nothing, so it answers false.
+    async fn key_names_zero_length(&self, key: &str) -> bool {
+        matches!(
+            self.s3_request(Method::HEAD, key, None, None).await,
+            Ok(response) if response.status() == StatusCode::OK
+                && names_zero_length(response.headers())
+        )
+    }
+
     async fn empty_marker_etag(&mut self, key: &str) -> Option<String> {
         match self.s3_request(Method::HEAD, key, None, None).await {
             Ok(response) if response.status() == StatusCode::OK => {
@@ -2820,11 +2835,14 @@ impl S3Provider {
                 .server_side_copy_recorded(&source, &target, false)
                 .await
             {
-                // A copy refused for a capability reason: a file goes through
-                // download and upload, a marker carries no data and is
-                // written the way `mkdir` writes it.
+                // A copy refused for a capability reason: a marker carries no
+                // data and is written the way `mkdir` writes it; anything that
+                // holds bytes, a slash-ending key included, goes through
+                // download and upload with them.
                 Err(error) if crate::copy_fallback::should_attempt_copy_fallback(&error) => {
-                    if key.ends_with('/') || key == from_trimmed {
+                    if (key.ends_with('/') || key == from_trimmed)
+                        && self.key_names_zero_length(key).await
+                    {
                         self.put_folder_marker_as_copy(target_key).await
                     } else {
                         crate::copy_fallback::copy_via_download_upload(self, &source, &target).await
@@ -6250,7 +6268,15 @@ impl S3Provider {
                  the two: nothing was copied"
             )));
         }
-        self.copy_with_source_meta(marker, to, false, meta).await
+        match self.copy_with_source_meta(marker, to, false, meta).await {
+            // The marker holds no data (HEAD proved it empty): a copy refused
+            // for a capability reason writes it the way `mkdir` does, as the
+            // folder loop does for its markers.
+            Err(error) if crate::copy_fallback::should_attempt_copy_fallback(&error) => {
+                self.put_folder_marker_as_copy(to_trimmed).await
+            }
+            other => other,
+        }
     }
 
     async fn key_or_folder_exists(&self, key: &str) -> Result<bool, ProviderError> {
@@ -14884,6 +14910,9 @@ mod tests {
         /// HEAD on a key the bucket does not hold answers 403, as Filen's S3
         /// bridge does on a folder name (#368).
         forbid_missing_head: bool,
+        /// Copy sources the bucket writes and then answers 500: a reply lost
+        /// after the server wrote the copy.
+        write_then_fail: Vec<String>,
     }
 
     async fn folder_bucket_with(
@@ -14994,6 +15023,13 @@ mod tests {
                                 return reply(*status, body.clone().into_bytes());
                             }
                             match objects.get(&source).cloned() {
+                                Some(bytes) if quirks.write_then_fail.contains(&source) => {
+                                    objects.insert(key, bytes);
+                                    reply(
+                                        500,
+                                        b"<Error><Code>InternalError</Code></Error>".to_vec(),
+                                    )
+                                }
                                 Some(bytes) => {
                                     objects.insert(key, bytes);
                                     reply(
@@ -15240,7 +15276,7 @@ mod tests {
             .await
             .expect_err("a key failed");
         let text = err.to_string();
-        assert!(text.contains("copied 2 of 3 objects"), "{text}");
+        assert!(text.contains("confirmed 2 of 3 objects"), "{text}");
         assert!(text.contains("/docs is unchanged"), "{text}");
         assert!(
             !crate::copy_fallback::should_attempt_copy_fallback(&err),
@@ -15248,6 +15284,100 @@ mod tests {
         );
         assert!(bucket.get("docs/sub/b.txt").is_some());
         assert!(bucket.get("dest/docs/sub/b.txt").is_none());
+    }
+
+    /// The server can write a copy and lose the reply: the failed key may
+    /// already be at the destination, and the message has to say so instead
+    /// of counting it as not copied.
+    #[tokio::test]
+    async fn a_folder_copy_whose_reply_was_lost_says_the_key_may_be_there() {
+        let (mut provider, bucket) = folder_bucket_with(
+            SOURCE_FOLDER,
+            &[],
+            FolderBucketQuirks {
+                write_then_fail: vec!["docs/sub/b.txt".to_string()],
+                ..FolderBucketQuirks::default()
+            },
+        )
+        .await;
+        let err = provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect_err("the reply to the last copy was a 500");
+        let text = err.to_string();
+        assert!(
+            bucket.get("dest/docs/sub/b.txt").is_some(),
+            "the double wrote the copy: {:?}",
+            bucket.log()
+        );
+        assert!(text.contains("confirmed 2 of 3 objects"), "{text}");
+        assert!(
+            text.contains("docs/sub/b.txt may also have been written"),
+            "{text}"
+        );
+    }
+
+    /// A slash-ending key can hold bytes. When its copy is refused for a
+    /// capability reason, the bytes go through download and upload: writing
+    /// an empty marker in its place would lose them.
+    #[tokio::test]
+    async fn a_refused_copy_of_a_slash_key_that_holds_bytes_keeps_them() {
+        let objects: &[(&str, &[u8])] = &[("docs/", b"notes"), ("docs/a.txt", b"alpha")];
+        let (mut provider, bucket) = folder_bucket_with(
+            objects,
+            &[(
+                "docs/",
+                501,
+                "<Error><Code>NotImplemented</Code><Message>server-side copy not supported</Message></Error>",
+            )],
+            FolderBucketQuirks::default(),
+        )
+        .await;
+        provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect("folder copy with one fallback");
+        assert_eq!(
+            bucket.get("dest/docs/").as_deref(),
+            Some(&b"notes"[..]),
+            "{:?}",
+            bucket.log()
+        );
+        assert!(
+            bucket.log().contains(&"GET docs/".to_string()),
+            "{:?}",
+            bucket.log()
+        );
+    }
+
+    /// An empty folder named with its trailing slash, kept as a slashless
+    /// marker, on a gateway that refuses CopyObject: the marker is written
+    /// the way `mkdir` writes it, as the folder loop does for its markers.
+    #[tokio::test]
+    async fn a_refused_copy_of_an_empty_folder_marker_writes_it_as_mkdir_does() {
+        let (mut provider, bucket) = folder_bucket_with(
+            &[("empty", b"")],
+            &[(
+                "empty",
+                501,
+                "<Error><Code>NotImplemented</Code><Message>server-side copy not supported</Message></Error>",
+            )],
+            FolderBucketQuirks {
+                directory_typed: vec!["empty".to_string()],
+                ..FolderBucketQuirks::default()
+            },
+        )
+        .await;
+        provider
+            .server_copy("/empty/", "/dest/empty")
+            .await
+            .expect("marker written without CopyObject");
+        assert!(bucket.get("dest/empty").is_some(), "{:?}", bucket.log());
+        assert!(
+            bucket.log().contains(&"PUT dest/empty".to_string()),
+            "{:?}",
+            bucket.log()
+        );
     }
 
     /// A gateway that keeps a folder as a zero-byte `application/x-directory`
