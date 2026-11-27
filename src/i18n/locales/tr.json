@@ -2435,7 +2435,8 @@
             "discoverNeon": "Neon Object Storage: proje dalı başına S3 uyumlu depolama (proje başına 5 GB ücretsiz)",
             "discoverPuter": "WebDAV üzerinden Puter bulut depolama (25 MB ücretsiz, kart yok)",
             "discoverLifetimeCloud": "WebDAV üzerinden LifetimeCloud depolama (1 GB ücretsiz, kart gerekmez)",
-            "discoverCoritan": "Coritan Object Storage: 6 bölgede S3 uyumlu depolama (10 GB ücretsiz, kart gerekmez)"
+            "discoverCoritan": "Coritan Object Storage: 6 bölgede S3 uyumlu depolama (10 GB ücretsiz, kart gerekmez)",
+            "discoverMurena": "Murena Workspace (1 GB ücretsiz, Nextcloud tabanlı, EU)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

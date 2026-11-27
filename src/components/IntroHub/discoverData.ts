@@ -175,6 +175,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'drivehq': 'protocol.discoverDriveHQ',
     'felicloud': 'protocol.discoverFelicloud',
     'tabdigital': 'protocol.discoverTabDigital',
+    'murena': 'protocol.discoverMurena',
     'jianguoyun': 'protocol.discoverJianguoyun',
     'infinicloud': 'protocol.discoverInfiniCloud',
     'seafile': 'protocol.discoverSeafile',
@@ -235,6 +236,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
 const BADGE_OVERRIDES: Record<string, string> = {
     'felicloud': 'API OCS',   // Nextcloud-based, OCS REST API for sharing
     'tabdigital': 'API OCS',  // TAB.DIGITAL is also Nextcloud-as-a-service
+    'murena': 'API OCS',      // Murena Workspace too
     'megacmd-webdav': 'LOCAL',
     'filen-desktop-webdav': 'LOCAL',
     'filen-desktop-s3': 'LOCAL',

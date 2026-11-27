@@ -433,44 +433,6 @@ import {
   MoreHorizontal, Tag, Layers, Snowflake, Bot, Terminal, Star, MessageSquare, FileSpreadsheet, Presentation, LinkIcon, ArrowRight, ArrowRightLeft, Columns2, FileKey, KeyRound
 } from 'lucide-react';
 
-/**
- * Strip a legacy initialPath that points exactly at a Nextcloud WebDAV root
- * for a provider that no longer needs it. TAB.DIGITAL saved profiles created
- * before commit efb5a27f shipped with `initialPath = "/remote.php/dav/files/<user>/"`
- * (template resolved at save time). With basePath dropped from the preset,
- * the WebDAV auto-detect in connect() finds the same path on its own and
- * lists it under Depth: 0, while passing the literal path here forces a
- * Depth: 1 PROPFIND that the Cloudflare edge has been observed to 404 on
- * fie.nl.tab.digital. Returning null lets the auto-detect drive instead,
- * matching the behaviour of a freshly-saved profile.
- *
- * Only strips when the profile is identifiably Nextcloud-based and the path
- * is the exact wk_path the auto-detect would have found anyway. Sub-folders
- * (e.g. /remote.php/dav/files/<user>/Documents/) survive unchanged.
- */
-const stripLegacyNextcloudWebdavRoot = (
-  initialPath: string | null | undefined,
-  providerId: string | undefined,
-  username: string | null | undefined,
-): string | null => {
-  if (!initialPath) return initialPath ?? null;
-  const pid = providerId || '';
-  const isNextcloudBased =
-    pid === 'tabdigital' ||
-    pid === 'tabdigital-webdav' ||
-    pid === 'felicloud' ||
-    pid === 'felicloud-webdav' ||
-    pid === 'nextcloud';
-  if (!isNextcloudBased) return initialPath;
-  const u = (username || '').trim();
-  if (!u) return initialPath;
-  // Exact wk_path with optional trailing slash.
-  const wkExact = `/remote.php/dav/files/${u}`;
-  const trimmed = initialPath.replace(/\/+$/, '');
-  if (trimmed === wkExact) return null;
-  return initialPath;
-};
-
 const isMegaCmdQuotaProfile = (
   params?: Pick<ConnectionParams, 'protocol' | 'providerId' | 'options'> | null,
   profile?: Pick<ServerProfile, 'protocol' | 'providerId' | 'options'> | null,
@@ -617,6 +579,7 @@ import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauth
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
 import { probeAliveArgs, reusesOpenTab } from './utils/probeAliveArgs';
 import type { BackendMark, ConnectReceipt } from './utils/backendMark';
+import { stripLegacyStartFolder } from './utils/legacyStartFolder';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
@@ -4186,7 +4149,7 @@ const App: React.FC = () => {
           const resolved = resolveUsernameTemplate(prof.initialPath, cp.username);
           scanRoot = usedScanRoot({
             ...scanRootArgs,
-            profileRoot: stripLegacyNextcloudWebdavRoot(resolved, prof.providerId, cp.username) || resolved || prof.initialPath,
+            profileRoot: stripLegacyStartFolder(resolved, prof.providerId, cp.username, prof.host) || resolved || prof.initialPath,
           });
         }
         const m = prof.options?.manualTotalBytes;
@@ -9185,6 +9148,8 @@ const App: React.FC = () => {
                   ? `Blomp ${effectiveParams.username}`
                   : effectiveParams.providerId === 'felicloud'
                     ? `Felicloud ${effectiveParams.username}`
+                    : effectiveParams.providerId === 'murena'
+                      ? `Murena ${effectiveParams.username}`
                     : effectiveParams.providerId === 'infinicloud'
                       ? `InfiniCLOUD ${effectiveParams.username}`
                       : protocol === 'immich'
@@ -9232,14 +9197,15 @@ const App: React.FC = () => {
 
         // Resolve any `{username}` placeholder against the actual username
         // before the path enters the connect flow. See resolveUsernameTemplate
-        // doc comment. Then strip the literal Nextcloud WebDAV root for
-        // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles saved before
-        // basePath was dropped from the preset.
+        // doc comment. Then read a start folder saved while its preset
+        // still repeated part of the server URL as basePath as the root
+        // (see stripLegacyStartFolder).
         const qcTemplateResolved = providerStartFolder;
-        const resolvedRemoteDir = stripLegacyNextcloudWebdavRoot(
+        const resolvedRemoteDir = stripLegacyStartFolder(
           qcTemplateResolved,
           effectiveParams.providerId,
           effectiveParams.username,
+          effectiveParams.server,
         );
         const providerPayload = await buildProviderParams(effectiveParams, resolvedRemoteDir);
         effectiveParams = providerPayload.effectiveParams;
@@ -21815,14 +21781,15 @@ const App: React.FC = () => {
 
                     // Resolve {username} placeholder before any path enters
                     // the connect flow. See resolveUsernameTemplate doc.
-                    // Then strip the literal Nextcloud WebDAV root for
-                    // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles
-                    // saved before basePath was dropped from the preset.
+                    // Then read a start folder saved while its preset still
+                    // repeated part of the server URL as basePath as the root
+                    // (see stripLegacyStartFolder).
                     const templateResolved = savedProviderStartFolder;
-                    const resolvedSavedInitialPath = stripLegacyNextcloudWebdavRoot(
+                    const resolvedSavedInitialPath = stripLegacyStartFolder(
                         templateResolved,
                         normalizedParams.providerId,
                         normalizedParams.username,
+                        normalizedParams.server,
                     );
                     const providerPayload = await connectScope.step(() => buildProviderParams(normalizedParams, resolvedSavedInitialPath, connectScope));
                     const connectedParams = providerPayload.effectiveParams;

@@ -2435,7 +2435,8 @@
             "discoverNeon": "Neon Object Storage: S3-თან თავსებადი შენახვა თითოეული პროექტის ბრენჩისთვის (5 GB უფასო თითო პროექტზე)",
             "discoverPuter": "Puter-ის ღრუბლოვანი მეხსიერება WebDAV-ის მეშვეობით (25 MB უფასო, ბარათის გარეშე)",
             "discoverLifetimeCloud": "LifetimeCloud საცავი WebDAV-ის მეშვეობით (1 GB უფასო, ბარათის გარეშე)",
-            "discoverCoritan": "Coritan Object Storage: S3-თან თავსებადი საცავი 6 რეგიონში (10 GB უფასო, ბარათი არ არის საჭირო)"
+            "discoverCoritan": "Coritan Object Storage: S3-თან თავსებადი საცავი 6 რეგიონში (10 GB უფასო, ბარათი არ არის საჭირო)",
+            "discoverMurena": "Murena Workspace (1 GB უფასო, Nextcloud-ზე დაფუძნებული, EU)"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

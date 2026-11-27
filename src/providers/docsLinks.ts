@@ -61,6 +61,9 @@ const PROVIDER_ID_TO_SLUG: Record<string, string> = {
     s3drive: 's3drive',
     jianguoyun: 'jianguoyun',
     felicloud: 'felicloud',
+    // The Murena docs page is pending a docs PR on the release tag; until it
+    // lands the tile links to the live Nextcloud page.
+    murena: 'nextcloud',
     pixelunion: 'pixelunion',
     tabdigital: 'tabdigital',
     sourceforge: 'sourceforge',

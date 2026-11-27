@@ -2435,7 +2435,8 @@
             "discoverNeon": "Neon Object Storage: S3-kompatibel lagring per projektgren (5 GB gratis per projekt)",
             "discoverPuter": "Puter-molnlagring via WebDAV (25 MB gratis, inget kort)",
             "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB gratis, inget kort)",
-            "discoverCoritan": "Coritan Object Storage: S3-kompatibel lagring i 6 regioner (10 GB gratis, inget kort krävs)"
+            "discoverCoritan": "Coritan Object Storage: S3-kompatibel lagring i 6 regioner (10 GB gratis, inget kort krävs)",
+            "discoverMurena": "Murena Workspace (1 GB gratis, Nextcloud-baserad, EU)"
         },
         "shortcuts": {
             "title": "Kortkommandon",

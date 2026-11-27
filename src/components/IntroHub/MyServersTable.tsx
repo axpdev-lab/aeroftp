@@ -4,7 +4,8 @@
 import * as React from 'react';
 import { Cloud, Server as ServerIcon } from 'lucide-react';
 import { methodIcon } from '../connectionMethodIcons';
-import { getE2EBits, getProfileProtocolClass, ServerProfile, type ProviderType } from '../../types';
+import { ServerProfile } from '../../types';
+import { badgeSortLabel } from '../../utils/serverBadgeSort';
 import {
     MY_SERVERS_TABLE_COLUMNS,
     type MyServersSortableColId,
@@ -98,23 +99,6 @@ const PROTOCOL_ICON: Record<string, React.ReactNode> = {
     Azure: <Cloud size={14} className="text-blue-600" />,
     AeroCloud: <Cloud size={14} className="text-purple-500" />,
     Crypt: methodIcon('Crypt', { size: 14, className: 'text-emerald-500' }),
-};
-
-const badgeSortLabel = (server: ServerProfile) => {
-    const proto = (server.protocol || 'ftp') as ProviderType;
-    // Profile-aware: crypt-overlay profiles (native or interop) sort under the
-    // shared "Crypt" family, matching their card badge and the breakdown.
-    const protocolClass = getProfileProtocolClass(server);
-    const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto) : null;
-    // Match both the bare provider id (saved from the Quick Connect form)
-    // and the `-webdav` suffix variant (assigned by MyServersPanel's host
-    // heuristic when the saved profile predates the preset).
-    const pid = server.providerId || '';
-    if (pid === 'felicloud' || pid === 'felicloud-webdav' || pid === 'tabdigital' || pid === 'tabdigital-webdav') return 'API OCS';
-    return [
-        e2eBits ? `${protocolClass} ${e2eBits}-bit` : protocolClass,
-        server.providerId || server.protocol || '',
-    ].join(' ');
 };
 
 export function MyServersTable({

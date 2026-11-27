@@ -1042,6 +1042,27 @@
     ]
   },
   {
+    "company": "Murena",
+    "logoId": "murena",
+    "country": "EU",
+    "freeGb": 1,
+    "freeNote": "Nextcloud host",
+    "freeRequiresCard": false,
+    "regions": [
+      "EU"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "murena",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "Cloudinary",
     "logoId": "cloudinary",
     "country": "US",

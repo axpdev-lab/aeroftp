@@ -1045,8 +1045,7 @@
       "generic": false,
       "defaults": {
         "server": "https://dav.jianguoyun.com/dav",
-        "port": 443,
-        "basePath": "/dav/"
+        "port": 443
       },
       "firstRegion": null
     },
@@ -1135,8 +1134,17 @@
       "generic": false,
       "defaults": {
         "server": "https://cloud.felicloud.com/remote.php/dav/files/{username}/",
-        "port": 443,
-        "basePath": "/remote.php/dav/files/{username}/"
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "murena",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://murena.io/remote.php/dav/files/{username}/",
+        "port": 443
       },
       "firstRegion": null
     },

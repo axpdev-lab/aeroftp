@@ -2435,7 +2435,8 @@
             "discoverNeon": "Neon Object Storage: úložisko kompatibilné s S3 pre každú vetvu projektu (5 GB zadarmo na projekt)",
             "discoverPuter": "Cloudové úložisko Puter cez WebDAV (25 MB zadarmo, bez karty)",
             "discoverLifetimeCloud": "Úložisko LifetimeCloud cez WebDAV (1 GB zadarmo, bez karty)",
-            "discoverCoritan": "Coritan Object Storage: úložisko kompatibilné s S3 v 6 regiónoch (10 GB zdarma, bez karty)"
+            "discoverCoritan": "Coritan Object Storage: úložisko kompatibilné s S3 v 6 regiónoch (10 GB zdarma, bez karty)",
+            "discoverMurena": "Murena Workspace (1 GB zadarmo, založené na Nextcloud, EU)"
         },
         "shortcuts": {
             "title": "Klávesové skratky",

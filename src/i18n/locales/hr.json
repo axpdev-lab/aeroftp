@@ -2435,7 +2435,8 @@
             "discoverNeon": "Neon Object Storage: pohrana kompatibilna sa S3 za svaku granu projekta (5 GB besplatno po projektu)",
             "discoverPuter": "Puter oblaka pohrana putem WebDAV-a (25 MB besplatno, bez kartice)",
             "discoverLifetimeCloud": "LifetimeCloud pohrana putem WebDAV-a (1 GB besplatno, bez kartice)",
-            "discoverCoritan": "Coritan Object Storage: pohrana kompatibilna sa S3 u 6 regija (10 GB besplatno, bez kartice)"
+            "discoverCoritan": "Coritan Object Storage: pohrana kompatibilna sa S3 u 6 regija (10 GB besplatno, bez kartice)",
+            "discoverMurena": "Murena Workspace (1 GB besplatno, baziran na Nextcloud, EU)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

@@ -476,6 +476,32 @@ describe('storageDedup', () => {
         expect(getStorageDedupKey(ftp)).toBe(getStorageDedupKey(ftpPlain));
     });
 
+    it('case 4c8: Murena Workspace keys by preset id, matching the Rust dedup_key', () => {
+        const profile = make({
+            id: 'mu1', protocol: 'webdav', providerId: 'murena',
+            host: 'https://murena.io/remote.php/dav/files/alice/', port: 443,
+            username: 'alice',
+            used: 1_000_000, total: 1_000_000_000,
+        });
+        expect(getStorageDedupKey(profile)).toBe('webdav:murena:alice');
+    });
+
+    it('case 4c9: a Murena profile imported from rclone keys like the preset one', () => {
+        // The preset stores the server root as host; an rclone import stores the
+        // bare origin (its DAV root goes to the start folder). Both count one drive.
+        const preset = make({
+            id: 'mu2', protocol: 'webdav', providerId: 'murena',
+            host: 'https://murena.io/remote.php/dav/files/alice/', port: 443,
+            username: 'alice',
+        });
+        const imported = make({
+            id: 'mu3', protocol: 'webdav', providerId: 'murena',
+            host: 'https://murena.io', port: 443,
+            username: 'alice',
+        });
+        expect(getStorageDedupKey(imported)).toBe(getStorageDedupKey(preset));
+    });
+
     it('case 4d: IBM COS same access key in two regions counts one drive', () => {
         // The frontend S3 mirror missed 'ibm-cos', so same-key profiles in
         // different regions keyed by host (two drives) while Rust keyed by

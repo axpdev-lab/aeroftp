@@ -1433,6 +1433,14 @@ fn map_remote(
 
             // Parse URL to extract host and base path
             let (host, base_path, port) = parse_webdav_url(&url);
+            // A hosted Nextcloud preset exports as `vendor = nextcloud`: its
+            // host names the preset back.
+            let provider_id = match provider_id {
+                "nextcloud" => {
+                    crate::bridge_shared::nextcloud_preset_for_host(&host).unwrap_or(provider_id)
+                }
+                other => other,
+            };
 
             let mut options = serde_json::Map::new();
             if !base_path.is_empty() {
@@ -6088,8 +6096,8 @@ pub fn export_rclone(
             }
             "webdav" => {
                 body.push_str("type = webdav\n");
-                // Nextcloud-derived presets (TAB.DIGITAL, FeliCloud, generic
-                // Nextcloud) speak the same WebDAV dialect as upstream
+                // Nextcloud-derived presets (TAB.DIGITAL, FeliCloud, Murena,
+                // generic Nextcloud) speak the same WebDAV dialect as upstream
                 // Nextcloud. Mapping them to vendor=nextcloud lets rclone
                 // use the correct chunked-upload + checksum behaviour.
                 let vendor = match server.provider_id.as_deref() {
@@ -6098,7 +6106,8 @@ pub fn export_rclone(
                     | Some("tabdigital")
                     | Some("tabdigital-webdav")
                     | Some("felicloud")
-                    | Some("felicloud-webdav") => "nextcloud",
+                    | Some("felicloud-webdav")
+                    | Some("murena") => "nextcloud",
                     Some("owncloud") | Some("owncloud-webdav") => "owncloud",
                     _ => "other",
                 };
@@ -8887,7 +8896,11 @@ http_proxy =
     #[test]
     fn consumed_key_table_covers_every_map_remote_arm_and_detects_a_new_read() {
         let body = source_fn_body("fn map_remote(");
-        let arms = regex::Regex::new(r#"(?m)^\s*"([^"]+)"\s*=>"#).unwrap();
+        // Only the backend match's own arms (exactly 8 spaces): a nested
+        // match arm (the hosted-Nextcloud host recovery inside the webdav
+        // arm) is not a backend arm and must not absorb the key reads that
+        // follow it into its span.
+        let arms = regex::Regex::new(r#"(?m)^ {8}"([^"]+)"\s*=>"#).unwrap();
         let reads = regex::Regex::new(
             r#"(?:get_str|get_password|get_plain_secret|get_aeroftp_plain_secret|get_port)\(\s*"([^"]+)"|remote\.get\(\s*"([^"]+)"\)"#,
         )
@@ -8911,6 +8924,16 @@ http_proxy =
             }
             missing
         };
+        // The 8-space anchor must still find the top-level arms: if a future
+        // re-indent silently drops them all, the guard would pass vacuously.
+        let found: Vec<&str> = arms
+            .captures_iter(body)
+            .map(|marker| marker.get(1).unwrap().as_str())
+            .collect();
+        assert!(
+            found.contains(&"webdav") && found.contains(&"ftp"),
+            "arm scan lost the top-level arms: {found:?}"
+        );
         assert!(missing(body).is_empty(), "{:?}", missing(body));
         let mutated = body.replacen(
             "\"ftp\" => {",
@@ -13630,6 +13653,202 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert!(
             conf.contains("url = https://cloud.lab.example.test/remote.php/dav/files/alice/"),
             "must synthesise the DAV collection root:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_murena_preset_uses_the_nextcloud_vendor() {
+        // Murena Workspace is Nextcloud: the preset stores the collection URL
+        // with `{username}`, which the export fills in (the host carries the
+        // path, so it is written as stored, trailing slash included), under
+        // the vendor that gives rclone Nextcloud's chunked upload and
+        // checksums.
+        let servers = vec![RcloneExportServer {
+            id: "murena".to_string(),
+            name: "murena".to_string(),
+            host: "https://murena.io/remote.php/dav/files/{username}/".to_string(),
+            port: 443,
+            username: "alice".to_string(),
+            protocol: Some("webdav".to_string()),
+            options: None,
+            provider_id: Some("murena".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("murena".to_string(), "app-password".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-webdav-murena.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(conf.contains("vendor = nextcloud"), "{conf}");
+        assert!(
+            conf.contains("url = https://murena.io/remote.php/dav/files/alice/\n"),
+            "{conf}"
+        );
+    }
+
+    /// A hosted Nextcloud preset survives export and import: rclone stores
+    /// `vendor = nextcloud`, and the host names the preset back, so the
+    /// reimported profile keys as the same drive as the original. A lookalike
+    /// host stays generic Nextcloud.
+    #[test]
+    fn a_hosted_nextcloud_preset_round_trips_through_rclone() {
+        use crate::storage_dedup::{dedup_key, ProfileView};
+        let cases = [
+            (
+                "murena",
+                "https://murena.io/remote.php/dav/files/{username}/",
+                Some("murena"),
+            ),
+            (
+                "murena",
+                "https://MURENA.IO:443/remote.php/dav/files/{username}/",
+                Some("murena"),
+            ),
+            (
+                "felicloud",
+                "https://cloud.felicloud.com/remote.php/dav/files/{username}/",
+                Some("felicloud"),
+            ),
+            (
+                "tabdigital",
+                "https://fie.nl.tab.digital/remote.php/dav/files/{username}/",
+                Some("tabdigital"),
+            ),
+            (
+                "nextcloud",
+                "https://murena.io.evil.example/remote.php/dav/files/{username}/",
+                None,
+            ),
+            (
+                "nextcloud",
+                "https://notmurena.io/remote.php/dav/files/{username}/",
+                None,
+            ),
+        ];
+        for (i, (id, host, expected)) in cases.into_iter().enumerate() {
+            let name = format!("nc{i}");
+            let servers = vec![RcloneExportServer {
+                id: name.clone(),
+                name: name.clone(),
+                host: host.to_string(),
+                port: 443,
+                username: "alice".to_string(),
+                protocol: Some("webdav".to_string()),
+                options: None,
+                provider_id: Some(id.to_string()),
+            }];
+            let mut passwords = HashMap::new();
+            passwords.insert(name.clone(), "app-password".to_string());
+            let path = std::env::temp_dir().join(format!(
+                "aeroftp-test-nc-round-trip-{}-{i}.conf",
+                std::process::id()
+            ));
+            export_rclone(&servers, &passwords, &path).expect("export");
+            let conf = std::fs::read_to_string(&path).expect("read conf");
+            assert!(conf.contains("vendor = nextcloud"), "{conf}");
+            let result = import_rclone(&path).expect("import");
+            std::fs::remove_file(&path).ok();
+            let back = result
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .expect("imported");
+            assert_eq!(
+                back.provider_id.as_deref(),
+                Some(expected.unwrap_or("nextcloud")),
+                "{host}"
+            );
+            assert_eq!(back.username, "alice", "{host}");
+            if let Some(preset) = expected {
+                let key = |provider_id: &str, host: &str| {
+                    dedup_key(&ProfileView {
+                        id: "p",
+                        protocol: "webdav",
+                        provider_id: Some(provider_id),
+                        host,
+                        port: 443,
+                        username: "alice",
+                        used: None,
+                        total: None,
+                    })
+                };
+                assert_eq!(
+                    key(preset, host),
+                    key(preset, &back.host),
+                    "{host}: one drive"
+                );
+            }
+        }
+    }
+
+    /// An rclone remote pointing below the account root of a hosted Nextcloud
+    /// preset keeps its subcollection: the preset's server template fills only
+    /// an empty host (`apply_webdav_profile_defaults`), and the imported path
+    /// stays in `basePath`, so the connect URL ends with the subcollection,
+    /// not the account root.
+    #[test]
+    fn an_imported_hosted_nextcloud_subcollection_keeps_its_path() {
+        let imported = map_remote(
+            "murena-team",
+            &RcloneRemote::from([
+                ("type".to_string(), "webdav".to_string()),
+                (
+                    "url".to_string(),
+                    "https://murena.io/remote.php/dav/files/alice/Team/".to_string(),
+                ),
+                ("vendor".to_string(), "nextcloud".to_string()),
+                ("user".to_string(), "alice".to_string()),
+            ]),
+            None,
+            ImportSourceKind::Template,
+        )
+        .unwrap();
+        assert_eq!(imported.provider_id.as_deref(), Some("murena"));
+        assert_eq!(imported.host, "murena.io");
+        assert_eq!(
+            imported.options.as_ref().unwrap()["basePath"],
+            "/remote.php/dav/files/alice/Team/",
+            "the subcollection stays in basePath"
+        );
+        // Run the complete imported profile through normal connection
+        // preparation: the preset's server template fills only an empty host,
+        // and the profile's own options apply after the preset defaults, so
+        // the imported collection survives to the connect URL.
+        let profile = serde_json::json!({
+            "protocol": "webdav",
+            "providerId": "murena",
+            "host": imported.host,
+            "port": imported.port,
+            "username": "alice",
+            "initialPath": imported.initial_path,
+            "options": imported.options,
+        });
+        let (extra, resolved_host) = crate::profile_loader::profile_connection_extra(
+            &profile,
+            crate::providers::ProviderType::WebDav,
+            &imported.host,
+        );
+        assert_eq!(resolved_host, "murena.io");
+        assert_eq!(
+            extra.get("base_path").map(String::as_str),
+            Some("/remote.php/dav/files/alice/Team/")
+        );
+        let config = crate::providers::ProviderConfig {
+            name: "murena-team".into(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: resolved_host,
+            port: Some(imported.port as u16),
+            username: Some("alice".to_string()),
+            password: None,
+            initial_path: None,
+            extra,
+        };
+        let connect = crate::providers::types::WebDavConfig::from_provider_config(&config).unwrap();
+        assert_eq!(
+            connect.url, "https://murena.io/remote.php/dav/files/alice/Team/",
+            "the preset server template must not replace the imported collection"
         );
     }
 

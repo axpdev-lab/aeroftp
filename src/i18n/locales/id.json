@@ -2435,7 +2435,8 @@
             "discoverNeon": "Neon Object Storage: penyimpanan kompatibel S3 untuk setiap cabang proyek (5 GB gratis per proyek)",
             "discoverPuter": "Penyimpanan cloud Puter melalui WebDAV (25 MB gratis, tanpa kartu)",
             "discoverLifetimeCloud": "Penyimpanan LifetimeCloud melalui WebDAV (1 GB gratis, tanpa kartu)",
-            "discoverCoritan": "Coritan Object Storage: penyimpanan kompatibel S3 di 6 wilayah (10 GB gratis, tanpa kartu)"
+            "discoverCoritan": "Coritan Object Storage: penyimpanan kompatibel S3 di 6 wilayah (10 GB gratis, tanpa kartu)",
+            "discoverMurena": "Murena Workspace (1 GB gratis, berbasis Nextcloud, EU)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

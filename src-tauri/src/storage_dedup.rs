@@ -239,6 +239,7 @@ pub fn is_webdav_preset(provider_id: Option<&str>) -> bool {
                 | "felicloud-webdav"
                 | "puter-webdav"
                 | "lifetimecloud"
+                | "murena"
         )
     )
 }
@@ -655,6 +656,7 @@ mod tests {
             "felicloud-webdav",
             "puter-webdav",
             "lifetimecloud",
+            "murena",
         ] {
             assert!(
                 is_webdav_preset(Some(preset)),

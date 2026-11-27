@@ -86,6 +86,7 @@ const SHARE_LINK_DETAILS: Record<string, (t: TranslationFunction) => string> = {
   mega: (t) => t('providers.shareLinkDetails.megaPresignedS4'),
   nextcloud: (t) => t('providers.shareLinkDetails.autoPasswordExpiry'),
   felicloud: (t) => t('providers.shareLinkDetails.autoPasswordExpiry'),
+  murena: (t) => t('providers.shareLinkDetails.autoPasswordExpiry'),
   drime: (t) => t('providers.shareLinkDetails.passwordExpiryPermissions'),
   'amazon-s3': (t) => t('providers.shareLinkDetails.presigned'),
 };
@@ -282,6 +283,11 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: [] },
   { name: 'LifetimeCloud', logoId: 'lifetimecloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
+  // versioning omitted: Murena answered 404 on the Nextcloud versions
+  // endpoint (measured 2026-11-16).
+  { name: 'Murena Workspace', logoId: 'murena',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
   { name: 'TAB.DIGITAL', logoId: 'tabdigital',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],

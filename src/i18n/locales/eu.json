@@ -2435,7 +2435,8 @@
             "discoverNeon": "Neon Object Storage: S3-rekin bateragarria den biltegiratzea proiektu-adar bakoitzerako (5 GB doan proiektu bakoitzeko)",
             "discoverPuter": "Puter hodei-urrunera WebDAV bidez (25 MB doan, txartelik gabe)",
             "discoverLifetimeCloud": "LifetimeCloud biltegiratzea WebDAV bidez (1 GB doan, txartelik gabe)",
-            "discoverCoritan": "Coritan Object Storage: S3rekin bateragarria den biltegiratzea 6 eskualdetan (10 GB doan, txartelik gabe)"
+            "discoverCoritan": "Coritan Object Storage: S3rekin bateragarria den biltegiratzea 6 eskualdetan (10 GB doan, txartelik gabe)",
+            "discoverMurena": "Murena Workspace (1 GB doan, Nextcloud-ean oinarritua, EU)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

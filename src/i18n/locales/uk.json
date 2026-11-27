@@ -2435,7 +2435,8 @@
             "discoverNeon": "Neon Object Storage: сховище, сумісне з S3, для кожної гілки проєкту (5 GB безкоштовно на проєкт)",
             "discoverPuter": "Хмарне сховище Puter через WebDAV (25 МБ безкоштовно, без картки)",
             "discoverLifetimeCloud": "Сховище LifetimeCloud через WebDAV (1 GB безкоштовно, без картки)",
-            "discoverCoritan": "Coritan Object Storage: S3-сумісне сховище у 6 регіонах (10 GB безкоштовно, картка не потрібна)"
+            "discoverCoritan": "Coritan Object Storage: S3-сумісне сховище у 6 регіонах (10 GB безкоштовно, картка не потрібна)",
+            "discoverMurena": "Murena Workspace (1 GB безкоштовно, на базі Nextcloud, EU)"
         },
         "shortcuts": {
             "title": "Грячі клавіші",

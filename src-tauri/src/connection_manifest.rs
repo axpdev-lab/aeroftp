@@ -540,9 +540,10 @@ pub fn resolve_profile(
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_username_in_path, expand_username_in_url, resolve_profile, USERNAME_TEMPLATE,
-        USERNAME_TEMPLATE_MISSING,
+        expand_username_in_path, expand_username_in_url, manifest, resolve_profile,
+        USERNAME_TEMPLATE, USERNAME_TEMPLATE_MISSING,
     };
+    use serde_json::Value;
 
     #[test]
     fn a_user_name_fills_a_url_template_as_one_encoded_segment() {
@@ -737,7 +738,13 @@ mod tests {
 
     #[test]
     fn a_profile_created_with_a_blank_user_name_on_a_template_preset_is_refused() {
-        for preset in ["cloudme", "lifetimecloud", "tabdigital", "felicloud"] {
+        for preset in [
+            "cloudme",
+            "lifetimecloud",
+            "tabdigital",
+            "felicloud",
+            "murena",
+        ] {
             let err = resolve_profile(
                 "webdav",
                 Some(preset),
@@ -750,6 +757,115 @@ mod tests {
             .unwrap_err();
             assert_eq!(err, USERNAME_TEMPLATE_MISSING, "{preset}");
         }
+    }
+
+    /// A hosted Nextcloud preset starts at the file root its server URL
+    /// already carries: Felicloud and Murena repeated that root as a
+    /// `basePath` until 2026-11-22, so a new profile started there twice.
+    #[test]
+    fn a_hosted_nextcloud_preset_starts_at_its_server_root() {
+        for (preset, root) in [
+            ("murena", "https://murena.io/remote.php/dav/files/alice/"),
+            (
+                "felicloud",
+                "https://cloud.felicloud.com/remote.php/dav/files/alice/",
+            ),
+        ] {
+            let profile = resolve_profile(
+                "webdav",
+                Some(preset),
+                None,
+                None,
+                Some("alice"),
+                None,
+                &serde_json::json!({}),
+            )
+            .unwrap();
+            assert_eq!(profile["host"], root, "{preset}");
+            assert_eq!(profile["initialPath"], "/", "{preset}");
+        }
+    }
+
+    /// A preset whose server URL already ends with a path must not repeat that
+    /// path as a `basePath`: the profile would start there twice
+    /// (`initialPath` on top of the root), which `pwd` prints and MCP opens
+    /// as written. TAB.DIGITAL dropped it for that reason; Felicloud, Murena
+    /// and Jianguoyun carried it until 2026-11-22.
+    #[test]
+    fn no_preset_repeats_its_server_root_as_a_base_path() {
+        for preset in &manifest().presets {
+            let (Some(server), Some(base)) = (
+                preset.defaults.get("server").and_then(Value::as_str),
+                preset.defaults.get("basePath").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            let base = base.trim_end_matches('/');
+            assert!(
+                base.is_empty() || !server.trim_end_matches('/').ends_with(base),
+                "{}: basePath {base} repeats the path of {server}",
+                preset.id
+            );
+        }
+    }
+
+    /// Every WebDAV preset with a server opens at that server's root: the URL
+    /// its start folder is requested at is the one the root is requested at.
+    /// Jianguoyun carried `basePath: /dav/` over `https://dav.jianguoyun.com/dav`
+    /// and opened `https://dav.jianguoyun.com/dav/dav/` until 2026-11-22.
+    #[test]
+    fn every_webdav_preset_opens_at_its_server_root() {
+        use crate::providers::{ProviderConfig, ProviderType, WebDavProvider};
+        let request_url = |profile: &Value, initial_path: Option<&str>| {
+            WebDavProvider::start_folder_request_url(&ProviderConfig {
+                name: "preset".into(),
+                provider_type: ProviderType::WebDav,
+                host: profile["host"].as_str().unwrap().to_string(),
+                port: profile["port"].as_u64().map(|p| p as u16),
+                username: Some("alice".into()),
+                password: None,
+                initial_path: initial_path.map(str::to_string),
+                extra: std::collections::HashMap::new(),
+            })
+        };
+        let mut checked = Vec::new();
+        for preset in &manifest().presets {
+            if preset.protocol != "webdav" || !preset.defaults.contains_key("server") {
+                continue;
+            }
+            let profile = resolve_profile(
+                "webdav",
+                Some(&preset.id),
+                None,
+                None,
+                Some("alice"),
+                None,
+                &serde_json::json!({}),
+            )
+            .unwrap();
+            assert_eq!(
+                request_url(&profile, profile["initialPath"].as_str()),
+                request_url(&profile, None),
+                "{} opens below its server root",
+                preset.id
+            );
+            checked.push(preset.id.as_str());
+        }
+        assert!(checked.contains(&"jianguoyun"), "{checked:?}");
+        let jianguoyun = resolve_profile(
+            "webdav",
+            Some("jianguoyun"),
+            None,
+            None,
+            Some("alice"),
+            None,
+            &serde_json::json!({}),
+        )
+        .unwrap();
+        assert_eq!(
+            request_url(&jianguoyun, jianguoyun["initialPath"].as_str()),
+            "https://dav.jianguoyun.com/dav/"
+        );
     }
 
     /// The two helpers above are the only places `{username}` is filled in:
