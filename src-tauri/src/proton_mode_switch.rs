@@ -1362,8 +1362,12 @@ impl SwitchTargets for DiskTargets<'_> {
                     crate::user_partitions::cli_update_server_profiles_for_user(store, user, apply)
                 };
                 let mut mirror = |profiles: &[Value]| {
-                    crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, profiles)
-                        .map(|_| ())
+                    crate::user_partitions::mirror_active_profiles_to_legacy_blob(
+                        store,
+                        Some(user),
+                        profiles,
+                    )
+                    .map(|_| ())
                 };
                 let mirror: Option<&mut ProfileMirror<'_>> = if active == Some(user) {
                     Some(&mut mirror)

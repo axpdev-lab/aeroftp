@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurazio-txantiloia inportatu da: {imported} inportatuta, {skipped} saltatuta, {invalid} baliogabe",
             "templateLogBlocks": "Blokeak: {blocks}",
             "templateDuplicateInTemplate": "bikoiztua txantiloian",
-            "templateSelectProfile": "Inportatu {name}"
+            "templateSelectProfile": "Inportatu {name}",
+            "exportAccountUnbound": "Profilen zerrenda ez dago kontu bati lotuta; ezer ez da esportatu.",
+            "exportAccountChanged": "Kontu aktiboa aldatu da; ezer ez da esportatu.",
+            "exportAccountChangedDuringSave": "Kontu aktiboa aldatu da gorde elkarrizketa irekitakoan; ezer ez da esportatu."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "«{name}» dagoeneko gordeta dago {user}(e)n",
             "relocateError": "Ezin izan da zerbitzaria transferitu: {error}",
             "relocateWrongPassword": "Pasahitz okerra {user}(r)entzat.",
-            "relocateSecretsNotCopied": "«{name}» {user}(e)ra iritsi da, baina gordetako pasahitza edo tokena ez, beraz, han berriro eskatuko ditu."
+            "relocateSecretsNotCopied": "«{name}» {user}(e)ra iritsi da, baina gordetako pasahitza edo tokena ez, beraz, han berriro eskatuko ditu.",
+            "relocateMovedCleanupFailed": "\"{name}\" {user} erabiltzailearengana eraman da, baina bere Proton Drive saioa ezin izan da jatorrizko kontutik kendu."
         },
         "cyberTools": {
             "title": "Segurtasun tresnak",
@@ -5942,7 +5946,9 @@
                 "months": "{count} hil."
             },
             "demoTabLabel": "Demoa: {protocol}",
-            "newTabLabel": "Berria: {name}"
+            "newTabLabel": "Berria: {name}",
+            "protonSessionEndsAtUnlock": "Profil honen Proton saioa kontu hau desblokeatzen den hurrengo aldian amaituko da, ordenagailu honetako beste kontu batek erabiltzen ez badu.",
+            "profileSecretsNotRemoved": "Profila kendu da, baina gordetako kredentzial batzuk ezin izan dira kutxa gotorretik ezabatu."
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",

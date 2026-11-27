@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurační šablona importována: {imported} importováno, {skipped} přeskočeno, {invalid} neplatných",
             "templateLogBlocks": "Bloky: {blocks}",
             "templateDuplicateInTemplate": "duplikát v šabloně",
-            "templateSelectProfile": "Importovat {name}"
+            "templateSelectProfile": "Importovat {name}",
+            "exportAccountUnbound": "Seznam profilů není spojen s účtem; nic nebylo exportováno.",
+            "exportAccountChanged": "Aktivní účet se změnil; nic nebylo exportováno.",
+            "exportAccountChangedDuringSave": "Aktivní účet se změnil, zatímco byl dialog pro uložení otevřen; nic nebylo exportováno."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ je už uloženo v {user}",
             "relocateError": "Server se nepodařilo přenést: {error}",
             "relocateWrongPassword": "Nesprávné heslo pro {user}.",
-            "relocateSecretsNotCopied": "„{name}“ se do {user} dostalo, ale jeho uložené heslo nebo token ne, proto o ně tam znovu požádá."
+            "relocateSecretsNotCopied": "„{name}“ se do {user} dostalo, ale jeho uložené heslo nebo token ne, proto o ně tam znovu požádá.",
+            "relocateMovedCleanupFailed": "Server \"{name}\" byl přesunut k uživateli {user}, ale jeho relaci Proton Drive se nepodařilo ze zdrojového účtu odebrat."
         },
         "cyberTools": {
             "title": "Bezpečnostní nástroje",
@@ -5923,7 +5927,9 @@
                 "months": "{count} měs."
             },
             "demoTabLabel": "Ukázka: {protocol}",
-            "newTabLabel": "Nový: {name}"
+            "newTabLabel": "Nový: {name}",
+            "protonSessionEndsAtUnlock": "Relace Proton tohoto profilu skončí při příštím odemknutí tohoto účtu, pokud ji nepoužívá jiný účet v tomto počítači.",
+            "profileSecretsNotRemoved": "Profil byl odstraněn, ale některé jeho uložené přihlašovací údaje se nepodařilo smazat z trezoru."
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

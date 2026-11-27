@@ -1439,7 +1439,10 @@
             "templateLogImported": "បាននាំចូលពុម្ពការកំណត់រចនាសម្ព័ន្ធ៖ {imported} បាននាំចូល, {skipped} បានរំលង, {invalid} មិនត្រឹមត្រូវ",
             "templateLogBlocks": "ប្លុក៖ {blocks}",
             "templateDuplicateInTemplate": "ស្ទួននៅក្នុងពុម្ព",
-            "templateSelectProfile": "នាំចូល {name}"
+            "templateSelectProfile": "នាំចូល {name}",
+            "exportAccountUnbound": "បញ្ជីប្រវត្តិរូបមិនទាក់ទងនឹងគណនីទេ; គ្មានអ្វីត្រូវបាននាំចេញទេ។",
+            "exportAccountChanged": "គណនីសកម្មបានផ្លាស់ប្តូរ; គ្មានអ្វីត្រូវបាននាំចេញទេ។",
+            "exportAccountChangedDuringSave": "គណនីសកម្មបានផ្លាស់ប្តូរខណៈដែលប្រអប់រក្សាទុកកំពុងបើក; គ្មានអ្វីត្រូវបាននាំចេញទេ។"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "«{name}» ត្រូវបានរក្សាទុករួចហើយនៅ {user}",
             "relocateError": "មិនអាចផ្ទេរម៉ាស៊ីនមេបានទេ៖ {error}",
             "relocateWrongPassword": "ពាក្យសម្ងាត់មិនត្រឹមត្រូវសម្រាប់ {user}។",
-            "relocateSecretsNotCopied": "«{name}» បានទៅដល់ {user} ប៉ុន្តែពាក្យសម្ងាត់ ឬថូខេនដែលបានរក្សាទុកមិនបានទៅដល់ទេ ដូច្នេះវានឹងស្នើសុំពួកវាម្តងទៀតនៅទីនោះ។"
+            "relocateSecretsNotCopied": "«{name}» បានទៅដល់ {user} ប៉ុន្តែពាក្យសម្ងាត់ ឬថូខេនដែលបានរក្សាទុកមិនបានទៅដល់ទេ ដូច្នេះវានឹងស្នើសុំពួកវាម្តងទៀតនៅទីនោះ។",
+            "relocateMovedCleanupFailed": "បានផ្លាស់ទី \"{name}\" ទៅ {user} ប៉ុន្តែមិនអាចលុបសម័យ Proton Drive របស់វាចេញពីគណនីប្រភពបានទេ។"
         },
         "cyberTools": {
             "title": "ឧបករណ៍សុវត្ថិភាព",
@@ -5942,7 +5946,9 @@
                 "months": "{count} ខែ"
             },
             "demoTabLabel": "សាកល្បង: {protocol}",
-            "newTabLabel": "ថ្មី: {name}"
+            "newTabLabel": "ថ្មី: {name}",
+            "protonSessionEndsAtUnlock": "វគ្គ Proton នៃប្រវត្តិរូបនេះនឹងបញ្ចប់នៅពេលគណនីនេះត្រូវបានដោះសោលើកក្រោយ លុះត្រាតែមានគណនីផ្សេងទៀតនៅលើកុំព្យូទ័រនេះប្រើវា។",
+            "profileSecretsNotRemoved": "ប្រូហ្វាល់ត្រូវបានលុប ប៉ុន្តែព័ត៌មានសម្ងាត់ដែលបានរក្សាទុកមួយចំនួនរបស់វាមិនអាចលុបចេញពីតូទទួលបានទេ។"
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",

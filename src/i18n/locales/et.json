@@ -1439,7 +1439,10 @@
             "templateLogImported": "Seadistusmall imporditud: {imported} imporditud, {skipped} vahele jäetud, {invalid} vigast",
             "templateLogBlocks": "Plokid: {blocks}",
             "templateDuplicateInTemplate": "duplikaat mallis",
-            "templateSelectProfile": "Impordi {name}"
+            "templateSelectProfile": "Impordi {name}",
+            "exportAccountUnbound": "Profiilide loend pole kontoga seotud; midagi ei eksporditud.",
+            "exportAccountChanged": "Aktiivne konto muutus; midagi ei eksporditud.",
+            "exportAccountChangedDuringSave": "Aktiivne konto muutus salvestusdialoogi avatud olemise ajal; midagi ei eksporditud."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ on juba salvestatud kontole {user}",
             "relocateError": "Serverit ei õnnestunud üle kanda: {error}",
             "relocateWrongPassword": "Vale parool kontole {user}.",
-            "relocateSecretsNotCopied": "„{name}“ jõudis kontole {user}, aga salvestatud parool või token mitte, seega küsib see neid seal uuesti."
+            "relocateSecretsNotCopied": "„{name}“ jõudis kontole {user}, aga salvestatud parool või token mitte, seega küsib see neid seal uuesti.",
+            "relocateMovedCleanupFailed": "\"{name}\" teisaldati kasutajale {user}, kuid selle Proton Drive'i seanssi ei õnnestunud lähtekontost eemaldada."
         },
         "cyberTools": {
             "title": "Turvalisuse tööriistad",
@@ -5923,7 +5927,9 @@
                 "months": "{count} k"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Uus: {name}"
+            "newTabLabel": "Uus: {name}",
+            "protonSessionEndsAtUnlock": "Selle profiili Protoni seanss lõpeb selle konto järgmisel avamisel, kui seda ei kasuta mõni teine selle arvuti konto.",
+            "profileSecretsNotRemoved": "Profiil eemaldati, kuid mõnda selle salvestatud mandaati ei õnnestunud hoidlast kustutada."
         },
         "gitlab": {
             "projectPath": "Projekti tee",

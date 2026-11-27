@@ -1439,7 +1439,10 @@
             "templateLogImported": "Templat konfigurasi diimpor: {imported} diimpor, {skipped} dilewati, {invalid} tidak valid",
             "templateLogBlocks": "Blok: {blocks}",
             "templateDuplicateInTemplate": "duplikat dalam templat",
-            "templateSelectProfile": "Impor {name}"
+            "templateSelectProfile": "Impor {name}",
+            "exportAccountUnbound": "Daftar profil tidak terikat ke akun; tidak ada yang diekspor.",
+            "exportAccountChanged": "Akun aktif berubah; tidak ada yang diekspor.",
+            "exportAccountChangedDuringSave": "Akun aktif berubah saat dialog penyimpanan terbuka; tidak ada yang diekspor."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "\"{name}\" sudah tersimpan di {user}",
             "relocateError": "Server tidak dapat ditransfer: {error}",
             "relocateWrongPassword": "Kata sandi salah untuk {user}.",
-            "relocateSecretsNotCopied": "\"{name}\" sudah sampai ke {user}, tetapi kata sandi atau token yang tersimpan tidak ikut sampai, sehingga akan diminta lagi di sana."
+            "relocateSecretsNotCopied": "\"{name}\" sudah sampai ke {user}, tetapi kata sandi atau token yang tersimpan tidak ikut sampai, sehingga akan diminta lagi di sana.",
+            "relocateMovedCleanupFailed": "\"{name}\" dipindahkan ke {user}, tetapi sesi Proton Drive-nya tidak dapat dihapus dari akun sumber."
         },
         "cyberTools": {
             "title": "Alat Keamanan",
@@ -5923,7 +5927,9 @@
                 "months": "{count} bln"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Baru: {name}"
+            "newTabLabel": "Baru: {name}",
+            "protonSessionEndsAtUnlock": "Sesi Proton profil ini berakhir saat akun ini dibuka kuncinya berikutnya, kecuali akun lain di komputer ini menggunakannya.",
+            "profileSecretsNotRemoved": "Profil telah dihapus, tetapi beberapa kredensial tersimpannya tidak dapat dihapus dari brankas."
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",

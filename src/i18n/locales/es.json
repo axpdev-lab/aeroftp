@@ -1439,7 +1439,10 @@
             "templateLogImported": "Plantilla de configuración importada: {imported} importados, {skipped} omitidos, {invalid} no válidos",
             "templateLogBlocks": "Bloques: {blocks}",
             "templateDuplicateInTemplate": "duplicado en la plantilla",
-            "templateSelectProfile": "Importar {name}"
+            "templateSelectProfile": "Importar {name}",
+            "exportAccountUnbound": "La lista de perfiles no está vinculada a ninguna cuenta; no se exportó nada.",
+            "exportAccountChanged": "La cuenta activa cambió; no se exportó nada.",
+            "exportAccountChangedDuringSave": "La cuenta activa cambió mientras el diálogo de guardado estaba abierto; no se exportó nada."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "«{name}» ya está guardado en {user}",
             "relocateError": "No se pudo transferir el servidor: {error}",
             "relocateWrongPassword": "Contraseña incorrecta para {user}.",
-            "relocateSecretsNotCopied": "«{name}» llegó a {user}, pero su contraseña o token guardados no, así que los volverá a pedir allí."
+            "relocateSecretsNotCopied": "«{name}» llegó a {user}, pero su contraseña o token guardados no, así que los volverá a pedir allí.",
+            "relocateMovedCleanupFailed": "Se movió \"{name}\" a {user}, pero no se pudo eliminar su sesión de Proton Drive de la cuenta de origen."
         },
         "cyberTools": {
             "title": "Herramientas de seguridad",
@@ -5923,7 +5927,9 @@
                 "months": "{count} mes."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nuevo: {name}"
+            "newTabLabel": "Nuevo: {name}",
+            "protonSessionEndsAtUnlock": "La sesión de Proton de este perfil finaliza la próxima vez que se desbloquee esta cuenta, salvo que otra cuenta de este equipo la utilice.",
+            "profileSecretsNotRemoved": "El perfil se eliminó, pero no se pudieron borrar de la bóveda algunas de sus credenciales guardadas."
         },
         "gitlab": {
             "projectPath": "Ruta del proyecto",

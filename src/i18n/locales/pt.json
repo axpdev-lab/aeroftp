@@ -1439,7 +1439,10 @@
             "templateLogImported": "Modelo de configuração importado: {imported} importado(s), {skipped} ignorado(s), {invalid} inválido(s)",
             "templateLogBlocks": "Blocos: {blocks}",
             "templateDuplicateInTemplate": "duplicado no modelo",
-            "templateSelectProfile": "Importar {name}"
+            "templateSelectProfile": "Importar {name}",
+            "exportAccountUnbound": "A lista de perfis não está associada a uma conta; nada foi exportado.",
+            "exportAccountChanged": "A conta ativa mudou; nada foi exportado.",
+            "exportAccountChangedDuringSave": "A conta ativa mudou enquanto a caixa de diálogo de salvar estava aberta; nada foi exportado."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "«{name}» já está salvo em {user}",
             "relocateError": "Não foi possível transferir o servidor: {error}",
             "relocateWrongPassword": "Senha incorreta para {user}.",
-            "relocateSecretsNotCopied": "«{name}» chegou a {user}, mas a palavra-passe ou o token guardados não, pelo que voltará a pedi-los lá."
+            "relocateSecretsNotCopied": "«{name}» chegou a {user}, mas a palavra-passe ou o token guardados não, pelo que voltará a pedi-los lá.",
+            "relocateMovedCleanupFailed": "\"{name}\" foi movido para {user}, mas não foi possível remover a sua sessão do Proton Drive da conta de origem."
         },
         "cyberTools": {
             "title": "Ferramentas de segurança",
@@ -5923,7 +5927,9 @@
                 "months": "{count} meses"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Novo: {name}"
+            "newTabLabel": "Novo: {name}",
+            "protonSessionEndsAtUnlock": "A sessão Proton deste perfil termina na próxima vez que esta conta for desbloqueada, a menos que outra conta neste computador a utilize.",
+            "profileSecretsNotRemoved": "O perfil foi removido, mas algumas das suas credenciais guardadas não puderam ser eliminadas do cofre."
         },
         "gitlab": {
             "projectPath": "Caminho do projeto",

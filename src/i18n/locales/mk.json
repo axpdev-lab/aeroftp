@@ -1439,7 +1439,10 @@
             "templateLogImported": "Шаблонот за конфигурација е увезен: {imported} увезени, {skipped} прескокнати, {invalid} невалидни",
             "templateLogBlocks": "Блокови: {blocks}",
             "templateDuplicateInTemplate": "дупликат во шаблонот",
-            "templateSelectProfile": "Увези {name}"
+            "templateSelectProfile": "Увези {name}",
+            "exportAccountUnbound": "Список на профили не е поврзан со сметка; ништо не е извезено.",
+            "exportAccountChanged": "Активна сметка се промени; ништо не е извезено.",
+            "exportAccountChangedDuringSave": "Активна сметка се промени откако е отворен овој дијалог за зачувување; ништо не е извезено."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ е веќе зачуван во {user}",
             "relocateError": "Серверот не може да се пренесе: {error}",
             "relocateWrongPassword": "Погрешна лозинка за {user}.",
-            "relocateSecretsNotCopied": "„{name}“ стигна до {user}, но зачуваната лозинка или токен не стигнаа, па ќе ги побара повторно таму."
+            "relocateSecretsNotCopied": "„{name}“ стигна до {user}, но зачуваната лозинка или токен не стигнаа, па ќе ги побара повторно таму.",
+            "relocateMovedCleanupFailed": "\"{name}\" е преместен кај {user}, но неговата сесија на Proton Drive не можеше да се отстрани од изворната сметка."
         },
         "cyberTools": {
             "title": "Безбедносни алатки",
@@ -5942,7 +5946,9 @@
                 "months": "{count} мес"
             },
             "demoTabLabel": "Демо: {protocol}",
-            "newTabLabel": "Ново: {name}"
+            "newTabLabel": "Ново: {name}",
+            "protonSessionEndsAtUnlock": "Сесијата Proton на овој профил завршува при следното отклучување на оваа сметка, освен ако ја користи друга сметка на овој компјутер.",
+            "profileSecretsNotRemoved": "Профилот беше отстранет, но некои од неговите зачувани податоци за најава не можеа да се избришат од сефот."
         },
         "gitlab": {
             "projectPath": "Патека на проект",

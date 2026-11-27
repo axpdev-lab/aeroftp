@@ -106,6 +106,7 @@ pub mod aws_credentials_import;
 pub mod bridge_commands;
 #[cfg(test)]
 mod bridge_export_endpoint_tests;
+pub(crate) mod bridge_import_scan;
 pub mod bridge_shared;
 mod chat_history;
 pub mod cloud_config;
@@ -24238,6 +24239,23 @@ pub fn fill_oauth_app(
     client_id: Option<&str>,
     client_secret: Option<&str>,
 ) -> Result<bool, String> {
+    fill_oauth_app_recorded(store, provider, client_id, client_secret, |_, _, _| Ok(()))
+}
+
+/// [`fill_oauth_app`] that hands `record` each slot it fills, by key and
+/// value, before it writes any: a bridge scan keeps them in its ledger
+/// ([`bridge_import_scan`]), so a scan never confirmed takes them back. It
+/// hands it too, with `fills` false, each slot that already holds a value
+/// the config carries or, when it carries neither app field, the stored
+/// app it relies on: another scan may have filled it and not settled
+/// ([`bridge_import_scan::Scan::share_app`]). A record refused writes nothing.
+pub(crate) fn fill_oauth_app_recorded(
+    store: &credential_store::CredentialStore,
+    provider: &str,
+    client_id: Option<&str>,
+    client_secret: Option<&str>,
+    record: impl Fn(&str, &str, bool) -> Result<(), String>,
+) -> Result<bool, String> {
     let conn = user_partitions::open_or_init_cli()?;
     let _lock = user_partitions::ProfileListLock::acquire(&conn)?;
     let (stored_id, stored_secret) = stored_oauth_app(store, provider)?;
@@ -24251,12 +24269,39 @@ pub fn fill_oauth_app(
             stored_secret.as_deref(),
             client_id.filter(|id| !id.is_empty()),
         );
+    let (client_id_given, client_secret_given) = (client_id, client_secret);
     let [client_id, client_secret] = oauth_app_gaps(
         stored_id.as_deref(),
         stored_secret.as_deref(),
         client_id,
         client_secret,
     );
+    let [given_id, given_secret] =
+        [client_id_given, client_secret_given].map(|value| value.filter(|value| !value.is_empty()));
+    // An app is one unit: a config that names a slot of the stored app by
+    // its value relies on every slot the app holds, the ones whose value it
+    // does not carry included. A share of the id alone would let the scan
+    // that filled the secret take it back and leave an id with no secret.
+    let omits_app = given_id.is_none() && given_secret.is_none();
+    let relies_on_app = !other_app
+        && (omits_app
+            || [
+                (given_id, stored_id.as_deref()),
+                (given_secret, stored_secret.as_deref()),
+            ]
+            .iter()
+            .any(|(given, stored)| given.is_some() && given == stored));
+    for (name, fills, stored) in [
+        ("client_id", client_id, stored_id.as_deref()),
+        ("client_secret", client_secret, stored_secret.as_deref()),
+    ] {
+        let key = format!("oauth_{provider}_{name}");
+        if let Some(value) = fills {
+            record(&key, value, true)?;
+        } else if let Some(value) = stored.filter(|_| relies_on_app) {
+            record(&key, value, false)?;
+        }
+    }
     write_oauth_app(
         &VaultOnlySlots { store },
         provider,
@@ -24430,63 +24475,202 @@ async fn delete_credential_for_active_account(
     .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
+/// What a profile purge did: the keys it removed, the keys it found and could
+/// not remove (they stay under the deleted profile's id, and the window says
+/// so), and the account whose next unlock ends the profile's native Proton
+/// session, when the account was locked and could not read it (`None`
+/// otherwise, the usual case).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PurgedProfileSecrets {
+    removed: Vec<String>,
+    failed: Vec<String>,
+    proton_session_ends_at_unlock_of: Option<String>,
+}
+
 /// Remove EVERY vault secret scoped to a saved profile id, so deleting a profile
 /// leaves nothing behind (the user action is complete, no residue). Enumerates
 /// the keys from [`per_profile_vault_keys`] (the single source of truth shared
-/// with export and duplicate). Best-effort per key: a key absent for this
-/// profile kind is a no-op, never an error. Returns the keys that were actually
-/// present and removed. `protocol` lets the OAuth-token key be derived.
+/// with export and duplicate). Every key is tried: a key absent for this
+/// profile kind is a no-op, never an error. Reports the keys removed and those
+/// left behind ([`purge_profile_secret_keys`]). `protocol` lets the
+/// OAuth-token key be derived. `expected_user_id` is the account whose list
+/// the profile was removed from: its secrets are the ones purged, whichever
+/// account is active by then.
 #[tauri::command]
 async fn purge_profile_secrets(
     profile_id: String,
     protocol: Option<String>,
-) -> Result<Vec<String>, String> {
+    expected_user_id: Option<i64>,
+) -> Result<PurgedProfileSecrets, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    let user_id = user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
-    // A native Proton Drive session is ended on Proton before its key goes,
-    // so a deleted profile leaves no live session behind.
-    #[cfg(feature = "proton-native")]
-    providers::proton_native::vault::end_session(
-        providers::proton_native::vault::SessionOwner::for_user(user_id),
-        Some(&profile_id),
-    )
-    .await
-    .map_err(|error| error.to_string())?;
-    Ok(purge_profile_secret_keys(
-        &profile_id,
-        protocol.as_deref(),
-        |key| store.get(key).map(|v| !v.is_empty()).unwrap_or(false),
-        |key| {
-            match user_id {
-                Some(user) => user_partitions::delete_credential_for_user_dual(&store, user, key),
-                // No account: the delete reads the account active when it
-                // runs, and finds none unless one was activated meanwhile.
-                None => user_partitions::delete_credential_dual_as(&store, None, key),
-            }
-            .is_ok()
-        },
-        |key| {
-            if let Some(user) = user_id {
-                user_partitions::unmirror_credential_for_user_best_effort_any(user, key);
-            }
-        },
-    ))
+    let user_id = purge_account(&store, expected_user_id)?;
+    purge_profile_secrets_for(&store, user_id, &profile_id, protocol.as_deref()).await
 }
 
-fn purge_profile_secret_keys<Exists, Delete, Unmirror>(
+/// The account a profile purge works on: the one the caller removed the
+/// profile from when it names one (an account deleted since is an error, and
+/// nothing is purged), else the active account. An account switch between
+/// the list write and the purge never sends the purge to the other account.
+fn purge_account(
+    store: &credential_store::CredentialStore,
+    expected_user_id: Option<i64>,
+) -> Result<Option<i64>, String> {
+    match expected_user_id {
+        Some(user) => {
+            if user_partitions::cli_list_users(store)?
+                .iter()
+                .any(|account| account.id == user)
+            {
+                Ok(Some(user))
+            } else {
+                Err(format!(
+                    "The account {user} the profile was removed from no longer exists; no secret was removed"
+                ))
+            }
+        }
+        None => {
+            let users = user_partitions::cli_list_users(store)?;
+            if users.is_empty() {
+                Ok(None)
+            } else {
+                Err(
+                    "The profile list named no account, and an account exists now; no secret was removed"
+                        .to_string(),
+                )
+            }
+        }
+    }
+}
+
+/// The body of [`purge_profile_secrets`] for an explicit store and account.
+async fn purge_profile_secrets_for(
+    store: &credential_store::CredentialStore,
+    user_id: Option<i64>,
+    profile_id: &str,
+    protocol: Option<&str>,
+) -> Result<PurgedProfileSecrets, String> {
+    // A session that cannot be told or ended is reported left behind, and
+    // the profile's other secrets are purged all the same: the profile is
+    // already gone from the list.
+    #[cfg(feature = "proton-native")]
+    let (proton_session_ends_at_unlock_of, session_left) =
+        match end_purged_proton_session(store, user_id, profile_id).await {
+            Ok(account) => (account, None),
+            Err(error) => {
+                log::warn!("Profile purge: the Proton session was not ended: {error}");
+                (None, Some(format!("proton_native_session_{profile_id}")))
+            }
+        };
+    #[cfg(not(feature = "proton-native"))]
+    let (proton_session_ends_at_unlock_of, session_left) = (None, None::<String>);
+    let (removed, mut failed) = purge_profile_secret_keys(
+        profile_id,
+        protocol,
+        // Where the account reads it: another account's token is its row
+        // alone, which a locked account holds too.
+        |key| match user_id {
+            Some(user) => user_partitions::holds_credential(store, user, key),
+            None => match store.get(key) {
+                Ok(value) => Ok(!value.is_empty()),
+                Err(credential_store::CredentialError::NotFound(_)) => Ok(false),
+                Err(error) => Err(error.to_string()),
+            },
+        },
+        // Both halves, checked: a partition row left behind is read first,
+        // so a delete that leaves one is a failure.
+        |key| match user_id {
+            Some(user) => user_partitions::delete_credential_for_user_dual(store, user, key),
+            // No account: the delete reads the account active when it
+            // runs, and finds none unless one was activated meanwhile.
+            None => user_partitions::delete_credential_dual_as(store, None, key),
+        },
+    );
+    failed.extend(session_left);
+    if !failed.is_empty() {
+        log::warn!(
+            "Profile purge: {} secret(s) could not be removed",
+            failed.len()
+        );
+    }
+    Ok(PurgedProfileSecrets {
+        removed,
+        failed,
+        proton_session_ends_at_unlock_of,
+    })
+}
+
+/// Ends on Proton the native session of the profile a purge removes, before
+/// its key goes, so a deleted profile leaves no live session behind. Only a
+/// profile with a saved session, seen by its key and nothing decrypted,
+/// reaches Proton. A locked account cannot read its session to end it, and
+/// an unlocked one whose sign-out on Proton did not end it (failed, or a
+/// session another account may hold) cannot drop it: the row stays as it
+/// is, marked, and the account's next unlock ends it; the account's name is
+/// returned for the window to say so. With no account there is no unlock to
+/// leave it to: the session stays and the purge reports it left behind.
+#[cfg(feature = "proton-native")]
+async fn end_purged_proton_session(
+    store: &credential_store::CredentialStore,
+    user_id: Option<i64>,
+    profile_id: &str,
+) -> Result<Option<String>, String> {
+    use providers::proton_native::vault;
+    #[cfg(test)]
+    if profile_secret_purge_tests::SESSION_PROBE_REFUSED.with(std::cell::Cell::get) {
+        return Err("the session probe was refused (test)".to_string());
+    }
+    if !vault::holds_saved_session(store, vault::SessionOwner::for_user(user_id), profile_id)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(None);
+    }
+    let defer = |user: i64| -> Result<Option<String>, String> {
+        user_partitions::defer_proton_revoke(store, user, profile_id)?;
+        let name = user_partitions::cli_list_users(store)?
+            .into_iter()
+            .find(|account| account.id == user)
+            .map_or_else(|| user.to_string(), |account| account.name);
+        Ok(Some(name))
+    };
+    if let Some(user) = user_id {
+        if user_partitions::partition_locked(store, user)? {
+            return defer(user);
+        }
+    }
+    let outcome = vault::end_session_reporting(vault::SessionOwner::for_user(user_id), profile_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    match (outcome.may_still_be_live(), user_id) {
+        (None, _) => Ok(None),
+        (Some(_), Some(user)) => defer(user),
+        (Some(why), None) => Err(format!(
+            "the Proton session was not ended on Proton, so it stays: {why}"
+        )),
+    }
+}
+
+/// The keys of `profile_id` a purge removed, and those it left behind: every
+/// key is tried either way. `exists` says whether a key was there, as its
+/// account reads it; `delete` removes every copy of it, and fails when one is
+/// left. A key found and not removed is left behind. So is one whose
+/// presence could not be read and whose delete failed: it may still be there,
+/// and the window says so. One whose presence could not be read and whose
+/// delete succeeded is removed: nothing of it is left either way. A failed
+/// delete of a key that was not there leaves nothing behind.
+pub fn purge_profile_secret_keys<Exists, Delete>(
     profile_id: &str,
     protocol: Option<&str>,
     mut exists: Exists,
     mut delete: Delete,
-    mut unmirror: Unmirror,
-) -> Vec<String>
+) -> (Vec<String>, Vec<String>)
 where
-    Exists: FnMut(&str) -> bool,
-    Delete: FnMut(&str) -> bool,
-    Unmirror: FnMut(&str),
+    Exists: FnMut(&str) -> Result<bool, String>,
+    Delete: FnMut(&str) -> Result<(), String>,
 {
     let mut removed = Vec::new();
+    let mut failed = Vec::new();
     for key in per_profile_vault_keys_for_delete(profile_id, protocol) {
         // The caller has already removed this entry under its session lease.
         // Never perform an unleased second delete of a concurrent new sign-in.
@@ -24494,17 +24678,20 @@ where
         if key == format!("proton_native_session_{profile_id}") {
             continue;
         }
-        // Only report keys that existed; delete is idempotent and a missing key
-        // is expected for most profile kinds.
         let existed = exists(&key);
-        if delete(&key) {
-            unmirror(&key);
-            if existed {
-                removed.push(key);
+        if let Err(error) = &existed {
+            log::warn!("Profile purge: whether {key} is saved could not be read: {error}");
+        }
+        match (existed, delete(&key)) {
+            (Ok(false), _) => {}
+            (_, Ok(())) => removed.push(key),
+            (_, Err(error)) => {
+                log::warn!("Profile purge: {key} was not removed: {error}");
+                failed.push(key);
             }
         }
     }
-    removed
+    (removed, failed)
 }
 
 /// Copy EVERY vault secret scoped to `source_id` onto `target_id`, so
@@ -24599,6 +24786,7 @@ mod copy_profile_secrets_for_tests {
         prev_data_root: Option<std::path::PathBuf>,
         prev_xdg: Option<std::ffi::OsString>,
         store: CredentialStore,
+        owner: i64,
         other: i64,
         _guard: std::sync::MutexGuard<'static, ()>,
         // Declared last so it is released after the vault is locked again.
@@ -24633,6 +24821,7 @@ mod copy_profile_secrets_for_tests {
                 prev_data_root,
                 prev_xdg,
                 store,
+                owner: owner.id,
                 other,
                 _guard: guard,
                 _partitions: partitions,
@@ -24671,6 +24860,78 @@ mod copy_profile_secrets_for_tests {
             )
             .unwrap(),
             None
+        );
+    }
+
+    /// Without the native provider build the shared-import restore applies
+    /// the same ownership rule: a carried Proton session another account may
+    /// hold is withheld and the profile is reported, not restored; a session
+    /// nobody holds is restored.
+    #[cfg(not(feature = "proton-native"))]
+    #[test]
+    fn an_import_without_the_native_build_withholds_a_held_session() {
+        let env = Accounts::new();
+        let held = r#"{"uid":"held-uid","access_token":"a","refresh_token":"r"}"#;
+        let free = r#"{"uid":"free-uid","access_token":"a","refresh_token":"r"}"#;
+        user_partitions::store_credential_for_user(
+            &env.store,
+            env.owner,
+            "proton_native_session_held",
+            "proton_native_session",
+            held,
+        )
+        .unwrap();
+        let server = |id: &str| profile_export::ServerProfileExport {
+            id: id.into(),
+            name: id.into(),
+            protocol: Some("proton".into()),
+            ..Default::default()
+        };
+        let secrets = std::collections::HashMap::from([
+            (
+                "held-copy".to_string(),
+                profile_export::ProviderSecrets {
+                    proton_native_session: Some(held.to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "free-copy".to_string(),
+                profile_export::ProviderSecrets {
+                    proton_native_session: Some(free.to_string()),
+                    ..Default::default()
+                },
+            ),
+        ]);
+        let shared = restore_shared_import_secrets(
+            &env.store,
+            env.other,
+            &[server("held-copy"), server("free-copy")],
+            &secrets,
+            &std::collections::HashMap::new(),
+        );
+        assert!(shared.failed.contains("held-copy"));
+        assert!(!shared.restored_sessions.contains("held-copy"));
+        assert!(shared.restored_sessions.contains("free-copy"));
+        assert!(
+            user_partitions::resolve_credential_for_user(
+                &env.store,
+                env.other,
+                "proton_native_session_held-copy"
+            )
+            .unwrap()
+            .is_none(),
+            "the held session is not written for the importing account"
+        );
+        assert!(
+            user_partitions::resolve_credential_for_user(
+                &env.store,
+                env.other,
+                "proton_native_session_free-copy"
+            )
+            .unwrap()
+            .is_some(),
+            "a session nobody holds is restored"
         );
     }
 
@@ -24768,6 +25029,211 @@ mod copy_profile_secrets_for_tests {
         );
     }
 
+    /// The profile was removed from the owner's list, and the other account
+    /// (holding a profile of the same id) became active before the purge: the
+    /// purge removes the owner's secret and leaves the other account's. An
+    /// account deleted meanwhile purges nothing.
+    #[test]
+    fn a_purge_removes_the_secrets_of_the_account_the_profile_left() {
+        let env = Accounts::new();
+        let key = "server_srv_both";
+        for (user, secret) in [(env.owner, "owner-pw"), (env.other, "other-pw")] {
+            user_partitions::store_credential_dual_as(&env.store, Some(user), key, secret).unwrap();
+        }
+        assert_eq!((rows_of(env.owner, key), rows_of(env.other, key)), (1, 1));
+        let refused = tauri::async_runtime::block_on(purge_profile_secrets(
+            "srv_both".into(),
+            None,
+            Some(i64::MAX),
+        ));
+        assert!(refused.is_err(), "a deleted account's purge went on");
+        assert_eq!((rows_of(env.owner, key), rows_of(env.other, key)), (1, 1));
+        let purged = tauri::async_runtime::block_on(purge_profile_secrets(
+            "srv_both".into(),
+            None,
+            Some(env.owner),
+        ))
+        .unwrap();
+        assert!(purged.failed.is_empty(), "{:?}", purged.failed);
+        assert_eq!(
+            (rows_of(env.owner, key), rows_of(env.other, key)),
+            (0, 1),
+            "the purge went to the active account instead of the one the profile left"
+        );
+    }
+
+    /// The profile list named no account when it was read, but one exists
+    /// by the purge: nothing is removed, not the legacy vault either.
+    #[test]
+    fn a_purge_with_no_account_at_the_read_refuses_once_one_exists() {
+        let env = Accounts::new();
+        let key = "server_srv_late";
+        env.store.store(key, "password").unwrap();
+        let refused =
+            tauri::async_runtime::block_on(purge_profile_secrets("srv_late".into(), None, None));
+        let error = refused.expect_err("a purge with accounts present went on");
+        assert!(error.contains("no account"), "unexpected refusal: {error}");
+        assert!(env.store.get(key).is_ok(), "the secret was purged anyway");
+    }
+
+    /// The rows of `user` under `key`, counted without decrypting.
+    fn rows_of(user: i64, key: &str) -> i64 {
+        user_partitions::open_or_init_cli()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+                rusqlite::params![user, key],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    /// The legacy owner's token is in the vault and in its row, and the row
+    /// cannot be deleted: the vault copy goes, the row stays, and the purge
+    /// reports the key left behind, not removed.
+    #[test]
+    fn a_purge_whose_row_delete_fails_reports_the_key_left_behind() {
+        let env = Accounts::new();
+        user_partitions::cli_set_active_user(&env.store, env.owner).unwrap();
+        let key = "oauth_dropbox_srv_gone";
+        user_partitions::store_credential_for_user_typed_dual(
+            &env.store,
+            env.owner,
+            key,
+            "oauth",
+            "{\"access_token\":\"tok\"}",
+        )
+        .unwrap();
+        assert_eq!(rows_of(env.owner, key), 1);
+        let conn = user_partitions::open_or_init_cli().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER keep_row BEFORE DELETE ON user_credentials
+             WHEN OLD.credential_id = '{key}'
+             BEGIN SELECT RAISE(FAIL, 'disk full'); END;"
+        ))
+        .unwrap();
+        let purged = tauri::async_runtime::block_on(purge_profile_secrets_for(
+            &env.store,
+            Some(env.owner),
+            "srv_gone",
+            Some("dropbox"),
+        ))
+        .unwrap();
+        conn.execute_batch("DROP TRIGGER keep_row;").unwrap();
+        assert_eq!(
+            purged.failed,
+            vec![key.to_string()],
+            "a key whose row stays was not reported left behind"
+        );
+        assert!(
+            !purged.removed.contains(&key.to_string()),
+            "a key whose row stays was reported removed: {:?}",
+            purged.removed
+        );
+        assert_eq!(rows_of(env.owner, key), 1, "the report is not true");
+    }
+
+    /// Whether the account holds a key cannot be read (its vault entry is
+    /// damaged), and its delete fails: the purge reports it left behind
+    /// instead of leaving it out as absent.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_purge_that_cannot_read_a_key_reports_it_when_its_delete_fails() {
+        let env = Accounts::new();
+        let key = "server_srv_unread";
+        env.store.store(key, "password").unwrap();
+        env.store.corrupt_entry_for_test(key);
+        user_partitions::PARTITION_DELETE_REFUSED.with(|refused| refused.set(true));
+        let purged = tauri::async_runtime::block_on(purge_profile_secrets_for(
+            &env.store,
+            Some(env.other),
+            "srv_unread",
+            None,
+        ));
+        user_partitions::PARTITION_DELETE_REFUSED.with(|refused| refused.set(false));
+        assert_eq!(
+            purged.unwrap().failed,
+            vec![key.to_string()],
+            "a key of unknown presence whose delete failed was left out"
+        );
+    }
+
+    /// The purge cannot tell whether the profile holds a native Proton
+    /// session: the session's key is reported left behind, and the
+    /// profile's other secrets are purged, instead of the whole purge
+    /// stopping with all of them left.
+    #[cfg(feature = "proton-native")]
+    #[test]
+    fn a_purge_whose_session_probe_fails_removes_the_rest() {
+        let env = Accounts::new();
+        let key = "server_srv_proton";
+        user_partitions::store_credential_dual_as(&env.store, Some(env.other), key, "password")
+            .unwrap();
+        super::profile_secret_purge_tests::SESSION_PROBE_REFUSED.with(|refused| refused.set(true));
+        let purged = tauri::async_runtime::block_on(purge_profile_secrets_for(
+            &env.store,
+            Some(env.other),
+            "srv_proton",
+            Some("proton"),
+        ));
+        super::profile_secret_purge_tests::SESSION_PROBE_REFUSED.with(|refused| refused.set(false));
+        let purged = purged.expect("the purge stopped at the session probe");
+        assert_eq!(
+            purged.failed,
+            vec!["proton_native_session_srv_proton".to_string()]
+        );
+        assert_eq!(purged.removed, vec![key.to_string()]);
+        assert_eq!(
+            user_partitions::resolve_credential_for_user(&env.store, env.other, key).unwrap(),
+            None
+        );
+    }
+
+    /// While a restore's profile tags wait, an account's row that may be a
+    /// copy of the legacy owner's token is not copied by a duplicate: under a
+    /// fresh id no other account holds, the next alignment would take the
+    /// copy for the account's own and keep it.
+    #[test]
+    fn a_duplicate_never_carries_a_row_that_may_be_the_owners_copy() {
+        let env = Accounts::new();
+        let key = "oauth_dropbox_srv_x";
+        env.store.store(key, "owners-token").unwrap();
+        user_partitions::store_credential_for_user_typed_dual(
+            &env.store,
+            env.other,
+            key,
+            "oauth",
+            "owners-token",
+        )
+        .unwrap();
+        user_partitions::open_or_init_cli()
+            .unwrap()
+            .execute_batch(&format!(
+                "DELETE FROM global_state WHERE key = 'private_tokens_aligned_{other}';
+                 INSERT INTO global_state(key, value, updated_at)
+                 VALUES ('profile_tags_pending_{owner}', '1', 0);",
+                other = env.other,
+                owner = env.owner,
+            ))
+            .unwrap();
+        assert_eq!(rows_of(env.other, key), 1);
+        let copied = copy_profile_secrets_for(
+            &env.store,
+            Some(env.other),
+            "srv_x",
+            "srv_y",
+            Some("dropbox"),
+        )
+        .unwrap();
+        assert_eq!(copied.get("oauth_dropbox"), Some(&false));
+        assert_eq!(rows_of(env.other, "oauth_dropbox_srv_y"), 0);
+        assert_eq!(
+            user_partitions::resolve_credential_for_user_owner_aware(&env.store, env.other, key)
+                .unwrap(),
+            None
+        );
+    }
+
     #[test]
     fn a_duplicated_oauth_token_stays_private_to_its_account() {
         let env = Accounts::new();
@@ -24802,6 +25268,55 @@ mod copy_profile_secrets_for_tests {
             .unwrap()
             .map(|value| value.to_string()),
             Some(token.to_string())
+        );
+    }
+
+    /// CodeRabbit r6034347929: a config that omits both app fields relies
+    /// on the stored provider app, so `fill_oauth_app_recorded` records
+    /// the stored id and secret as shares (fills=false) for the scan's
+    /// ledger: another unsettled scan's settle cannot take the app this
+    /// config's profiles still use. Red if the omitted config records no
+    /// share.
+    #[test]
+    fn a_config_omitting_the_app_records_the_stored_app_as_a_share() {
+        let env = Accounts::new();
+        env.store
+            .store("oauth_shareprov_client_id", "stored-id")
+            .unwrap();
+        env.store
+            .store("oauth_shareprov_client_secret", "stored-secret")
+            .unwrap();
+        let recorded = std::cell::RefCell::new(Vec::new());
+        let filled = crate::fill_oauth_app_recorded(
+            &env.store,
+            "shareprov",
+            None,
+            None,
+            |key, value, fills| {
+                recorded
+                    .borrow_mut()
+                    .push((key.to_string(), value.to_string(), fills));
+                Ok(())
+            },
+        )
+        .unwrap();
+        let recorded = recorded.into_inner();
+        assert!(!filled, "no other app is stored");
+        assert_eq!(
+            recorded,
+            vec![
+                (
+                    "oauth_shareprov_client_id".to_string(),
+                    "stored-id".to_string(),
+                    false
+                ),
+                (
+                    "oauth_shareprov_client_secret".to_string(),
+                    "stored-secret".to_string(),
+                    false
+                ),
+            ],
+            "the omitted config shares both stored app slots"
         );
     }
 }
@@ -25040,7 +25555,7 @@ pub fn per_profile_vault_keys(profile_id: &str, protocol: Option<&str>) -> Vec<S
     // The per-profile OAuth token lives under `oauth_<slug>_<id>`; the slug is
     // provider-specific, so it is only added when the protocol maps to one.
     if let Some(slug) = protocol.and_then(oauth_vault_slug_for_protocol) {
-        keys.push(format!("oauth_{}_{}", slug, profile_id));
+        keys.push(providers::oauth2::oauth_token_key(slug, profile_id));
     }
     keys
 }
@@ -25076,7 +25591,7 @@ pub fn per_profile_vault_keys_for_target_reset(
 ) -> Vec<String> {
     let mut keys = per_profile_vault_keys_for_delete(profile_id, None);
     for slug in ALL_OAUTH_VAULT_SLUGS {
-        keys.push(format!("oauth_{slug}_{profile_id}"));
+        keys.push(providers::oauth2::oauth_token_key(slug, profile_id));
     }
     keys.retain(|k| !preserve_keys.iter().any(|keep| keep == k));
     keys
@@ -25118,7 +25633,7 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // MUV-4: read the per-profile token from the captured user's partition (vault
     // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
-        let per_profile = format!("oauth_{}_{}", slug, server.id);
+        let per_profile = providers::oauth2::oauth_token_key(slug, &server.id);
         let read = |key: &str| {
             resolve_user_owner_aware(key)
                 .map_err(|e| format!("{}: cannot read its OAuth token: {e}", server.name))
@@ -26022,7 +26537,9 @@ fn import_server_profiles_blocking(
         };
         // The blob mirrors the active account. The partition write succeeded, so
         // a mirror failure is a warning.
-        if let Err(e) = user_partitions::mirror_active_profiles_to_legacy_blob(&store, &list) {
+        if let Err(e) =
+            user_partitions::mirror_active_profiles_to_legacy_blob(&store, Some(user), &list)
+        {
             tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
         }
         let shared = restore_shared_import_secrets(
@@ -26106,7 +26623,9 @@ pub fn store_imported_profiles<T>(
                 continue;
             }
         };
-        if let Err(e) = user_partitions::mirror_active_profiles_to_legacy_blob(store, &stored) {
+        if let Err(e) =
+            user_partitions::mirror_active_profiles_to_legacy_blob(store, Some(user), &stored)
+        {
             tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
         }
         return Ok((result, sent, stored));
@@ -26318,7 +26837,7 @@ pub(crate) fn import_secret_writes(
         if let Some(oauth_json) = &secrets.oauth {
             if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
                 writes.push(SecretWrite::new(
-                    format!("oauth_{slug}_{id}"),
+                    providers::oauth2::oauth_token_key(slug, id),
                     Some("oauth"),
                     oauth_json,
                 ));
@@ -26411,8 +26930,11 @@ pub(crate) struct SharedImportSecrets {
     /// Profiles whose custom OAuth app was not written, the provider's stored
     /// app being another one.
     pub(crate) kept_oauth_apps: std::collections::HashSet<String>,
-    /// Profiles whose shared secret or native session could not be written.
+    /// Profiles whose shared secret or native session could not be written,
+    /// or whose native session another account on this device may hold.
     pub(crate) failed: std::collections::HashSet<String>,
+    /// Profiles whose native session was stored.
+    pub(crate) restored_sessions: std::collections::HashSet<String>,
 }
 
 /// Write what the list commit must come before, in file order: the provider-wide
@@ -26529,25 +27051,49 @@ pub(crate) fn restore_shared_import_secrets(
         // Native Proton Drive session, under the key the native provider reads,
         // mirrored into the user's partition with the type the provider writes
         // it with. The fault can be in the file, where a retry could never fix it.
+        // A session another account on this device may hold is not imported:
+        // a sign-out here would revoke it there.
         if let Some(v) = &secrets.proton_native_session {
             #[cfg(feature = "proton-native")]
-            let result = providers::proton_native::vault::restore_session_blocking(
+            let result = providers::proton_native::vault::import_session_blocking(
                 native_owner,
                 profile_id,
                 v,
             )
             .map_err(|error| error.to_string());
             #[cfg(not(feature = "proton-native"))]
-            let result = user_partitions::store_credential_for_user_typed_dual(
-                store,
-                user,
-                &format!("proton_native_session_{profile_id}"),
-                "proton_native_session",
-                v,
-            );
-            if let Err(e) = result {
-                log::warn!("Import: {profile_id} proton session not restored: {e}");
-                shared.failed.insert(profile_id.clone());
+            let result = (|| -> Result<bool, String> {
+                // The same rule the native path applies: a session another
+                // account on this device may hold is not restored, or a
+                // sign-out here would revoke it there.
+                let uid = user_partitions::proton_session_uid(v)
+                    .ok_or_else(|| "the carried session names no account".to_string())?;
+                if user_partitions::another_account_may_hold_session(store, Some(user), &uid)? {
+                    return Ok(false);
+                }
+                user_partitions::store_credential_for_user_typed_dual(
+                    store,
+                    user,
+                    &format!("proton_native_session_{profile_id}"),
+                    "proton_native_session",
+                    v,
+                )
+                .map(|()| true)
+            })();
+            match result {
+                Ok(true) => {
+                    shared.restored_sessions.insert(profile_id.clone());
+                }
+                Ok(false) => {
+                    log::info!(
+                        "Import: {profile_id} proton session not restored: another account on this device may hold it"
+                    );
+                    shared.failed.insert(profile_id.clone());
+                }
+                Err(e) => {
+                    log::warn!("Import: {profile_id} proton session not restored: {e}");
+                    shared.failed.insert(profile_id.clone());
+                }
             }
         }
     }
@@ -27837,6 +28383,12 @@ mod profile_secret_purge_tests {
     use std::cell::RefCell;
     use std::collections::HashSet;
 
+    #[cfg(feature = "proton-native")]
+    thread_local! {
+        /// The purge cannot tell whether the profile holds a Proton session.
+        pub(super) static SESSION_PROBE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
     #[test]
     fn profile_purge_forces_unmirror_for_oauth_without_touching_app_globals() {
         let vault = RefCell::new(HashSet::from([
@@ -27859,18 +28411,17 @@ mod profile_secret_purge_tests {
             "profile_auth_deadline_profile-1".to_string(),
         ]));
 
-        let removed = purge_profile_secret_keys(
+        let (removed, failed) = purge_profile_secret_keys(
             "profile-1",
             Some("dropbox"),
-            |key| vault.borrow().contains(key),
+            |key| Ok(vault.borrow().contains(key)),
             |key| {
                 vault.borrow_mut().remove(key);
-                true
-            },
-            |key| {
                 partition.borrow_mut().remove(key);
+                Ok(())
             },
         );
+        assert!(failed.is_empty());
 
         assert!(removed.contains(&"oauth_dropbox_profile-1".to_string()));
         assert!(
@@ -27883,6 +28434,67 @@ mod profile_secret_purge_tests {
         );
         assert!(vault.borrow().is_empty());
         assert_eq!(partition.borrow().len(), 1);
+    }
+
+    /// A key that existed and whose delete failed is reported as failed, not
+    /// left out; a failed delete of a key that was not there is no failure.
+    #[test]
+    fn profile_purge_reports_the_keys_it_could_not_remove() {
+        let vault = RefCell::new(HashSet::from([
+            "server_profile-1".to_string(),
+            "jottacloud_refresh_profile-1".to_string(),
+        ]));
+        let (removed, failed) = purge_profile_secret_keys(
+            "profile-1",
+            Some("jottacloud"),
+            |key| Ok(vault.borrow().contains(key)),
+            |key| {
+                if key.starts_with("jottacloud_refresh_") || key.starts_with("oauth_") {
+                    return Err("refused".to_string());
+                }
+                vault.borrow_mut().remove(key);
+                Ok(())
+            },
+        );
+        assert_eq!(removed, vec!["server_profile-1".to_string()]);
+        assert_eq!(failed, vec!["jottacloud_refresh_profile-1".to_string()]);
+        assert!(vault.borrow().contains("jottacloud_refresh_profile-1"));
+    }
+
+    /// Whether a key is saved could not be read: it is not taken for absent.
+    /// A delete that then fails leaves it reported left behind; one that
+    /// succeeds leaves nothing of it, and it is reported removed.
+    #[test]
+    fn a_key_whose_presence_is_unknown_is_reported_with_its_delete() {
+        let unknown = ["server_profile-1", "oauth_dropbox_profile-1"];
+        let (removed, failed) = purge_profile_secret_keys(
+            "profile-1",
+            Some("dropbox"),
+            |key| {
+                if unknown.contains(&key) {
+                    Err("the vault entry cannot be read".to_string())
+                } else {
+                    Ok(false)
+                }
+            },
+            |key| {
+                if key == "server_profile-1" {
+                    Err("disk full".to_string())
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(
+            failed,
+            vec!["server_profile-1".to_string()],
+            "an unknown key whose delete failed was not reported left behind"
+        );
+        assert_eq!(
+            removed,
+            vec!["oauth_dropbox_profile-1".to_string()],
+            "an unknown key whose delete succeeded was not reported removed"
+        );
     }
 }
 
@@ -29450,6 +30062,7 @@ pub fn run() {
             user_partitions::user_partitions_load_active_server_profiles_scoped,
             user_partitions::user_partitions_save_active_server_profiles,
             user_partitions::user_partitions_store_legacy_server_profiles,
+            user_partitions::user_partitions_read_legacy_server_profiles,
             user_partitions::user_partitions_relocate_server_profile,
             user_partitions::user_partitions_add_user,
             user_partitions::user_partitions_copy_user,
@@ -29536,6 +30149,7 @@ pub fn run() {
             bridge_commands::bridge_source_meta,
             bridge_commands::bridge_identify,
             bridge_commands::import_bridge_config,
+            bridge_commands::settle_bridge_import,
             bridge_commands::export_bridge_config,
             template_import::preview_configuration_template,
             template_import::import_configuration_template,
@@ -36456,7 +37070,9 @@ mod export_account_binding_tests {
         assert!(!none_file.exists());
 
         // Legacy pin: with no active account at all, a no-account request
-        // reads the legacy keys only and exports them.
+        // reads the legacy scope only and exports it. The legacy scope is
+        // the legacy owner's credential scope: its partition row wins over
+        // the raw vault entry of the same key.
         {
             let conn = user_partitions::open_or_init_cli().unwrap();
             conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
@@ -36477,7 +37093,7 @@ mod export_account_binding_tests {
         let (imported, _secrets, _meta) =
             profile_export::import_profiles(&legacy_file, "export-file-password")
                 .expect("the legacy export must decrypt");
-        assert_eq!(imported[0].credential.as_deref(), Some("legacy-vault-pw"));
+        assert_eq!(imported[0].credential.as_deref(), Some("first-account-pw"));
 
         // ...and the moment an account appears, the same no-account request
         // is refused instead of reading a partition.

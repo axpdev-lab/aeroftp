@@ -3825,7 +3825,8 @@
             "relocateAlreadyPresent": "\"{name}\" is already saved in {user}",
             "relocateError": "Could not transfer the server: {error}",
             "relocateWrongPassword": "Wrong password for {user}.",
-            "relocateSecretsNotCopied": "{name} reached {user}, but its saved password or token did not, so it will ask for them again there."
+            "relocateSecretsNotCopied": "{name} reached {user}, but its saved password or token did not, so it will ask for them again there.",
+            "relocateMovedCleanupFailed": "Moved \"{name}\" to {user}, but its Proton Drive session could not be removed from the source account."
         },
         "search": {
             "clear": "Clear search",
@@ -3983,6 +3984,9 @@
             "exportKeystoreDesc": "Export all encrypted credentials to a backup file",
             "exportServers": "Export Servers",
             "exportSuccess": "Exported {count} servers successfully",
+            "exportAccountUnbound": "The profile list is not bound to an account; nothing was exported.",
+            "exportAccountChanged": "The active account changed; nothing was exported.",
+            "exportAccountChangedDuringSave": "The active account changed while the save dialog was open; nothing was exported.",
             "selectServersToExport": "Select servers to export",
             "selectAll": "Select All",
             "deselectAll": "Deselect All",
@@ -6107,6 +6111,8 @@
             "backToServers": "Back to servers",
             "addFavorite": "Add to favorites",
             "removeFavorite": "Remove from favorites",
+            "protonSessionEndsAtUnlock": "The Proton session of this profile ends when this account is next unlocked, unless another account on this computer uses it.",
+            "profileSecretsNotRemoved": "The profile was removed, but some of its saved credentials could not be deleted from the vault.",
             "exportProfile": "Export...",
             "group": {
                 "newGroup": "New group",

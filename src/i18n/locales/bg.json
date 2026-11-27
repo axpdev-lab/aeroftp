@@ -1439,7 +1439,10 @@
             "templateLogImported": "Шаблонът за конфигурация е импортиран: {imported} импортирани, {skipped} пропуснати, {invalid} невалидни",
             "templateLogBlocks": "Блокове: {blocks}",
             "templateDuplicateInTemplate": "дубликат в шаблона",
-            "templateSelectProfile": "Импортиране на {name}"
+            "templateSelectProfile": "Импортиране на {name}",
+            "exportAccountUnbound": "Списък с профили не е свързан с акаунт; нищо не беше експортирано.",
+            "exportAccountChanged": "Активният акаунт се промени; нищо не беше експортирано.",
+            "exportAccountChangedDuringSave": "Активният акаунт се промени, откакто този диалог за запазване беше отворен; нищо не беше експортирано."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ вече е запазен в {user}",
             "relocateError": "Сървърът не може да бъде прехвърлен: {error}",
             "relocateWrongPassword": "Грешна парола за {user}.",
-            "relocateSecretsNotCopied": "„{name}“ стигна до {user}, но запазената му парола или токен не бяха прехвърлени, затова ще ги поиска отново там."
+            "relocateSecretsNotCopied": "„{name}“ стигна до {user}, но запазената му парола или токен не бяха прехвърлени, затова ще ги поиска отново там.",
+            "relocateMovedCleanupFailed": "\"{name}\" е преместен към {user}, но сесията му в Proton Drive не можа да бъде премахната от изходния акаунт."
         },
         "cyberTools": {
             "title": "Инструменти за сигурност",
@@ -5923,7 +5927,9 @@
                 "months": "{count} мес"
             },
             "demoTabLabel": "Демо: {protocol}",
-            "newTabLabel": "Нов: {name}"
+            "newTabLabel": "Нов: {name}",
+            "protonSessionEndsAtUnlock": "Сесията Proton на този профил приключва при следващото отключване на този акаунт, освен ако друг акаунт на този компютър не я използва.",
+            "profileSecretsNotRemoved": "Профилът беше премахнат, но някои от запазените му данни за вход не можаха да бъдат изтрити от трезора."
         },
         "gitlab": {
             "projectPath": "Път на проекта",

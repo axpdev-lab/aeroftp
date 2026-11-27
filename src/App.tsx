@@ -20870,6 +20870,7 @@ const App: React.FC = () => {
               setShowExportImport(false);
               setExportImportInitialMode(undefined);
               setExportImportBridgeFile(null);
+              setExportImportAccountId(null);
             }}
           />
         )}

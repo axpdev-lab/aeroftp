@@ -1439,7 +1439,10 @@
             "templateLogImported": "Đã nhập mẫu cấu hình: {imported} đã nhập, {skipped} đã bỏ qua, {invalid} không hợp lệ",
             "templateLogBlocks": "Các khối: {blocks}",
             "templateDuplicateInTemplate": "trùng lặp trong mẫu",
-            "templateSelectProfile": "Nhập {name}"
+            "templateSelectProfile": "Nhập {name}",
+            "exportAccountUnbound": "Danh sách hồ sơ không được liên kết với tài khoản; không có gì được xuất.",
+            "exportAccountChanged": "Tài khoản đang hoạt động đã thay đổi; không có gì được xuất.",
+            "exportAccountChangedDuringSave": "Tài khoản đang hoạt động đã thay đổi trong khi hộp thoại lưu đang mở; không có gì được xuất."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "\"{name}\" đã được lưu trong {user}",
             "relocateError": "Không thể chuyển máy chủ: {error}",
             "relocateWrongPassword": "Sai mật khẩu cho {user}.",
-            "relocateSecretsNotCopied": "\"{name}\" đã sang tới {user}, nhưng mật khẩu hoặc token đã lưu thì không, nên sẽ yêu cầu nhập lại ở đó."
+            "relocateSecretsNotCopied": "\"{name}\" đã sang tới {user}, nhưng mật khẩu hoặc token đã lưu thì không, nên sẽ yêu cầu nhập lại ở đó.",
+            "relocateMovedCleanupFailed": "Đã chuyển \"{name}\" sang {user}, nhưng không thể xóa phiên Proton Drive của nó khỏi tài khoản nguồn."
         },
         "cyberTools": {
             "title": "Công cụ bảo mật",
@@ -5923,7 +5927,9 @@
                 "months": "{count} tháng"
             },
             "demoTabLabel": "Dùng thử: {protocol}",
-            "newTabLabel": "Mới: {name}"
+            "newTabLabel": "Mới: {name}",
+            "protonSessionEndsAtUnlock": "Phiên Proton của hồ sơ này kết thúc vào lần mở khóa tài khoản này tiếp theo, trừ khi một tài khoản khác trên máy tính này đang sử dụng nó.",
+            "profileSecretsNotRemoved": "Hồ sơ đã được xóa, nhưng một số thông tin xác thực đã lưu của hồ sơ không thể xóa khỏi kho bảo mật."
         },
         "gitlab": {
             "projectPath": "Đường dẫn dự án",

@@ -1439,7 +1439,10 @@
             "templateLogImported": "Plantilla de configuració importada: {imported} importats, {skipped} omesos, {invalid} no vàlids",
             "templateLogBlocks": "Blocs: {blocks}",
             "templateDuplicateInTemplate": "duplicat a la plantilla",
-            "templateSelectProfile": "Importa {name}"
+            "templateSelectProfile": "Importa {name}",
+            "exportAccountUnbound": "La llista de perfils no està vinculada a cap compte; no s'ha exportat res.",
+            "exportAccountChanged": "El compte actiu ha canviat; no s'ha exportat res.",
+            "exportAccountChangedDuringSave": "El compte actiu ha canviat mentre el diàleg de desament estava obert; no s'ha exportat res."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "«{name}» ja està desat a {user}",
             "relocateError": "No s'ha pogut transferir el servidor: {error}",
             "relocateWrongPassword": "Contrasenya incorrecta per a {user}.",
-            "relocateSecretsNotCopied": "«{name}» ha arribat a {user}, però la contrasenya o el token desats no, així que els tornarà a demanar allà."
+            "relocateSecretsNotCopied": "«{name}» ha arribat a {user}, però la contrasenya o el token desats no, així que els tornarà a demanar allà.",
+            "relocateMovedCleanupFailed": "S'ha mogut \"{name}\" a {user}, però no s'ha pogut eliminar la seva sessió de Proton Drive del compte d'origen."
         },
         "cyberTools": {
             "title": "Eines de seguretat",
@@ -5942,7 +5946,9 @@
                 "months": "{count} mes."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nou: {name}"
+            "newTabLabel": "Nou: {name}",
+            "protonSessionEndsAtUnlock": "La sessió de Proton d'aquest perfil finalitza la propera vegada que es desbloquegi aquest compte, tret que un altre compte d'aquest ordinador la utilitzi.",
+            "profileSecretsNotRemoved": "El perfil s'ha eliminat, però algunes de les seves credencials desades no s'han pogut esborrar de la caixa forta."
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",

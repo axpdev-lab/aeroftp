@@ -104,13 +104,26 @@ struct Throttle {
 #[async_trait::async_trait]
 pub trait SessionStore: Send + Sync {
     /// A guard held for the length of one refresh, so only one process
-    /// refreshes at a time. `None` when exclusivity could not be had in a
-    /// bounded wait; the refresh then goes ahead without it.
-    async fn lock(&self) -> Option<Box<dyn Send>>;
+    /// refreshes at a time ([`RefreshLock`]).
+    async fn lock(&self) -> RefreshLock;
     /// The tokens saved now, which another process may have refreshed.
     fn load(&self) -> Option<SessionTokens>;
     /// Saves freshly refreshed tokens.
     fn save(&self, tokens: &SessionTokens);
+}
+
+/// What [`SessionStore::lock`] got.
+pub enum RefreshLock {
+    /// The guard, held for the length of the refresh.
+    Held(Box<dyn Send>),
+    /// Exclusivity could not be had in a bounded wait: the refresh goes
+    /// ahead without it.
+    TimedOut,
+    /// The lock itself could not be read or taken (its storage failed): no
+    /// refresh is sent, since one sent without the lock may race another
+    /// process's rotation of the refresh token, and the session is kept for
+    /// the next request.
+    Unavailable(String),
 }
 
 /// One part of a multipart form sent to the API host.
@@ -154,6 +167,10 @@ pub struct ProtonApi {
     throttle: StdMutex<Throttle>,
     /// Shares the session with other processes and persists refreshes.
     session_store: StdMutex<Option<std::sync::Arc<dyn SessionStore>>>,
+    /// The refresh tokens this connection already rotated past: a stored
+    /// pair carrying one of them is older than the pair in memory, whatever
+    /// its access token says, and must not be adopted back.
+    spent_refresh_tokens: StdMutex<Vec<SecretString>>,
 }
 
 /// Body of a Proton error response.
@@ -210,6 +227,7 @@ impl ProtonApi {
             refresh_gate: Mutex::new(()),
             throttle: StdMutex::new(Throttle::default()),
             session_store: StdMutex::new(None),
+            spent_refresh_tokens: StdMutex::new(Vec::new()),
         }
     }
 
@@ -712,7 +730,28 @@ impl ProtonApi {
         }
         let store = self.session_store();
         let _lease = match store.as_ref() {
-            Some(store) => store.lock().await,
+            Some(store) => match store.lock().await {
+                RefreshLock::Held(lease) => Some(lease),
+                RefreshLock::TimedOut => None,
+                RefreshLock::Unavailable(error) => {
+                    // A pair another process saved since needs no lease to
+                    // adopt: nothing is sent, so nothing can race a rotation.
+                    // A saved session of another UID replaced this one,
+                    // as the leased path reports it, not an IO failure.
+                    if store.load().is_some_and(|saved| saved.uid != current.uid) {
+                        *self.tokens.write().await = None;
+                        return Ok(Refreshed::Replaced);
+                    }
+                    if let Some(saved) = self.newer_saved_tokens(Some(store.as_ref()), &current) {
+                        *self.tokens.write().await = Some(saved);
+                        return Ok(Refreshed::Retry);
+                    }
+                    log::warn!("Proton session refresh held off: {error}");
+                    return Err(ProtonError::LocalIo(std::io::Error::other(format!(
+                        "the Proton session refresh lease could not be taken: {error}"
+                    ))));
+                }
+            },
             None => None,
         };
         if let Some(saved) = self.newer_saved_tokens(store.as_deref(), &current) {
@@ -723,6 +762,16 @@ impl ProtonApi {
             log::warn!("Proton session refresh impossible: no refresh token");
             return Ok(Refreshed::Ended);
         };
+        // A new sign-in saved another session under this vault key: it
+        // replaced this one, whose refresh the POST would only be refused.
+        if store
+            .as_deref()
+            .and_then(|store| store.load())
+            .is_some_and(|saved| saved.uid != current.uid)
+        {
+            *self.tokens.write().await = None;
+            return Ok(Refreshed::Replaced);
+        }
 
         let response = self
             .http
@@ -789,9 +838,21 @@ impl ProtonApi {
                 refreshed
                     .refresh_token
                     .map(SecretString::from)
-                    .unwrap_or(refresh_token),
+                    .unwrap_or_else(|| refresh_token.clone()),
             ),
         };
+        // A rotated refresh token is spent: a stored pair still carrying it
+        // predates this rotation and is never "newer" than it.
+        if tokens
+            .refresh_token
+            .as_ref()
+            .is_some_and(|next| next.expose_secret() != refresh_token.expose_secret())
+        {
+            self.spent_refresh_tokens
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(refresh_token.clone());
+        }
         *self.tokens.write().await = Some(tokens.clone());
         if let Some(store) = store.as_ref() {
             store.save(&tokens);
@@ -799,8 +860,13 @@ impl ProtonApi {
         Ok(Refreshed::Retry)
     }
 
-    /// The saved tokens when they belong to the same session and differ from
-    /// `current`: another process refreshed them.
+    /// The saved tokens when they belong to the same session, differ from
+    /// `current`, and are not a pair this connection already rotated past:
+    /// another process refreshed them, including the rotation after this
+    /// connection's own, whose refresh token it never sent. A stored pair
+    /// whose refresh token this connection spent is older than the pair in
+    /// memory, whatever its access token says (a withheld write leaves
+    /// exactly that pair in the row while the rotated one stays here).
     fn newer_saved_tokens(
         &self,
         store: Option<&dyn SessionStore>,
@@ -809,11 +875,21 @@ impl ProtonApi {
         let saved = store?.load()?;
         let same_session = saved.uid == current.uid;
         let newer = saved.access_token.expose_secret() != current.access_token.expose_secret();
-        (same_session && newer).then_some(saved)
+        let spent = self
+            .spent_refresh_tokens
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let saved_was_sent = saved.refresh_token.as_ref().is_some_and(|token| {
+            spent
+                .iter()
+                .any(|spent| spent.expose_secret() == token.expose_secret())
+        });
+        (same_session && newer && !saved_was_sent).then_some(saved)
     }
 }
 
 /// What [`ProtonApi::refresh_if_possible`] leaves the rejected request with.
+#[derive(Debug)]
 enum Refreshed {
     /// Retry with the current tokens (refreshed here or by another request
     /// or process).
@@ -959,18 +1035,30 @@ mod tests {
         }
     }
 
+    fn pair(access: &str, refresh: &str) -> SessionTokens {
+        SessionTokens {
+            uid: "uid-1".into(),
+            access_token: SecretString::from(access.to_string()),
+            refresh_token: Some(SecretString::from(refresh.to_string())),
+        }
+    }
+
     /// An in-memory [`SessionStore`] standing in for the vault.
     #[derive(Default)]
     struct MemoryStore {
         saved: StdMutex<Option<SessionTokens>>,
         locks: AtomicUsize,
+        lock_unavailable: StdMutex<bool>,
     }
 
     #[async_trait::async_trait]
     impl SessionStore for MemoryStore {
-        async fn lock(&self) -> Option<Box<dyn Send>> {
+        async fn lock(&self) -> RefreshLock {
             self.locks.fetch_add(1, Ordering::SeqCst);
-            None
+            if *self.lock_unavailable.lock().unwrap() {
+                return RefreshLock::Unavailable("synthetic lease storage failure".into());
+            }
+            RefreshLock::TimedOut
         }
         fn load(&self) -> Option<SessionTokens> {
             self.saved.lock().unwrap().clone()
@@ -1145,6 +1233,219 @@ mod tests {
         assert_eq!(store.saved_access().as_deref(), Some("access-2"));
     }
 
+    /// A refresh lease whose storage fails holds the refresh off: nothing is
+    /// sent to `/auth/v4/refresh`, where a refresh without the lease could
+    /// race another process's rotation of the token, and the session is
+    /// kept, not ended, for the next request.
+    #[tokio::test]
+    async fn a_lease_storage_failure_sends_no_refresh_and_keeps_the_session() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&tokens("access-1"));
+        *store.lock_unavailable.lock().unwrap() = true;
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        let answer = api.get::<Value>("/core/v4/users", &[]).await;
+        assert!(
+            matches!(answer, Err(ProtonError::LocalIo(_))),
+            "the request fails as a local error, not an ended session: {answer:?}"
+        );
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            0,
+            "no refresh is sent without the lease"
+        );
+        assert_eq!(store.locks.load(Ordering::SeqCst), 1);
+        let kept = api.tokens().await.expect("the session is kept");
+        assert_eq!(kept.access_token.expose_secret(), "access-1");
+        assert_eq!(store.saved_access().as_deref(), Some("access-1"));
+    }
+
+    /// A lease whose storage fails still lets the request adopt a pair
+    /// another process saved for the same session: the replay succeeds and
+    /// nothing is sent to `/auth/v4/refresh`.
+    #[tokio::test]
+    async fn a_lease_storage_failure_still_adopts_a_newer_saved_pair() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&tokens("access-2"));
+        *store.lock_unavailable.lock().unwrap() = true;
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        let answer: Value = api
+            .get("/core/v4/users", &[])
+            .await
+            .expect("the saved pair is adopted and the replay succeeds");
+        assert_eq!(answer["Ok"], Value::Bool(true));
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            0,
+            "no refresh is sent without the lease"
+        );
+        assert_eq!(store.locks.load(Ordering::SeqCst), 1);
+        let adopted = api.tokens().await.expect("tokens kept");
+        assert_eq!(adopted.access_token.expose_secret(), "access-2");
+    }
+
+    /// CodeRabbit body-C9: a refresh lease whose storage fails still reports
+    /// a saved session of another UID as replaced, like the leased path
+    /// does, instead of an IO error that hides the new sign-in.
+    #[tokio::test]
+    async fn a_lease_storage_failure_reports_a_saved_session_of_another_uid() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_DEAD)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        let mut other = tokens("access-2");
+        other.uid = "uid-other".into();
+        store.save(&other);
+        *store.lock_unavailable.lock().unwrap() = true;
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        let error = api.get::<Value>("/core/v4/users", &[]).await.unwrap_err();
+        assert!(matches!(error, ProtonError::SessionReplaced), "{error:?}");
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            0,
+            "no refresh is sent without the lease"
+        );
+    }
+
+    /// CodeRabbit 4661192953: a stored pair carrying a refresh token this
+    /// connection already rotated past is older than the pair in memory,
+    /// so a 401 on the rotated access token does not adopt it back; the
+    /// refresh runs instead.
+    #[tokio::test]
+    async fn a_stored_pair_older_than_this_connections_rotation_is_not_adopted() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(pair("access-1", "rt-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&pair("access-1", "rt-1"));
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        // The first 401 rotates rt-1 into the pair REFRESH_OK answers.
+        let _: Value = api.get("/core/v4/users", &[]).await.expect("replayed");
+        assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+        let rotated = api.tokens().await.expect("tokens kept");
+        assert_eq!(rotated.access_token.expose_secret(), "access-2");
+
+        // The withheld row still holds the pre-rotation pair.
+        store.save(&pair("access-1", "rt-1"));
+
+        // A 401 on the rotated access token must not adopt the spent pair
+        // back: the refresh runs again instead of replaying access-1.
+        let outcome = api.refresh_if_possible("access-2").await;
+        assert!(matches!(outcome, Ok(Refreshed::Retry)), "{outcome:?}");
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            2,
+            "the stale pair was not adopted"
+        );
+        let kept = api.tokens().await.expect("tokens kept");
+        assert_eq!(kept.access_token.expose_secret(), "access-2");
+        assert_eq!(
+            kept.refresh_token
+                .as_ref()
+                .map(|token| token.expose_secret()),
+            Some("refresh-2")
+        );
+
+        // A pair carrying a refresh token this connection already spent is
+        // older than the pair in memory whatever its access token says: it
+        // is not adopted, and the refresh runs again instead.
+        store.save(&pair("access-0", "rt-1"));
+        let outcome = api.refresh_if_possible("access-2").await;
+        assert!(matches!(outcome, Ok(Refreshed::Retry)), "{outcome:?}");
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            3,
+            "the spent pair was not adopted"
+        );
+        let kept = api.tokens().await.expect("tokens kept");
+        assert_eq!(kept.access_token.expose_secret(), "access-2");
+        assert_eq!(
+            kept.refresh_token
+                .as_ref()
+                .map(|token| token.expose_secret()),
+            Some("refresh-2")
+        );
+    }
+
+    /// CodeRabbit r4668241635 / r4668519026: after this connection rotated
+    /// (R1 spent, R2 in memory), a saved pair carrying a refresh token it
+    /// never sent is the next rotation of another connection, not a stale
+    /// row: it is adopted and R2 is not sent again.
+    #[tokio::test]
+    async fn a_saved_rotation_after_this_connections_refresh_is_adopted() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(pair("access-1", "rt-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&pair("access-1", "rt-1"));
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        // This connection spends rt-1 and keeps the R2 pair in memory.
+        let _: Value = api.get("/core/v4/users", &[]).await.expect("replayed");
+        assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+        let current = api.tokens().await.expect("tokens kept");
+        assert_eq!(
+            current.refresh_token.as_ref().map(|t| t.expose_secret()),
+            Some("refresh-2")
+        );
+
+        // Another connection rotated the same session further and saved R3:
+        // same uid, a refresh this connection never sent, another access.
+        store.save(&pair("access-3", "rt-3"));
+        let outcome = api.refresh_if_possible("access-2").await;
+        assert!(matches!(outcome, Ok(Refreshed::Retry)), "{outcome:?}");
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            1,
+            "the in-memory pair was not resent"
+        );
+        let adopted = api.tokens().await.expect("tokens kept");
+        assert_eq!(adopted.access_token.expose_secret(), "access-3");
+        assert_eq!(
+            adopted.refresh_token.as_ref().map(|t| t.expose_secret()),
+            Some("rt-3")
+        );
+
+        // Control: the row still holding R1, whose refresh this connection
+        // spent, is older than the pair in memory and is not adopted.
+        store.save(&pair("access-1", "rt-1"));
+        let current = api.tokens().await.expect("tokens kept");
+        let dyn_store: &dyn SessionStore = store.as_ref();
+        assert!(
+            api.newer_saved_tokens(Some(dyn_store), &current).is_none(),
+            "the spent pair is not newer"
+        );
+    }
+
     /// Another process refreshed the shared session: its saved tokens are
     /// adopted and the spent refresh token is not sent again.
     #[tokio::test]
@@ -1191,7 +1492,11 @@ mod tests {
 
         let error = api.get::<Value>("/core/v4/users", &[]).await.unwrap_err();
         assert!(matches!(error, ProtonError::SessionReplaced), "{error:?}");
-        assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            0,
+            "another session is Replaced before any refresh is sent"
+        );
         assert!(
             api.tokens().await.is_none(),
             "another session's tokens were adopted"

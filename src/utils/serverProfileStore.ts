@@ -7,6 +7,7 @@ import {
     accountChangeGeneration,
     loadActiveServerProfiles,
     loadActiveServerProfilesScoped,
+    readLegacyServerProfilesBound,
     saveActiveServerProfiles,
     storeLegacyServerProfiles,
 } from './userPartitions';
@@ -173,14 +174,35 @@ export const loadSavedServerProfilesWithAccount = async (): Promise<SavedProfile
  */
 export interface SavedProfilesRead {
     profiles: ServerProfile[];
+    /**
+     * The account the read is bound to. For a partition read it is the
+     * account the list belongs to; for a legacy-store read (which has no
+     * accounts) it is the account verified active on both sides of the
+     * read, under which the profiles' secrets live. Absent when no account
+     * is active or the owner could not be established.
+     */
     userId?: number;
+    /**
+     * The account active when the list was read, also set for a legacy-store
+     * read: a profile the list loses has its secrets purged for THIS account,
+     * never for whichever account is active when the purge runs.
+     */
+    activeUserId?: number;
+    /**
+     * True when the account owning a legacy-store read could not be
+     * established (the unlock status call failed while accounts exist, or
+     * the account list itself failed). A caller must not purge secrets with
+     * the active-account fallback: it would resolve whichever account is
+     * active when the purge runs, not the one the list was read under.
+     */
+    ownerUnknown?: boolean;
     revision?: string;
 }
 
-// What the revision of a list read from the legacy store starts with, followed by
-// that list. A write carrying it stays in that store: the backend refuses it, under
-// the list lock, if the partition can be reached by then or the store no longer
-// holds that list.
+// What the revision of a list read from the legacy store starts with: the
+// backend's opaque `legacy-store:` token, an HMAC of the raw blob bytes. A
+// write carrying it stays in that store: the backend refuses it, under the
+// list lock, if the partition can be reached by then or the blob changed.
 const LEGACY_STORE_REVISION = 'legacy-store:';
 
 /**
@@ -208,9 +230,29 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
         // account-changed refusal. It throws instead: the caller reports a
         // retryable failure and nothing is written.
         if (!isConfirmedLegacyProfileFallback(error)) throw error;
-        const legacy = await loadLegacySavedServerProfiles();
-        if (legacy.length > 0) return { profiles: legacy, revision: LEGACY_STORE_REVISION + JSON.stringify(legacy) };
-        throw error;
+        // The legacy store has no account of its own: the blob carries the id
+        // of the account whose list it mirrors, written with it under the
+        // list lock. One command reads the blob, that owner and the active
+        // account together, so a switch the two status calls used to miss
+        // (A, then B, then A again during the load) cannot bind the list to
+        // the wrong account. Without an active account the list stays
+        // unbound; with one, the owner must be that same account.
+        const locked = await readLegacyServerProfilesBound();
+        // `profiles` null means the locked read found no list: the blob is
+        // not read again outside the lock, the empty list below refuses.
+        const legacy = locked.profiles ?? [];
+        if (legacy.length === 0) throw error;
+        const active = locked.activeUserId ?? undefined;
+        if (active !== undefined && locked.ownerUserId !== active) {
+            throw new Error('ACCOUNT_CHANGED: the active account is not the owner of these profiles; nothing was saved');
+        }
+        return {
+            profiles: legacy,
+            userId: active,
+            activeUserId: active,
+            ownerUnknown: locked.accountsUnknown === true,
+            revision: locked.revision,
+        };
     }
 };
 
@@ -262,8 +304,7 @@ export const storeSavedServerProfiles = async (
     let stored: ServerProfile[];
     try {
         if (expectedRevision?.startsWith(LEGACY_STORE_REVISION)) {
-            const expected = JSON.parse(expectedRevision.slice(LEGACY_STORE_REVISION.length)) as ServerProfile[];
-            stored = await storeLegacyServerProfiles(profiles, expected);
+            stored = await storeLegacyServerProfiles(profiles, expectedRevision, expectedUserId);
         } else {
             const written = await saveActiveServerProfiles(profiles, expectedUserId, expectedRevision);
             stored = Array.isArray(written) ? written : profiles;

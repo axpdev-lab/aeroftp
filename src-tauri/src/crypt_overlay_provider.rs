@@ -505,6 +505,26 @@ fn outside_wire_path(target: &str) -> String {
     format!("/{}", target.trim_end_matches('/').trim_start_matches('/'))
 }
 
+/// What the last overlay wrap on this thread resolved as its password, for
+/// a test to see whose secret a wrap took.
+#[cfg(test)]
+pub(crate) mod overlay_test_seams {
+    thread_local! {
+        static LAST_PASSWORD: std::cell::RefCell<Option<Option<String>>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    pub(super) fn note_password(password: Option<&str>) {
+        LAST_PASSWORD.with(|cell| *cell.borrow_mut() = Some(password.map(str::to_string)));
+    }
+
+    /// The password the last wrap on this thread resolved, `None` when no
+    /// wrap reached it since the last call; clears it.
+    pub(crate) fn take_password() -> Option<Option<String>> {
+        LAST_PASSWORD.with(|cell| cell.borrow_mut().take())
+    }
+}
+
 /// Decrypt an on-wire path, decoding each component as a directory (every
 /// prefix of a path is a directory) and leaving undecryptable components
 /// verbatim. Test helper: the overlay itself renders `pwd` and listing paths
@@ -2595,7 +2615,12 @@ pub(crate) fn persist_public_overlay_config_for_unlock(
     })?;
     let config_key = format!("aerocrypt_overlay_config_{id}");
     let salt_key = format!("aerocrypt_overlay_salt_{id}");
-    if let Some(user_id) = scope.user_id {
+    // The legacy-only capture has no partition: its metadata stays in the
+    // vault, as it did when its scope carried `user_id: None`.
+    if let Some(user_id) = scope
+        .user_id
+        .filter(|id| *id != crate::user_partitions::LEGACY_ONLY_ACCOUNT)
+    {
         use crate::user_partitions as users;
         users::init_or_migrate_cli(scope.store)?;
         let conn = users::open_or_init_cli()?;
@@ -2996,6 +3021,8 @@ pub(crate) async fn wrap_connected_provider_for_profile_in_scope(
         // Set but empty is no password: never rclone's all-zero key.
         .filter(|s| !s.is_empty());
     // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
+    #[cfg(test)]
+    overlay_test_seams::note_password(password.as_deref());
     let password = match password {
         Some(p) => p,
         None if params.kind == "aerocrypt" && keyfile_digest.is_some() => String::new(),
@@ -3082,6 +3109,10 @@ pub async fn wrap_connected_provider_for_profile_named(
     store: &crate::credential_store::CredentialStore,
     account: i64,
 ) -> Result<Box<dyn StorageProvider>, String> {
+    // One account for the list and the secrets: a legacy-only capture reads
+    // both from the legacy owner, never its list with the vault's copy, which
+    // the last account to save the key wrote.
+    let account = crate::user_partitions::captured_list_owner(account)?;
     let profiles = crate::user_partitions::mcp_list_server_profiles(store, Some(account))?;
     let Some(profile) = select_aerocloud_profile(&profiles, profile_id, profile_name) else {
         return Ok(inner);

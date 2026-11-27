@@ -1439,7 +1439,10 @@
             "templateLogImported": "Šablóna konfigurácie importovaná: {imported} importovaných, {skipped} preskočených, {invalid} neplatných",
             "templateLogBlocks": "Bloky: {blocks}",
             "templateDuplicateInTemplate": "duplikát v šablóne",
-            "templateSelectProfile": "Importovať {name}"
+            "templateSelectProfile": "Importovať {name}",
+            "exportAccountUnbound": "Zoznam profilov nie je priradený k účtu; nič nebolo exportované.",
+            "exportAccountChanged": "Aktívny účet sa zmenil; nič nebolo exportované.",
+            "exportAccountChangedDuringSave": "Aktívny účet sa zmenil, kým bolo otvorené dialógové okno uloženia; nič nebolo exportované."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ je už uložené v {user}",
             "relocateError": "Server sa nepodarilo preniesť: {error}",
             "relocateWrongPassword": "Nesprávne heslo pre {user}.",
-            "relocateSecretsNotCopied": "„{name}“ sa dostalo do {user}, ale uložené heslo alebo token nie, preto si ich tam vypýta znova."
+            "relocateSecretsNotCopied": "„{name}“ sa dostalo do {user}, ale uložené heslo alebo token nie, preto si ich tam vypýta znova.",
+            "relocateMovedCleanupFailed": "Server \"{name}\" bol presunutý k používateľovi {user}, ale jeho reláciu Proton Drive sa nepodarilo zo zdrojového účtu odstrániť."
         },
         "cyberTools": {
             "title": "Bezpečnostné nástroje",
@@ -5923,7 +5927,9 @@
                 "months": "{count} mes."
             },
             "demoTabLabel": "Ukážka: {protocol}",
-            "newTabLabel": "Nový: {name}"
+            "newTabLabel": "Nový: {name}",
+            "protonSessionEndsAtUnlock": "Relácia Proton tohto profilu sa skončí pri ďalšom odomknutí tohto účtu, pokiaľ ju nepoužíva iný účet v tomto počítači.",
+            "profileSecretsNotRemoved": "Profil bol odstránený, ale niektoré jeho uložené prihlasovacie údaje sa nepodarilo odstrániť z trezoru."
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

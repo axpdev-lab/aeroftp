@@ -20,14 +20,17 @@ pub struct AuthScope<'a> {
 impl<'a> AuthScope<'a> {
     /// The scope of the reads a connection makes for the account it captured
     /// (`OpenedCloudProvider::reads_account`). A legacy-only capture
-    /// (`LEGACY_ONLY_ACCOUNT`) is the explicit legacy scope, `None`: the
-    /// shared vault, never a partition user that does not exist (V1). The
-    /// reserved id itself stays for the profile-list and binding reads, which
-    /// understand it.
+    /// (`LEGACY_ONLY_ACCOUNT`) keeps the reserved id: resolvers that
+    /// understand it ([`users::resolve_credential_for_user`],
+    /// [`users::resolve_credential_for_user_owner_aware`],
+    /// [`crate::bridge_commands::resolve_profile_oauth_token_for`]) read the
+    /// legacy owner's copies for it, where `None` would mean the active
+    /// account. The partition writers below filter it back to the vault
+    /// path, which is where a legacy-only connection's writes belong.
     pub(crate) fn for_captured(store: &'a CredentialStore, account: i64) -> Self {
         Self {
             store,
-            user_id: (account != users::LEGACY_ONLY_ACCOUNT).then_some(account),
+            user_id: Some(account),
         }
     }
 }
@@ -36,7 +39,10 @@ impl AuthScope<'_> {
         match self.user_id {
             Some(id) => users::resolve_credential_for_user(self.store, id, key)
                 .map(|v| v.map(|s| s.to_string())),
-            None => Ok(self.store.get(key).ok()),
+            None => crate::user_partitions::vault_secret_blocked_read(key, &|k| {
+                users::get_optional_secret(self.store, k)
+            })
+            .map(|value| value.map(|s| s.to_string())),
         }
     }
     /// Profile-bound reads cannot adopt another account's global mirror when
@@ -47,35 +53,57 @@ impl AuthScope<'_> {
         profile_id: &str,
         key: &str,
     ) -> Result<Option<String>, String> {
-        let Some(user_id) = self.user_id else {
+        // The legacy-only capture has no partition of its own: its
+        // profile-bound reads are the legacy reads.
+        let Some(user_id) = self.user_id.filter(|id| *id != users::LEGACY_ONLY_ACCOUNT) else {
             return self.read(key);
         };
         users::init_or_migrate_cli(self.store)?;
         let conn = users::open_or_init_cli()?;
         let root_key = zeroize::Zeroizing::new(self.store.derive_user_partition_wrapping_key());
-        if let Some(secret) = users::get_user_credential_for(&conn, &root_key, user_id, key)? {
-            return Ok(Some(secret.to_string()));
+        match users::read_checked_row(&conn, self.store, &root_key, user_id, key)? {
+            users::CheckedRow::Value(secret) => return Ok(Some(secret.to_string())),
+            // A row that may be another account's copy reads as absent, and
+            // the vault under its key is that account's too.
+            users::CheckedRow::Withheld => return Ok(None),
+            users::CheckedRow::Absent => {}
+        }
+        // A private token of an account other than the legacy owner is its row
+        // alone: holding the profile does not make the vault key of that name
+        // its own (an import can give it a profile whose key is the owner's).
+        if users::vault_copy_is_another_accounts(&conn, user_id, key)? {
+            return Ok(None);
         }
         let owners = users::profile_credential_owner_ids(self.store, profile_id, key)?;
         if owners.as_slice() == [user_id]
             || (owners.is_empty() && users::legacy_credential_owner_id()? == Some(user_id))
         {
-            return Ok(self.store.get(key).ok());
+            return crate::user_partitions::vault_secret_blocked_read(key, &|k| {
+                users::get_optional_secret(self.store, k)
+            })
+            .map(|value| value.map(|s| s.to_string()));
         }
         Ok(None)
     }
     fn write(&self, key: &str, value: &str) -> Result<(), String> {
         match self.user_id {
-            Some(id) => {
-                users::store_credential_for_user_typed_dual(self.store, id, key, "oauth", value)
+            Some(id) if id != users::LEGACY_ONLY_ACCOUNT => {
+                users::store_signed_in_credential_for_user_typed_dual(
+                    self.store, id, key, "oauth", value,
+                )
             }
-            None => self.store.store(key, value).map_err(|e| e.to_string()),
+            _ => {
+                self.store.store(key, value).map_err(|e| e.to_string())?;
+                crate::user_partitions::unblock_vault_secret_after_store(self.store, key, value)
+            }
         }
     }
     fn delete(&self, key: &str) -> Result<(), String> {
         match self.user_id {
-            Some(id) => users::delete_credential_for_user_dual(self.store, id, key),
-            None => self.store.delete(key).map_err(|e| e.to_string()),
+            Some(id) if id != users::LEGACY_ONLY_ACCOUNT => {
+                users::delete_credential_for_user_dual(self.store, id, key)
+            }
+            _ => self.store.delete(key).map_err(|e| e.to_string()),
         }
     }
     fn config(&self, id: &str) -> Result<Value, String> {
@@ -121,7 +149,7 @@ fn oauth_kind(kind: ProviderType) -> Option<OAuthProvider> {
     })
 }
 fn oauth_key(provider: OAuthProvider, id: &str) -> String {
-    format!("oauth_{provider:?}_{id}").to_lowercase()
+    crate::providers::oauth2::oauth_token_key(&format!("{provider:?}"), id)
 }
 fn client_settings(scope: &AuthScope<'_>, profile: &Value, config: &Value) -> (String, String) {
     let mut legacy = crate::bridge_commands::resolve_oauth_client_config(
@@ -292,7 +320,7 @@ fn materialize_github_metadata(
         }
         true
     };
-    if let Some(user) = scope.user_id {
+    if let Some(user) = scope.user_id.filter(|id| *id != users::LEGACY_ONLY_ACCOUNT) {
         users::cli_update_server_profiles_for_user(scope.store, user, apply)?;
     } else {
         // Read and written under the lock of the list it stands in for.
@@ -313,23 +341,48 @@ fn materialize_github_metadata(
     }
     Ok(())
 }
+#[cfg(test)]
+thread_local! {
+    /// Runs once on this thread in the next [`saved_github_readiness`],
+    /// between its two account lookups: a switch of the active account.
+    static AFTER_READINESS_ACCOUNT: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 /// Only GitHub readiness belongs to this route; other auth-source rules remain shared.
+/// Without `profile`, the profile is the one `user_id` lists (the active
+/// account's when `None`): another account may hold a profile of the same id
+/// signed in another way, and its mode decides which credential is read.
 pub fn saved_github_readiness(
     store: &CredentialStore,
     id: &str,
     profile: Option<&Value>,
     user_id: Option<i64>,
 ) -> &'static str {
-    let user_id = user_id.or_else(|| {
-        users::cli_get_active_user(store)
-            .ok()
-            .flatten()
-            .map(|user| user.id)
-    });
+    // The account is read once, so the profile and the credentials it is
+    // paired with are the same account's, whatever a switch does meanwhile.
+    // A lookup that fails reads nothing: never the vault, which is the legacy
+    // stores' and not that account's.
+    let user_id = match user_id {
+        Some(user_id) => Some(user_id),
+        None => match users::cli_get_active_user(store) {
+            Ok(active) => active.map(|user| user.id),
+            Err(_) => return "no_credentials",
+        },
+    };
+    #[cfg(test)]
+    if let Some(hook) = AFTER_READINESS_ACCOUNT.take() {
+        hook();
+    }
     let found = if profile.is_none() {
-        users::mcp_list_active_server_profiles(store)
-            .ok()
-            .and_then(|profiles| profiles.into_iter().find(|p| field(p, "id") == id))
+        // No account: the legacy list, the one the vault-scoped read below
+        // pairs with, not the list of an account activated since.
+        match user_id {
+            Some(user_id) => users::mcp_list_server_profiles(store, Some(user_id)),
+            None => users::read_legacy_server_profiles_blob(store),
+        }
+        .ok()
+        .and_then(|profiles| profiles.into_iter().find(|p| field(p, "id") == id))
     } else {
         None
     };
@@ -629,7 +682,7 @@ async fn execute_at(
                 )
                 .await?;
                 scope.write(
-                    &format!("oauth_fourshared_{id}"),
+                    &crate::providers::oauth2::oauth_token_key("fourshared", id),
                     &format!("{token}:{secret}"),
                 )?;
             } else {
@@ -704,7 +757,7 @@ pub fn readiness(scope: &AuthScope<'_>, profile: &Value) -> Result<&'static str,
         }
     } else if kind == ProviderType::FourShared {
         scope
-            .read(&format!("oauth_fourshared_{id}"))?
+            .read(&crate::providers::oauth2::oauth_token_key("fourshared", id))?
             .is_some_and(|s| {
                 s.split_once(':')
                     .is_some_and(|(a, b)| !a.is_empty() && !b.is_empty())
@@ -877,11 +930,14 @@ async fn provider_at(
     }
     if kind == ProviderType::FourShared {
         let client = client_settings(scope, profile, &config);
-        let raw = match scope.read(&format!("oauth_fourshared_{id}"))? {
+        let raw = match scope.read(&crate::providers::oauth2::oauth_token_key("fourshared", id))? {
             Some(raw) => Some(raw),
-            None => {
-                crate::bridge_commands::resolve_profile_oauth_token(scope.store, "fourshared", id)?
-            }
+            None => crate::bridge_commands::resolve_profile_oauth_token_for(
+                scope.store,
+                "fourshared",
+                id,
+                scope.user_id,
+            )?,
         }
         .ok_or("4shared authorization missing; use profile-auth configure, begin and finish")?;
         let (token, secret) = raw
