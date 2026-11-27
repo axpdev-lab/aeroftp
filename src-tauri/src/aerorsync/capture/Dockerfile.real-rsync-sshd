@@ -7,13 +7,31 @@ FROM debian:bookworm-slim
 # a byte-oracle stable across dev machines. The Dockerfile itself only
 # needs a rsync that understands protocol 31, which bookworm does.
 
-RUN apt-get update \
+# RSYNC_DEB_VERSION pins the rsync binary to an exact .deb version. Empty
+# (default) keeps the distro candidate, so CI and compose are unchanged.
+# When set, a snapshot.debian.org source frozen at SNAPSHOT_TS provides the
+# pinned version even after the archive moves on. SNAPSHOT_TS must be an
+# instant where RSYNC_DEB_VERSION was the bookworm candidate; 20261101T000000Z
+# carries rsync 3.2.7-1+deb12u6 (verified against the snapshot Packages index).
+ARG RSYNC_DEB_VERSION=
+ARG SNAPSHOT_TS=20261101T000000Z
+RUN if [ -n "${RSYNC_DEB_VERSION}" ]; then \
+      printf '%s\n' \
+        "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${SNAPSHOT_TS}/ bookworm main" \
+        "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${SNAPSHOT_TS}/ bookworm-security main" \
+        > /etc/apt/sources.list.d/snapshot-archive.list; \
+    fi \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
         coreutils \
         openssh-server \
         python3 \
-        rsync \
+    && if [ -n "${RSYNC_DEB_VERSION}" ]; then \
+         apt-get install -y --no-install-recommends "rsync=${RSYNC_DEB_VERSION}"; \
+       else \
+         apt-get install -y --no-install-recommends rsync; \
+       fi \
     && rm -rf /var/lib/apt/lists/*
 
 # testuser's uid decides who owns everything `rsync --server` writes into the

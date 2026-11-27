@@ -203,7 +203,7 @@ class DecoderTests(unittest.TestCase):
 
     def test_every_frozen_campaign_capture_decodes(self):
         runs = sorted(p for p in (FROZEN / "b0c0").iterdir() if p.is_dir())
-        self.assertEqual(len(runs), 35)
+        self.assertEqual(len(runs), 37)
         for run in runs:
             extra = ["--files-from"] if run.name == "c11-dl" else []
             if run.name.startswith(("p8", "p9big")):
