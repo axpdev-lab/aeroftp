@@ -1828,12 +1828,13 @@ impl StorageProvider for PCloudProvider {
         let auth = self.auth_header().await?;
 
         if self.stat(from).await?.is_dir {
-            // `copyfolder` copies the folder INTO `topath`, which has to exist
-            // (2208 "Target folder does not exist", live 2026-11-27). The
-            // destination is created first and only the content is copied into
-            // it, so the copy gets the name the caller asked for. Refused before
-            // any write into the source itself and onto an existing path: a
-            // copy into an existing folder would merge the two.
+            // `copyfolder` copies INTO the target folder, addressed by id (the
+            // path form answered 2208 even for a folder just created, live
+            // 2026-11-27). The destination is created first and only the
+            // content is copied into it, so the copy gets the name the caller
+            // asked for. Refused before any write into the source itself and
+            // onto an existing path: a copy into an existing folder would
+            // merge the two.
             let from_root = from_resolved.trim_end_matches('/');
             let to_root = to_resolved.trim_end_matches('/');
             if to_root == from_root || to_root.starts_with(&format!("{from_root}/")) {
@@ -1850,12 +1851,13 @@ impl StorageProvider for PCloudProvider {
                 Err(ProviderError::NotFound(_)) => {}
                 Err(error) => return Err(error),
             }
-            self.mkdir(to).await?;
+            let from_id = self.resolve_or_create_folder_id(from_root).await?;
+            let to_id = self.resolve_or_create_folder_id(to_root).await?;
             let url = format!(
-                "{}/copyfolder?path={}&topath={}&copycontentonly=1&noover=1",
+                "{}/copyfolder?folderid={}&tofolderid={}&copycontentonly=1&noover=1",
                 self.api_base(),
-                urlencoding::encode(from_root),
-                urlencoding::encode(&format!("{to_root}/"))
+                from_id,
+                to_id
             );
             let copied = async {
                 let resp: PCloudResponse = self
@@ -2785,11 +2787,28 @@ mod tests {
                         }
                         "/stat" => r#"{"result":2002,"error":"A component of parent directory does not exist."}"#
                             .to_string(),
-                        "/listfolder" if is_folder(&path) => format!(
-                            r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":true,"folderid":9}}}}"#
-                        ),
+                        "/listfolder" if is_folder(&path) => {
+                            let id = tree.iter().position(|p| *p == path).unwrap() + 1;
+                            format!(
+                                r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":true,"folderid":{id}}}}}"#
+                            )
+                        }
                         "/listfolder" => {
                             r#"{"result":2005,"error":"Directory does not exist."}"#.to_string()
+                        }
+                        // Recorded like the catch-all: folder-copy resolves
+                        // ids through `resolve_or_create_folder_id`, whose
+                        // create step lands here.
+                        "/createfolderifnotexists" => {
+                            seen.lock().unwrap().push(format!(
+                                "{}?{}",
+                                uri.path(),
+                                urlencoding::decode(uri.query().unwrap_or("")).unwrap()
+                            ));
+                            let id = tree.len() + 1;
+                            format!(
+                                r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":true,"folderid":{id}}}}}"#
+                            )
                         }
                         endpoint => {
                             seen.lock().unwrap().push(format!(
@@ -2970,11 +2989,13 @@ mod tests {
         );
     }
 
-    /// pCloud's `copyfolder` copies the folder INTO `topath`, which must
-    /// already exist (2208 "Target folder does not exist", live
-    /// 2026-11-27): a folder copy creates the destination first and copies
-    /// only the content into it, so the copy lands under the name the caller
-    /// asked for.
+    /// pCloud's `copyfolder` copies INTO the target folder, addressed by id:
+    /// the path form answered 2208 even for a folder just created (live
+    /// 2026-11-27). A folder copy resolves both ids (creating the
+    /// destination on the way), then copies only the content into it, so the
+    /// copy lands under the name the caller asked for. `stat` and
+    /// `listfolder` are not recorded by the double, so the trace shows the
+    /// create and the copy.
     #[tokio::test]
     async fn server_copy_of_a_folder_creates_the_destination_and_copies_its_content() {
         let (mut provider, calls) =
@@ -2986,8 +3007,8 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             [
-                "/createfolder?path=/dest/src",
-                "/copyfolder?path=/src&topath=/dest/src/&copycontentonly=1&noover=1"
+                "/createfolderifnotexists?path=/dest/src",
+                "/copyfolder?folderid=1&tofolderid=4&copycontentonly=1&noover=1"
             ]
         );
     }
