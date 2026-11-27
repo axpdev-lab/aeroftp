@@ -30,8 +30,10 @@ MPL-2.0 as a dependency, or under GPL-3.0-or-later, whichever fits.
 
 The same source has two consumers, and each needs a different answer.
 
-- **As a dependency.** The reserved repository `axpdev-lab/aerorsync` is MPL-2.0,
-  decided 2026-08-28. A file-level copyleft licence is the right fit for a
+- **As a dependency.** The reserved repository `axpdev-lab/aerorsync` carries
+  the same dual expression `MPL-2.0 OR GPL-3.0-or-later` since 2026-11-27. The
+  MPL-2.0 choice of 2026-08-28 for dependents is one side of that disjunction
+  and remains available: a file-level copyleft licence is the right fit for a
   protocol library that other projects should be able to link.
 - **Inside AeroFTP.** The application is GPL-3.0-or-later and these files compile
   into it. Emitting them under MPL alone would leave the application's own repo
