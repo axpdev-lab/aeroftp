@@ -8317,8 +8317,10 @@ mod sync_script_tests {
 
     /// Run `script` (written as the app writes it: UTF-8, no byte order
     /// mark) in `shell`, with `aeroftp-cli` replaced by a function that
-    /// records its arguments. The arguments, and whether the marker file a
-    /// value's code would create exists.
+    /// records its arguments as the text a native command receives (a
+    /// function gets the `50` of `--max-delete 50` as a number). The
+    /// arguments, and whether the marker file a value's code would create
+    /// exists.
     fn run_pwsh_script(shell: &str, script: &str) -> (Vec<String>, bool) {
         let dir = tempfile::tempdir().unwrap();
         let script_path = dir.path().join("sync.ps1");
@@ -8327,7 +8329,7 @@ mod sync_script_tests {
         std::fs::write(
             &probe,
             "param($Script, $Out)\n\
-             function aeroftp-cli { ConvertTo-Json -InputObject @($args) -Compress | Set-Content -LiteralPath $Out -Encoding UTF8 }\n\
+             function aeroftp-cli { ConvertTo-Json -InputObject @($args | ForEach-Object { [string]$_ }) -Compress | Set-Content -LiteralPath $Out -Encoding UTF8 }\n\
              . $Script\n",
         )
         .unwrap();
@@ -8347,12 +8349,16 @@ mod sync_script_tests {
             .env("AEROFTP_PWSH_MARKER", &marker)
             .output()
             .unwrap();
-        let args = std::fs::read_to_string(&out)
+        let recorded = std::fs::read_to_string(&out);
+        let args = recorded
+            .as_ref()
             .ok()
             .and_then(|json| serde_json::from_str(json.trim_start_matches('\u{feff}')).ok())
             .unwrap_or_else(|| {
                 panic!(
-                    "{shell} did not run the script: {}",
+                    "{shell} did not run the script ({}): recorded {recorded:?}\nstdout: {}\nstderr: {}",
+                    run.status,
+                    String::from_utf8_lossy(&run.stdout),
                     String::from_utf8_lossy(&run.stderr)
                 )
             });
