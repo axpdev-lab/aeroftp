@@ -74,6 +74,25 @@ pub enum SessionTable {
     IdNames,
 }
 
+/// Which ACL table an ACL operation targets. Access and default ACLs
+/// have separate index spaces, and an ACL operation can never target
+/// the xattr or id-name tables, so this selector is ACL-only by type:
+/// the impossible state cannot be written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AclTable {
+    Access,
+    Default,
+}
+
+impl From<AclTable> for SessionTable {
+    fn from(table: AclTable) -> Self {
+        match table {
+            AclTable::Access => SessionTable::AclAccess,
+            AclTable::Default => SessionTable::AclDefault,
+        }
+    }
+}
+
 /// Metadata of one file-list entry after resolving its back-references.
 /// `None` where the entry does not carry the field at all (distinct from
 /// a present-but-empty value).
@@ -105,16 +124,12 @@ impl SessionTables {
         Self::default()
     }
 
-    /// The ACL vector behind `table`. Only the two ACL variants are valid
-    /// here; the others exist for the xattr and id-name paths and report
-    /// "cap 0" if misused, which reads as "this table holds no ACLs".
-    fn acl_slot(&mut self, table: SessionTable) -> Result<&mut Vec<RsyncAcl>, SessionTableError> {
+    /// The ACL vector behind `table`. Infallible: `AclTable` only names
+    /// the two ACL spaces.
+    fn acl_slot(&mut self, table: AclTable) -> &mut Vec<RsyncAcl> {
         match table {
-            SessionTable::AclAccess => Ok(&mut self.acl_access),
-            SessionTable::AclDefault => Ok(&mut self.acl_default),
-            SessionTable::XattrSet | SessionTable::IdNames => {
-                Err(SessionTableError::TableFull { table, cap: 0 })
-            }
+            AclTable::Access => &mut self.acl_access,
+            AclTable::Default => &mut self.acl_default,
         }
     }
 
@@ -129,9 +144,9 @@ impl SessionTables {
     ) -> Result<ResolvedMetadata, SessionTableError> {
         let mut resolved = ResolvedMetadata::default();
         if let Some(acls) = &entry.acls {
-            resolved.acl_access = Some(self.resolve_acl(SessionTable::AclAccess, &acls.access)?);
+            resolved.acl_access = Some(self.resolve_acl(AclTable::Access, &acls.access)?);
             if let Some(default) = &acls.default {
-                resolved.acl_default = Some(self.resolve_acl(SessionTable::AclDefault, default)?);
+                resolved.acl_default = Some(self.resolve_acl(AclTable::Default, default)?);
             }
         }
         if let Some(xattrs) = &entry.xattrs {
@@ -142,15 +157,16 @@ impl SessionTables {
 
     fn resolve_acl(
         &mut self,
-        table: SessionTable,
+        table: AclTable,
         wire: &AclWireEntry,
     ) -> Result<RsyncAcl, SessionTableError> {
-        let slot = self.acl_slot(table)?;
+        let session_table = SessionTable::from(table);
+        let slot = self.acl_slot(table);
         match wire {
             AclWireEntry::Literal(acl) => {
                 if slot.len() >= MAX_SESSION_ACLS {
                     return Err(SessionTableError::TableFull {
-                        table,
+                        table: session_table,
                         cap: MAX_SESSION_ACLS,
                     });
                 }
@@ -161,7 +177,7 @@ impl SessionTables {
                 slot.get(*index as usize)
                     .cloned()
                     .ok_or(SessionTableError::ReferenceOutOfRange {
-                        table,
+                        table: session_table,
                         index: *index,
                         len: slot.len(),
                     })
@@ -202,16 +218,17 @@ impl SessionTables {
     /// structural `PartialEq` of [`RsyncAcl`] is that comparison.
     pub fn intern_acl(
         &mut self,
-        table: SessionTable,
+        table: AclTable,
         acl: RsyncAcl,
     ) -> Result<AclWireEntry, SessionTableError> {
-        let slot = self.acl_slot(table)?;
+        let session_table = SessionTable::from(table);
+        let slot = self.acl_slot(table);
         if let Some(pos) = slot.iter().position(|a| *a == acl) {
             return Ok(AclWireEntry::Reference(pos as u32));
         }
         if slot.len() >= MAX_SESSION_ACLS {
             return Err(SessionTableError::TableFull {
-                table,
+                table: session_table,
                 cap: MAX_SESSION_ACLS,
             });
         }
