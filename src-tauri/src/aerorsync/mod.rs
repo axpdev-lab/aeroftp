@@ -43,6 +43,7 @@ pub mod progress;
 pub mod real_wire;
 pub mod remote_command;
 pub mod russh_session_transport;
+pub mod session_state;
 pub mod shell_escape;
 pub mod ssh_transport;
 pub mod streaming_writer;
