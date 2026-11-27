@@ -1439,7 +1439,10 @@
             "templateLogImported": "Modelo de configuración importado: {imported} importados, {skipped} omitidos, {invalid} non válidos",
             "templateLogBlocks": "Bloques: {blocks}",
             "templateDuplicateInTemplate": "duplicado no modelo",
-            "templateSelectProfile": "Importar {name}"
+            "templateSelectProfile": "Importar {name}",
+            "exportAccountUnbound": "A lista de perfís non está vinculada a ningunha conta; non se exportou nada.",
+            "exportAccountChanged": "A conta activa cambiou; non se exportou nada.",
+            "exportAccountChangedDuringSave": "A conta activa cambiou mentres a caixa de diálogo de gardado estaba aberta; non se exportou nada."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "«{name}» xa está gardado en {user}",
             "relocateError": "Non se puido transferir o servidor: {error}",
             "relocateWrongPassword": "Contrasinal incorrecto para {user}.",
-            "relocateSecretsNotCopied": "«{name}» chegou a {user}, pero o contrasinal ou o token gardados non, así que os volverá pedir alí."
+            "relocateSecretsNotCopied": "«{name}» chegou a {user}, pero o contrasinal ou o token gardados non, así que os volverá pedir alí.",
+            "relocateMovedCleanupFailed": "Moveuse \"{name}\" a {user}, pero non se puido eliminar a súa sesión de Proton Drive da conta de orixe."
         },
         "cyberTools": {
             "title": "Ferramentas de seguridade",
@@ -5942,7 +5946,9 @@
                 "months": "{count} mes."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Novo: {name}"
+            "newTabLabel": "Novo: {name}",
+            "protonSessionEndsAtUnlock": "A sesión de Proton deste perfil remata a próxima vez que se desbloquee esta conta, agás que outra conta deste ordenador a utilice.",
+            "profileSecretsNotRemoved": "O perfil elimináronse, pero algunhas das súas credenciais gardadas non se puideron borrar do cofre."
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",

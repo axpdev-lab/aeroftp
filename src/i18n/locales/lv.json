@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurācijas veidne importēta: {imported} importēti, {skipped} izlaisti, {invalid} nederīgi",
             "templateLogBlocks": "Bloki: {blocks}",
             "templateDuplicateInTemplate": "dublikāts veidnē",
-            "templateSelectProfile": "Importēt {name}"
+            "templateSelectProfile": "Importēt {name}",
+            "exportAccountUnbound": "Profila saraksts nav saistīts ar kontu; nekas netika eksportēts.",
+            "exportAccountChanged": "Aktīvais konts tika mainīts; nekas netika eksportēts.",
+            "exportAccountChangedDuringSave": "Aktīvais konts tika mainīts, kamēr saglabāšanas dialoglodziņš bija atvērts; nekas netika eksportēts."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "“{name}” jau ir saglabāts kontā {user}",
             "relocateError": "Neizdevās pārsūtīt serveri: {error}",
             "relocateWrongPassword": "Nepareiza {user} parole.",
-            "relocateSecretsNotCopied": "“{name}” sasniedza {user}, taču tā saglabātā parole vai atslēga nesasniedza, tāpēc tur tās tiks pieprasītas vēlreiz."
+            "relocateSecretsNotCopied": "“{name}” sasniedza {user}, taču tā saglabātā parole vai atslēga nesasniedza, tāpēc tur tās tiks pieprasītas vēlreiz.",
+            "relocateMovedCleanupFailed": "\"{name}\" tika pārvietots lietotājam {user}, bet tā Proton Drive sesiju neizdevās noņemt no avota konta."
         },
         "cyberTools": {
             "title": "Drošības rīki",
@@ -5923,7 +5927,9 @@
                 "months": "{count} mēn."
             },
             "demoTabLabel": "Demonstrācija: {protocol}",
-            "newTabLabel": "Jauns: {name}"
+            "newTabLabel": "Jauns: {name}",
+            "protonSessionEndsAtUnlock": "Šī profila Proton sesija beidzas nākamreiz, kad šis konts tiek atbloķēts, ja vien to neizmanto cits šī datora konts.",
+            "profileSecretsNotRemoved": "Profils tika noņemts, bet dažus tā saglabātos akreditācijas datus neizdevās izdzēst no glabātuves."
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

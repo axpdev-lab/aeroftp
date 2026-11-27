@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurasjonsmal importert: {imported} importert, {skipped} hoppet over, {invalid} ugyldige",
             "templateLogBlocks": "Blokker: {blocks}",
             "templateDuplicateInTemplate": "duplikat i malen",
-            "templateSelectProfile": "Importer {name}"
+            "templateSelectProfile": "Importer {name}",
+            "exportAccountUnbound": "Profilisten er ikke knyttet til en konto; ingenting ble eksportert.",
+            "exportAccountChanged": "Den aktive kontoen endret seg; ingenting ble eksportert.",
+            "exportAccountChangedDuringSave": "Den aktive kontoen endret seg mens lagringsdialogen var åpen; ingenting ble eksportert."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "«{name}» er allerede lagret i {user}",
             "relocateError": "Kunne ikke overføre serveren: {error}",
             "relocateWrongPassword": "Feil passord for {user}.",
-            "relocateSecretsNotCopied": "«{name}» kom frem til {user}, men det lagrede passordet eller tokenet kom ikke med, så det spørres etter dem igjen der."
+            "relocateSecretsNotCopied": "«{name}» kom frem til {user}, men det lagrede passordet eller tokenet kom ikke med, så det spørres etter dem igjen der.",
+            "relocateMovedCleanupFailed": "\"{name}\" ble flyttet til {user}, men Proton Drive-økten kunne ikke fjernes fra kildekontoen."
         },
         "cyberTools": {
             "title": "Sikkerhetsverk­tøy",
@@ -5942,7 +5946,9 @@
                 "months": "{count} md."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Ny: {name}"
+            "newTabLabel": "Ny: {name}",
+            "protonSessionEndsAtUnlock": "Proton-økten for denne profilen avsluttes neste gang denne kontoen låses opp, med mindre en annen konto på denne datamaskinen bruker den.",
+            "profileSecretsNotRemoved": "Profilen ble fjernet, men noen av de lagrede legitimasjonene kunne ikke slettes fra hvelvet."
         },
         "gitlab": {
             "projectPath": "Prosjektsti",

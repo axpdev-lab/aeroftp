@@ -1439,7 +1439,10 @@
             "templateLogImported": "Na-import ang template ng configuration: {imported} na-import, {skipped} nilaktawan, {invalid} hindi wasto",
             "templateLogBlocks": "Mga Bloke: {blocks}",
             "templateDuplicateInTemplate": "doble sa template",
-            "templateSelectProfile": "I-import ang {name}"
+            "templateSelectProfile": "I-import ang {name}",
+            "exportAccountUnbound": "Ang listahan ng profile ay hindi nakatali sa isang account; walang na-export.",
+            "exportAccountChanged": "Nagbago ang aktibong account; walang na-export.",
+            "exportAccountChangedDuringSave": "Nagbago ang aktibong account habang bukas ang dialog ng pag-save; walang na-export."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "Naka-save na ang \"{name}\" sa {user}",
             "relocateError": "Hindi mailipat ang server: {error}",
             "relocateWrongPassword": "Maling password para sa {user}.",
-            "relocateSecretsNotCopied": "Nakarating ang \"{name}\" sa {user}, pero hindi nakarating ang naka-save na password o token, kaya hihingin ang mga ito muli roon."
+            "relocateSecretsNotCopied": "Nakarating ang \"{name}\" sa {user}, pero hindi nakarating ang naka-save na password o token, kaya hihingin ang mga ito muli roon.",
+            "relocateMovedCleanupFailed": "Inilipat ang \"{name}\" kay {user}, ngunit hindi naalis ang Proton Drive session nito sa pinagmulang account."
         },
         "cyberTools": {
             "title": "Security Tools",
@@ -5942,7 +5946,9 @@
                 "months": "{count} buwan"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Bago: {name}"
+            "newTabLabel": "Bago: {name}",
+            "protonSessionEndsAtUnlock": "Matatapos ang Proton session ng profile na ito sa susunod na pag-unlock ng account na ito, maliban kung ginagamit ito ng ibang account sa computer na ito.",
+            "profileSecretsNotRemoved": "Naalis ang profile, ngunit hindi nabura sa vault ang ilan sa mga naka-save nitong kredensyal."
         },
         "gitlab": {
             "projectPath": "Path ng Project",

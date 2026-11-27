@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::bridge_import_scan;
 use crate::bridge_shared::{
     bridge_export_format, bridge_import_filter, bridge_secret_policy, bridge_supported_protocols,
 };
@@ -27,6 +28,35 @@ use crate::{
     filezilla_import, kopia_import, lftp_import, mc_import, mobaxterm_import, putty_import,
     rclone_import, restic_import, s3cmd_import, ssh_config_import, winscp_import,
 };
+
+// Test fixture for `inject_rclone_crypt_export_options`: while armed, every
+// vault read inside it first moves the active account to this id, so a read
+// that followed the active account instead of the captured one picks up
+// that account's secrets.
+#[cfg(test)]
+thread_local! {
+    static CRYPT_EXPORT_ACTIVE_SWITCH: std::cell::Cell<Option<i64>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Arm the crypt-export fixture: vault reads switch the active account to
+/// `user_id` first. The returned guard disarms it on drop, so a panicking
+/// assert cannot leave it armed for the next test on the same thread.
+#[cfg(test)]
+pub(crate) fn arm_crypt_export_active_switch(user_id: i64) -> CryptExportSwitchGuard {
+    CRYPT_EXPORT_ACTIVE_SWITCH.with(|c| c.set(Some(user_id)));
+    CryptExportSwitchGuard
+}
+
+#[cfg(test)]
+pub(crate) struct CryptExportSwitchGuard;
+
+#[cfg(test)]
+impl Drop for CryptExportSwitchGuard {
+    fn drop(&mut self) {
+        CRYPT_EXPORT_ACTIVE_SWITCH.with(|c| c.set(None));
+    }
+}
 
 fn known(source: &str) -> Result<(), String> {
     if bridge_supported_protocols(source).is_empty() {
@@ -239,19 +269,32 @@ fn dispatch_import(source: &str, path: &Path) -> Result<Value, String> {
 
 /// Persist rclone's per-profile OAuth/Jotta tokens (#214) into the vault with
 /// the same keys the saved-server reconnect path expects
-/// (`oauth_<slug>_<id>`, `jottacloud_refresh_<id>`). No-op when the vault is
+/// (`oauth_<slug>_<id>`, `jottacloud_refresh_<id>`), for `user`, the account
+/// the import began in (see [`import_bridge_config`]). No-op when the vault is
 /// locked; the server-credential loop in `import_bridge_config` already
-/// surfaces that case to the caller.
+/// surfaces that case to the caller. Each write is recorded in `scan` before
+/// it happens ([`bridge_import_scan`]), so a scan never confirmed takes it
+/// back; a write that cannot be recorded is not made. Returns what to tell of
+/// each profile: a secret not stored, or the note of a Proton session stored,
+/// said only once it is.
 fn store_rclone_provider_secrets(
     store: Option<&CredentialStore>,
     result: &rclone_import::RcloneImportResult,
-    captured_user: Option<i64>,
+    user: Option<i64>,
+    scan: Option<&bridge_import_scan::Scan>,
 ) -> Vec<(String, String)> {
+    let mut failures = Vec::new();
+    // Recorded for the profile the write is for: its key may not end with
+    // the id as it is (an OAuth token's lowercases it).
+    let record = |profile: &str, key: &str, kind: bridge_import_scan::Kind, value: &str| match scan
+    {
+        Some(scan) => scan.record_for(profile, key, kind, value),
+        None => Ok(()),
+    };
     // Writes go to the account captured before the scan, never to whichever
     // account is active when the write runs. With no account captured, the
     // legacy-only sentinel writes the shared vault only.
-    let write_user = captured_user.unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT);
-    let mut failures = Vec::new();
+    let write_user = user.unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT);
     // Use the store the caller captured at scan start, never a fresh
     // from_cache(): a vault that unlocks mid-parse must not receive writes
     // from a scan that started while it was locked.
@@ -287,14 +330,19 @@ fn store_rclone_provider_secrets(
         };
         if let Some(ref oauth_json) = secrets.oauth {
             if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
-                // MUV-4: dual-write into vault + active user's partition.
-                if let Err(e) = crate::user_partitions::store_credential_for_user_typed_dual(
-                    store,
-                    write_user,
-                    &format!("oauth_{}_{}", slug, profile_id),
-                    "oauth",
+                // MUV-4: dual-write into vault + the importing account's partition.
+                let key = crate::providers::oauth2::oauth_token_key(slug, profile_id);
+                if let Err(e) = record(
+                    profile_id,
+                    &key,
+                    bridge_import_scan::Kind::Secret,
                     oauth_json,
-                ) {
+                )
+                .and_then(|()| {
+                    crate::user_partitions::store_credential_for_user_typed_dual(
+                        store, write_user, &key, "oauth", oauth_json,
+                    )
+                }) {
                     log::warn!("rclone bridge: oauth token store failed for {profile_id}: {e}");
                     failures.push((
                         profile_id.clone(),
@@ -305,13 +353,22 @@ fn store_rclone_provider_secrets(
         }
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
-                if let Err(e) = crate::user_partitions::store_credential_for_user_typed_dual(
-                    store,
-                    write_user,
-                    &format!("jottacloud_refresh_{}", profile_id),
-                    "jottacloud_refresh",
+                let key = format!("jottacloud_refresh_{}", profile_id);
+                if let Err(e) = record(
+                    profile_id,
+                    &key,
+                    bridge_import_scan::Kind::Secret,
                     jotta_json,
-                ) {
+                )
+                .and_then(|()| {
+                    crate::user_partitions::store_credential_for_user_typed_dual(
+                        store,
+                        write_user,
+                        &key,
+                        "jottacloud_refresh",
+                        jotta_json,
+                    )
+                }) {
                     log::warn!("rclone bridge: jotta token store failed for {profile_id}: {e}");
                     failures.push((
                         profile_id.clone(),
@@ -320,22 +377,45 @@ fn store_rclone_provider_secrets(
                 }
             }
         }
-        // The cached session of an rclone `protondrive` remote, under the key
-        // the native Proton Drive client reads.
+        // The cached session of an rclone `protondrive` remote, restored for
+        // the importing account as an `.aeroftp` import restores one: never
+        // into an account while another on this device may hold it, since a
+        // sign-out here would revoke it there. Said to be shared with rclone
+        // only once it is stored.
+        #[cfg(feature = "proton-native")]
         if let Some(ref session_json) = secrets.proton_native_session {
             if protocol == "proton" {
-                if let Err(e) = crate::user_partitions::store_credential_for_user_typed_dual(
-                    store,
-                    write_user,
-                    &format!("proton_native_session_{}", profile_id),
-                    "proton_native_session",
-                    session_json,
-                ) {
-                    log::warn!("rclone bridge: proton session store failed for {profile_id}: {e}");
-                    failures.push((
+                use crate::providers::proton_native::vault;
+                match vault::session_uid(session_json).and_then(|uid| {
+                    if let Some(scan) = scan {
+                        scan.record_for(
+                            profile_id,
+                            &vault::session_key(Some(profile_id)),
+                            bridge_import_scan::Kind::ProtonSession,
+                            &uid,
+                        )
+                        .map_err(crate::providers::ProviderError::Other)?;
+                    }
+                    vault::import_session_blocking(
+                        vault::SessionOwner::for_user(user),
+                        profile_id,
+                        session_json,
+                    )
+                }) {
+                    Ok(true) => failures.push((
                         profile_id.clone(),
-                        format!("its Proton session was not stored: {e}"),
-                    ));
+                        rclone_import::RCLONE_SESSION_SHARED.into(),
+                    )),
+                    Ok(false) => failures.push((profile_id.clone(), vault::IMPORT_WITHHELD.into())),
+                    Err(e) => {
+                        log::warn!(
+                            "rclone bridge: proton session store failed for {profile_id}: {e}"
+                        );
+                        failures.push((
+                            profile_id.clone(),
+                            format!("its Proton session was not stored: {e}"),
+                        ));
+                    }
                 }
             }
         }
@@ -344,11 +424,25 @@ fn store_rclone_provider_secrets(
         // imported token. Store only when the singleton is not already set, so
         // importing a config never clobbers an app the user already configured.
         if let Some(cred_key) = rclone_oauth_client_cred_key(protocol) {
-            match crate::fill_oauth_app(
+            // The app is shared by every profile of the provider: what this
+            // scan fills is taken back only when none of its profiles of the
+            // provider is saved.
+            let mut holders: Vec<String> = protocol_by_id
+                .iter()
+                .filter(|(_, other)| rclone_oauth_client_cred_key(other) == Some(cred_key))
+                .map(|(id, _)| id.to_string())
+                .collect();
+            holders.sort();
+            match crate::fill_oauth_app_recorded(
                 store,
                 cred_key,
                 secrets.oauth_client_id.as_deref(),
                 secrets.oauth_client_secret.as_deref(),
+                |key, value, fills| match scan {
+                    Some(scan) if fills => scan.record_app(&holders, key, value),
+                    Some(scan) => scan.share_app(&holders, key, value),
+                    None => Ok(()),
+                },
             ) {
                 Ok(false) => {}
                 Ok(true) => failures.push((
@@ -769,8 +863,12 @@ pub(crate) fn store_bridge_import_secret_for_user(
             // Confirmed legacy-only caller: if an account has become active
             // since the scan confirmed legacy-only, refuse instead of writing
             // into that account (the inner write must never re-resolve the
-            // active account on its own).
-            if crate::user_partitions::cli_get_active_user(store)?.is_some() {
+            // active account on its own). Read without running the legacy
+            // migration: a scan that began before any account existed must
+            // not have one created underneath it mid-write.
+            let active = crate::user_partitions::open_or_init_cli()
+                .and_then(|conn| crate::user_partitions::get_active_user(&conn))?;
+            if active.is_some() {
                 return Err(crate::user_partitions::ACCOUNT_CHANGED.to_string());
             }
             // Legacy-only caller: the shared vault is the only slot. A read
@@ -887,37 +985,55 @@ pub async fn import_bridge_config(
     // `#[serde(skip)]` field that a generic `Value` cannot transport, so we
     // import it natively here and persist those tokens before serialising the
     // server list back into the shared post-processing below.
-    let mut secret_failures: Vec<(String, String)> = Vec::new();
-    // Capture the account BEFORE any vault write of this scan: the rclone
-    // provider-secret prepass below writes into an account, and the reported
-    // scanUserId must be the account those writes landed in, not whichever
-    // account is active after the prepass finished. With the vault open, a
-    // FAILED lookup is not a legacy store: fail closed before the prepass or
-    // any secret storage, instead of treating the error as `Ok(None)` and
-    // stamping `scanUserId: null` on a scan that never confirmed legacy-only.
+    // One account for every secret of the scan, read once before the first
+    // write: a write may wait for a vault or a session lock, and an account
+    // switched to meanwhile (in this window or another process) must receive
+    // none of them. The response names it, for the window to refuse a confirm
+    // in another account. An account that cannot be read refuses the scan: a
+    // preview naming no account would be confirmed in whichever is active
+    // then, its profiles without the secrets the scan could not store.
+    let user = crate::user_partitions::active_user_for_save()
+        .map_err(|e| format!("Active account lookup failed: {e}"))?;
     let store = CredentialStore::from_cache();
-    let captured_user = match store.as_ref() {
-        Some(s) => match crate::user_partitions::cli_get_active_user(s) {
-            Ok(Some(u)) => Some(u.id),
-            Ok(None) => None,
-            Err(e) => return Err(format!("Active account lookup failed: {e}")),
-        },
+    // What an earlier scan wrote and no window confirmed (one closed by a
+    // crash or a quit) goes before this one begins.
+    if let Some(store) = &store {
+        bridge_import_scan::settle_abandoned(store);
+    }
+    let rclone = if source == "rclone" {
+        Some(rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?)
+    } else {
+        None
+    };
+    let value = match &rclone {
+        Some(result) => serde_json::to_value(result).map_err(|e| e.to_string())?,
+        None => dispatch_import(&source, &canonical)?,
+    };
+    // Every secret the scan stores is recorded first, so the profiles it was
+    // stored for take it back if the window never saves them.
+    let scan = match &store {
+        Some(store) => Some(bridge_import_scan::Scan::begin(
+            store,
+            user,
+            imported_profile_ids(&value),
+        )?),
         None => None,
     };
-    let value = if source == "rclone" {
-        let result = rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
-        secret_failures = store_rclone_provider_secrets(store.as_ref(), &result, captured_user);
-        serde_json::to_value(&result).map_err(|e| e.to_string())?
-    } else {
-        dispatch_import(&source, &canonical)?
-    };
+    let mut secret_failures: Vec<(String, String)> = Vec::new();
+    if let Some(result) = &rclone {
+        secret_failures =
+            store_rclone_provider_secrets(store.as_ref(), result, user, scan.as_ref());
+    }
     let mut write = |key: &str, secret: &str| -> Result<(), String> {
         let store = store.as_ref().ok_or("the credential vault is locked")?;
-        store_bridge_import_secret_for_user(store, captured_user, key, secret)
+        if let Some(scan) = &scan {
+            scan.record(key, bridge_import_scan::Kind::Secret, secret)?;
+        }
+        store_bridge_import_secret_for_user(store, user, key, secret)
     };
     let mut delete = |key: &str| -> Result<(), String> {
         let store = store.as_ref().ok_or("the credential vault is locked")?;
-        delete_bridge_import_secret_for_user(store, captured_user, key)
+        delete_bridge_import_secret_for_user(store, user, key)
     };
     let vault: Option<VaultWrite<'_>> = if store.is_some() {
         Some(&mut write)
@@ -933,7 +1049,7 @@ pub async fn import_bridge_config(
         Some(keep) => crate::profile_security::RelaxationPolicy::Keep(keep),
         None => crate::profile_security::RelaxationPolicy::ResetAll,
     };
-    let mut resp = finish_bridge_import_with_policy_and_cap(
+    let finished = finish_bridge_import_with_policy_and_cap(
         &source,
         &value,
         secret_failures,
@@ -941,21 +1057,102 @@ pub async fn import_bridge_config(
         vault_delete,
         &policy,
         MAX_IMPORTED_CREDENTIALS,
-    )?;
-    // The account the scan wrote its secrets into. The commit compares it
-    // against the account active at commit time and refuses on a mismatch,
-    // so a switch between scan and commit cannot land hasStored* flags that
-    // point at another account's partition. A CONFIRMED legacy scan (vault
-    // open, no account) reports null; a vault that is locked or unreadable
-    // reports NOTHING (the key stays absent), because "no account could be
-    // read" is not the same as "the legacy store is confirmed": a later
-    // unlock + rescan must not trip a false account-changed refusal.
-    match captured_user {
-        Some(uid) => resp["scanUserId"] = Value::from(uid),
-        None if store.is_some() => resp["scanUserId"] = Value::Null,
-        None => {}
+    );
+    settle_unless_confirmable(store.as_ref(), scan.as_ref(), finished, user)
+}
+
+/// The ids of the profiles an import parsed.
+fn imported_profile_ids(value: &Value) -> Vec<String> {
+    value
+        .get("servers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|server| server.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Runs when a scan that ends refused is about to be settled (test only):
+/// what it stored is still there to look at.
+#[cfg(test)]
+pub(crate) static BEFORE_A_REFUSED_SCAN_SETTLES: std::sync::Mutex<Option<Box<dyn FnMut() + Send>>> =
+    std::sync::Mutex::new(None);
+
+/// The end of a scan: its response, which names the account and the scan for
+/// the window to confirm or settle, or, when the scan failed or the active
+/// account is no longer the one it stored in (176 point 4), its refusal, the
+/// scan settled first so nothing it wrote stays.
+fn settle_unless_confirmable(
+    store: Option<&CredentialStore>,
+    scan: Option<&bridge_import_scan::Scan>,
+    finished: Result<Value, String>,
+    user: Option<i64>,
+) -> Result<Value, String> {
+    let settle = || {
+        #[cfg(test)]
+        if let Some(observe) = BEFORE_A_REFUSED_SCAN_SETTLES.lock().unwrap().as_mut() {
+            observe();
+        }
+        if let (Some(store), Some(scan)) = (store, scan) {
+            if let Err(error) = bridge_import_scan::settle(store, scan.id()) {
+                log::warn!("Bridge import: {error}");
+            }
+        }
+    };
+    let mut response = match finished {
+        Ok(response) => response,
+        Err(error) => {
+            settle();
+            return Err(error);
+        }
+    };
+    if scan.is_some() && crate::user_partitions::active_user_for_save() != Ok(user) {
+        settle();
+        return Err(bridge_import_scan::SCAN_ACCOUNT_CHANGED.to_string());
     }
-    Ok(resp)
+    response["importedUserId"] = json!(user);
+    if let Some(scan) = scan {
+        response["scanId"] = json!(scan.id());
+    }
+    // The account the scan wrote its secrets into, for the commit to compare
+    // against the account active at commit time: a CONFIRMED legacy scan
+    // (vault open, no account) reports null; a vault that is locked reports
+    // NOTHING, because "no account could be read" is not the same as "the
+    // legacy store is confirmed".
+    if store.is_some() {
+        response["scanUserId"] = match user {
+            Some(uid) => json!(uid),
+            None => Value::Null,
+        };
+    }
+    Ok(response)
+}
+
+/// Settles a bridge scan the window is done with (confirmed, closed or
+/// scanned again), and every scan no live window holds: what each wrote for
+/// a profile its account does not list goes ([`bridge_import_scan`]). Nothing
+/// to do while the vault is locked; the next scan or opening settles it.
+#[tauri::command]
+pub async fn settle_bridge_import(scan_id: Option<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let Some(store) = CredentialStore::from_cache() else {
+            // Locked: the window is done with the scan all the same, so it
+            // is no longer held, and the next scan or opening settles it.
+            if let Some(id) = scan_id.as_deref() {
+                bridge_import_scan::give_up(id);
+            }
+            return Ok(());
+        };
+        let settled = match scan_id.as_deref() {
+            Some(id) => bridge_import_scan::settle(&store, id),
+            None => Ok(()),
+        };
+        bridge_import_scan::settle_abandoned(&store);
+        settled
+    })
+    .await
+    .map_err(|e| format!("Settle the import: {e}"))?
 }
 
 /// One vault write: the entry's key and its secret.
@@ -1570,7 +1767,7 @@ pub fn resolve_profile_oauth_token_for(
         .filter(|value| !value.is_empty()))
     };
     if !profile_id.is_empty() {
-        if let Some(value) = read(format!("oauth_{}_{}", slug, profile_id))? {
+        if let Some(value) = read(crate::providers::oauth2::oauth_token_key(slug, profile_id))? {
             return Ok(Some(value));
         }
     }
@@ -1638,6 +1835,11 @@ pub fn resolve_oauth_client_config(store: &CredentialStore, slug: &str) -> (Stri
 ///
 /// `Err` when the profile's token cannot be read: the caller skips the
 /// profile rather than export it with another profile's token.
+///
+/// `user` is the account the exported list belongs to, captured before the
+/// export ran: the token is read for that account whichever is active by
+/// the time the profile is reached, like every other secret of the step.
+/// `None` resolves the active account, for a vault with no accounts.
 pub fn inject_rclone_oauth_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
@@ -1751,6 +1953,10 @@ fn options_gained_a_secret(before: Option<&Value>, after: Option<&Value>) -> boo
 /// (`proton_native_session_<id>`) into a copy of the options, where the
 /// `protondrive` writer turns it into rclone's cached login. A CLI profile
 /// (no `proton_mode = native`) has no such session and gets nothing.
+///
+/// `user` is the account the exported list belongs to, captured before the
+/// export ran: the session is read for that account whichever is active by
+/// the time the profile is reached, like the OAuth token of the same export.
 pub fn inject_rclone_proton_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
@@ -1785,6 +1991,9 @@ pub fn inject_rclone_proton_export_options(
     }
 }
 
+/// `user` is the account the exported list belongs to, captured before the
+/// export ran: the key is read for that account whichever is active by the
+/// time the profile is reached, like the OAuth token of the same export.
 pub fn inject_rclone_filen_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
@@ -1912,6 +2121,10 @@ pub fn inject_aws_session_token_export_option_for_user(
 /// "unable to get drive_id and drive_type"); AeroFTP runs on the `/me/drive`
 /// shortcut and never put them on the profile. Shared by the GUI bridge export
 /// and the CLI `cmd_export_rclone` so the two paths never diverge.
+/// `user` is the account the exported list belongs to, captured before the
+/// export ran: the selectors are read for that account whichever is active
+/// by the time the profile is reached, so they cannot be paired with
+/// another account's OAuth token.
 pub fn inject_rclone_onedrive_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
@@ -2191,7 +2404,16 @@ pub fn inject_rclone_crypt_export_options(
         if id.is_empty() {
             return None;
         }
-        resolve_export_secret(store, user, &key)
+        let user = user?;
+        #[cfg(test)]
+        if let Some(active) = CRYPT_EXPORT_ACTIVE_SWITCH.with(|c| c.get()) {
+            // The export may have captured its account before this read;
+            // the active one may have moved. The fixture re-points it so a
+            // read that followed the active account instead of `user`
+            // picks up the wrong secrets.
+            let _ = crate::user_partitions::cli_set_active_user(store, active);
+        }
+        resolve_export_secret(store, Some(user), &key)
             .ok()
             .flatten()
             .map(|s| s.to_string())
@@ -4116,6 +4338,392 @@ mod tests {
         }
     }
 
+    /// A vault with two accounts, the second active, for the export-binding
+    /// pins: `captured` is the account an export binds to, `active` the one
+    /// a stray active-account read would pick.
+    fn with_two_export_accounts(test: impl FnOnce(&CredentialStore, i64, i64)) {
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("bridge-export-bind").unwrap();
+        CredentialStore::unlock_with_master("bridge-export-bind", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let captured =
+            crate::user_partitions::cli_create_user(&store, "Export captured", None, None, None)
+                .unwrap();
+        let active =
+            crate::user_partitions::cli_create_user(&store, "Export active", None, None, None)
+                .unwrap();
+        crate::user_partitions::cli_set_active_user(&store, active.id).unwrap();
+        test(&store, captured.id, active.id);
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Some(value) = previous_passphrase {
+            std::env::set_var("AEROFTP_USER_PASSPHRASE", value);
+        }
+    }
+
+    /// The crypt overlay secrets are read for the account the export
+    /// captured: the fixture moves the active account to B inside the read,
+    /// and the exported password and salt must still be A's.
+    #[test]
+    fn crypt_export_secrets_stay_with_the_captured_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::crypt_export_secrets_stay_with_the_captured_account",
+        ) {
+            return;
+        }
+        with_two_export_accounts(|store, captured, active| {
+            for (user, pw, salt) in [
+                (captured, "pw-of-A", "salt-of-A"),
+                (active, "pw-of-B", "salt-of-B"),
+            ] {
+                crate::user_partitions::store_credential_for_user_dual(
+                    store,
+                    user,
+                    "aerocrypt_overlay_pw_crypt1",
+                    pw,
+                )
+                .unwrap();
+                crate::user_partitions::store_credential_for_user_dual(
+                    store,
+                    user,
+                    "aerocrypt_overlay_salt_crypt1",
+                    salt,
+                )
+                .unwrap();
+            }
+            let fixture = arm_crypt_export_active_switch(active);
+            let overlay = json!({
+                "enabled": true,
+                "kind": "rclone-crypt",
+                "passwordForm": "clear",
+                "saltForm": "clear",
+            });
+            let mut options = Some(json!({}));
+            inject_rclone_crypt_export_options(
+                &mut options,
+                store,
+                Some(captured),
+                "crypt1",
+                Some(&overlay),
+            );
+            drop(fixture);
+            let opts = options.unwrap();
+            assert_eq!(opts["rcloneCryptPassword"], json!("pw-of-A"));
+            assert_eq!(opts["rcloneCryptPassword2"], json!("salt-of-A"));
+        });
+    }
+
+    /// The GUI bridge password is read for the account the export captured:
+    /// with B active, `Some(A)` still answers A's password, and `None`
+    /// answers nothing rather than whichever account is active.
+    #[test]
+    fn vault_export_password_reads_the_captured_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::vault_export_password_reads_the_captured_account",
+        ) {
+            return;
+        }
+        with_two_export_accounts(|store, captured, active| {
+            for (user, password) in [(captured, "pw-of-A"), (active, "pw-of-B")] {
+                crate::user_partitions::store_credential_for_user_dual(
+                    store,
+                    user,
+                    "server_sharedpw",
+                    &format!(r#"{{"password":"{password}"}}"#),
+                )
+                .unwrap();
+            }
+            assert_eq!(
+                vault_export_password_for_user(store, Some(captured), "sharedpw"),
+                Some("pw-of-A".to_string())
+            );
+            assert_eq!(
+                vault_export_password_for_user(store, None, "sharedpw"),
+                None
+            );
+        });
+    }
+
+    /// An export on an install with no account reads the legacy stores: the
+    /// vault's server password and the overlay secrets still reach the file.
+    /// `active_user_for_save` answering `Ok(None)` used to collapse into the
+    /// same `None` a failed lookup produced, and `None` reads no secret.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn an_export_with_no_account_reads_the_legacy_stores() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::an_export_with_no_account_reads_the_legacy_stores",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let temporary = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password("export-noacct-pass")
+            .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("export-noacct-pass", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        assert_eq!(
+            crate::user_partitions::active_user_for_save(),
+            Ok(None),
+            "no account"
+        );
+        // The export's own account capture runs the legacy migration, which
+        // creates the default account and makes it active: the export must be
+        // bound to that account, the one the migrated list belongs to.
+        let migrated_account = crate::user_partitions::cli_get_active_user(&store)
+            .unwrap()
+            .map(|u| u.id);
+        store
+            .store("server_crypt1", r#"{"password":"server-secret"}"#)
+            .unwrap();
+        store
+            .store("aerocrypt_overlay_pw_crypt1", "overlay-pw")
+            .unwrap();
+        store
+            .store("aerocrypt_overlay_salt_crypt1", "overlay-salt")
+            .unwrap();
+        store
+            .store("filen_api_key_fil1", "FILEN-KEY-LEGACY")
+            .unwrap();
+        store
+            .store("onedrive_drive_id_od1", "drive-legacy-id")
+            .unwrap();
+        store.store("onedrive_drive_type_od1", "business").unwrap();
+        store
+            .store(
+                "oauth_onedrive_od1",
+                r#"{"access_token":"od-access-legacy","refresh_token":"od-ref","token_type":"Bearer","expires_at":null}"#,
+            )
+            .unwrap();
+        store.store("oauth_onedrive_client_id", "od-cid").unwrap();
+        store
+            .store("oauth_onedrive_client_secret", "od-csec")
+            .unwrap();
+        store
+            .store(
+                "proton_native_session_pr1",
+                r#"{"uid":"puid-1","access_token":"proton-access-legacy","refresh_token":"proton-ref","key_password":"proton-kp"}"#,
+            )
+            .unwrap();
+        store
+            .store(
+                "oauth_dropbox_dbx1",
+                r#"{"access_token":"dbx-access-legacy","refresh_token":"dbx-ref","token_type":"Bearer","expires_at":null}"#,
+            )
+            .unwrap();
+        store.store("oauth_dropbox_client_id", "dbx-cid").unwrap();
+        store
+            .store("oauth_dropbox_client_secret", "dbx-csec")
+            .unwrap();
+        drop(store);
+
+        let servers = json!([
+            {
+                "id": "crypt1", "name": "Crypt", "host": "sftp.example.test", "port": 22,
+                "username": "u", "protocol": "sftp",
+                "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt",
+                    "passwordForm": "clear", "saltForm": "clear"},
+                "options": {}
+            },
+            {
+                "id": "fil1", "name": "Filen", "host": "filen.example.test", "port": 443,
+                "username": "u@example.test", "protocol": "filen", "options": {}
+            },
+            {
+                "id": "od1", "name": "OneDrive", "host": "graph.microsoft.com", "port": 443,
+                "username": "u", "protocol": "onedrive", "options": {}
+            },
+            {
+                "id": "pr1", "name": "Proton", "host": "drive.proton.me", "port": 443,
+                "username": "u", "protocol": "proton",
+                "options": {"proton_mode": "native"}
+            },
+            {
+                "id": "dbx1", "name": "Dropbox", "host": "www.dropbox.com", "port": 443,
+                "username": "u", "protocol": "dropbox", "options": {}
+            }
+        ])
+        .to_string();
+        let out_path = temporary.path().join("export.conf");
+        export_bridge_config(
+            "rclone".into(),
+            servers,
+            true,
+            out_path.to_string_lossy().into_owned(),
+            migrated_account,
+        )
+        .await
+        .expect("the unscoped export succeeds");
+        let conf = std::fs::read_to_string(&out_path).unwrap();
+        assert!(conf.contains("type = crypt"), "crypt section:\n{conf}");
+        assert!(conf.contains("password = "), "overlay password:\n{conf}");
+        assert!(conf.contains("password2 = "), "overlay salt:\n{conf}");
+        assert!(
+            !conf.contains("password required but unavailable"),
+            "the overlay secrets reached the file:\n{conf}"
+        );
+        assert!(
+            conf.contains("type = filen") && conf.contains("api_key = "),
+            "the filen api key was exported:\n{conf}"
+        );
+        assert!(
+            !conf.contains("api_key required but unavailable"),
+            "the filen api key reached the file:\n{conf}"
+        );
+        assert!(
+            conf.contains("drive_id = drive-legacy-id") && conf.contains("drive_type = business"),
+            "the onedrive selectors reached the file:\n{conf}"
+        );
+        assert!(
+            conf.contains("client_access_token = proton-access-legacy"),
+            "the proton session reached the file:\n{conf}"
+        );
+        assert!(
+            conf.contains("od-access-legacy") && conf.contains("dbx-access-legacy"),
+            "the OAuth tokens reached the file:\n{conf}"
+        );
+        let read = crate::rclone_import::import_rclone(&out_path).unwrap();
+        assert!(
+            crate::bridge_shared::names_hosts_secrets(&read.servers)
+                .iter()
+                .any(|(name, host, secret)| {
+                    name == "Crypt" && host == "sftp.example.test" && secret == "server-secret"
+                }),
+            "the server password is in the file:\n{conf}"
+        );
+        assert!(
+            read.servers.iter().any(|s| {
+                s.name == "Filen"
+                    && s.options
+                        .as_ref()
+                        .and_then(|o| o.pointer("/filen_api_key"))
+                        .and_then(|v| v.as_str())
+                        == Some("FILEN-KEY-LEGACY")
+            }),
+            "the filen api key round-trips as the legacy one:\n{conf}"
+        );
+    }
+
+    /// A failed account lookup fails the export before it writes anything:
+    /// the destination keeps its bytes and no vault token reaches it. The
+    /// old `.ok().flatten()` turned the error into `None`, the same scope a
+    /// no-account export has, and the vault's OAuth token was written.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_failed_account_lookup_fails_the_export_before_it_writes() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::a_failed_account_lookup_fails_the_export_before_it_writes",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let temporary = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password("export-lookup-pass")
+            .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("export-lookup-pass", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        store.store("oauth_dropbox_client_id", "cid").unwrap();
+        store
+            .store("oauth_dropbox_client_secret", "csecret")
+            .unwrap();
+        store
+            .store(
+                "oauth_dropbox_dbx1",
+                r#"{"access_token":"token-of-vault","refresh_token":"rv","token_type":"Bearer","expires_at":null}"#,
+            )
+            .unwrap();
+        store
+            .store("filen_api_key_fil1", "FILEN-KEY-VAULT")
+            .unwrap();
+        store
+            .store("onedrive_drive_id_od1", "drive-vault-id")
+            .unwrap();
+        store.store("onedrive_drive_type_od1", "personal").unwrap();
+        store
+            .store(
+                "oauth_onedrive_od1",
+                r#"{"access_token":"od-token-of-vault","refresh_token":"od-ref","token_type":"Bearer","expires_at":null}"#,
+            )
+            .unwrap();
+        store.store("oauth_onedrive_client_id", "od-cid").unwrap();
+        store
+            .store("oauth_onedrive_client_secret", "od-csec")
+            .unwrap();
+        store
+            .store(
+                "proton_native_session_pr1",
+                r#"{"uid":"puid-1","access_token":"proton-token-of-vault","refresh_token":"proton-ref","key_password":"proton-kp"}"#,
+            )
+            .unwrap();
+        drop(store);
+
+        let servers = json!([
+            {
+                "id": "dbx1", "name": "Dropbox", "host": "www.dropbox.com", "port": 443,
+                "username": "u", "protocol": "dropbox", "options": {}
+            },
+            {
+                "id": "fil1", "name": "Filen", "host": "filen.example.test", "port": 443,
+                "username": "u@example.test", "protocol": "filen", "options": {}
+            },
+            {
+                "id": "od1", "name": "OneDrive", "host": "graph.microsoft.com", "port": 443,
+                "username": "u", "protocol": "onedrive", "options": {}
+            },
+            {
+                "id": "pr1", "name": "Proton", "host": "drive.proton.me", "port": 443,
+                "username": "u", "protocol": "proton",
+                "options": {"proton_mode": "native"}
+            }
+        ])
+        .to_string();
+        let out_path = temporary.path().join("export.conf");
+        std::fs::write(&out_path, b"the user's own file\n").unwrap();
+        crate::user_partitions::ACCOUNT_LOOKUP_FAILS
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let refused = export_bridge_config(
+            "rclone".into(),
+            servers,
+            true,
+            out_path.to_string_lossy().into_owned(),
+            None,
+        )
+        .await;
+        crate::user_partitions::ACCOUNT_LOOKUP_FAILS
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            refused.is_err(),
+            "a failed lookup fails the export: {refused:?}"
+        );
+        assert_eq!(
+            std::fs::read(&out_path).unwrap(),
+            b"the user's own file\n",
+            "nothing is written over the destination"
+        );
+    }
+
     #[test]
     fn legacy_export_servers_deserialize_from_profile_json() {
         // The run_export! macro deserializes each profile entry into the
@@ -4250,6 +4858,207 @@ mod tests {
                 "reset": [],
                 "kept": [{ "key": "webdavScheme", "value": "http" }],
             }])
+        );
+    }
+
+    /// A scan records each OAuth token it writes for the profile it is for,
+    /// and reads a key's profile by the keys the profiles compose: a profile
+    /// id with capitals (`Team`) names `oauth_dropbox_team`, which ends with
+    /// another profile's id (`team`) as it is. Once the window confirms
+    /// `Team` alone, the settle keeps `Team`'s token, whether its write was
+    /// recorded for its profile or read from its key.
+    #[test]
+    fn a_confirmed_mixed_case_profile_keeps_its_scanned_token() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::a_confirmed_mixed_case_profile_keeps_its_scanned_token",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("scan-case-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("scan-case-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let user = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let profile =
+            |id: &str| json!({"id": id, "name": id, "host": "", "port": 0, "protocol": "dropbox"});
+        let key = crate::providers::oauth2::oauth_token_key("dropbox", "Team");
+        assert_eq!(key, "oauth_dropbox_team");
+        let token = r#"{"access_token":"team-access","refresh_token":"team-refresh"}"#;
+        let stored = |what: &str| {
+            assert_eq!(
+                store.get(&key).ok().as_deref(),
+                Some(token),
+                "{what}: vault"
+            );
+            assert_eq!(
+                partitions::resolve_credential_for_user(&store, user, &key)
+                    .unwrap()
+                    .as_deref()
+                    .map(|value| value.as_str()),
+                Some(token),
+                "{what}: row"
+            );
+        };
+
+        // The bridge's own write: `Team` and `team` scanned, `Team` alone
+        // with a token and confirmed.
+        let result = crate::rclone_import::RcloneImportResult {
+            servers: ["Team", "team"]
+                .iter()
+                .map(|id| serde_json::from_value(profile(id)).unwrap())
+                .collect(),
+            skipped: Vec::new(),
+            warnings: Vec::new(),
+            source_path: String::new(),
+            total_remotes: 2,
+            provider_secrets: HashMap::from([(
+                "Team".to_string(),
+                crate::profile_export::ProviderSecrets {
+                    oauth: Some(token.to_string()),
+                    ..Default::default()
+                },
+            )]),
+        };
+        let scan = bridge_import_scan::Scan::begin(
+            &store,
+            Some(user),
+            vec!["Team".to_string(), "team".to_string()],
+        )
+        .unwrap();
+        let failures =
+            store_rclone_provider_secrets(Some(&store), &result, Some(user), Some(&scan));
+        assert!(failures.is_empty(), "{failures:?}");
+        stored("written");
+        partitions::replace_server_profiles_for(&mut conn, &root_key, user, &[profile("Team")])
+            .unwrap();
+        bridge_import_scan::settle(&store, scan.id()).unwrap();
+        stored("a write recorded for its profile");
+
+        // A write whose profile is read from its key.
+        partitions::replace_server_profiles_for(&mut conn, &root_key, user, &[]).unwrap();
+        partitions::delete_credential_for_user_dual(&store, user, &key).unwrap();
+        let scan =
+            bridge_import_scan::Scan::begin(&store, Some(user), vec!["Team".to_string()]).unwrap();
+        scan.record(&key, bridge_import_scan::Kind::Secret, token)
+            .unwrap();
+        partitions::store_typed_credential_dual_as(&store, Some(user), &key, "oauth", token)
+            .unwrap();
+        partitions::replace_server_profiles_for(&mut conn, &root_key, user, &[profile("Team")])
+            .unwrap();
+        bridge_import_scan::settle(&store, scan.id()).unwrap();
+        stored("a write read by its key");
+    }
+
+    /// CodeRabbit r4668518983: an rclone export captured under account A
+    /// reads A's OAuth token and A's OneDrive drive selectors even while
+    /// account B is the active one, the selectors can no longer be paired
+    /// with another account's token.
+    #[test]
+    fn rclone_onedrive_selectors_follow_the_captured_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::rclone_onedrive_selectors_follow_the_captured_account",
+        ) {
+            return;
+        }
+        use crate::credential_store::CredentialStore;
+        use crate::providers::oauth2::{OAuth2Manager, OAuthProvider, StoredTokens};
+        use crate::user_partitions as partitions;
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::tempdir().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("export-selectors-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("export-selectors-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account")
+            .id;
+        for (user, tag) in [(first, "first"), (second, "second")] {
+            OAuth2Manager::new()
+                .with_credential_user(Some(user))
+                .store_tokens(
+                    OAuthProvider::OneDrive,
+                    "shared",
+                    &StoredTokens {
+                        access_token: format!("{tag}-access"),
+                        refresh_token: Some(format!("{tag}-refresh")),
+                        expires_at: None,
+                        token_type: "Bearer".into(),
+                        scopes: vec![],
+                    },
+                )
+                .expect("store the account's token");
+            for (key, value) in [
+                (
+                    "onedrive_drive_id_shared".to_string(),
+                    format!("drive-{tag}"),
+                ),
+                (
+                    "onedrive_drive_type_shared".to_string(),
+                    format!("type-{tag}"),
+                ),
+            ] {
+                partitions::store_credential_for_user(
+                    &store,
+                    user,
+                    &key,
+                    "onedrive_drive_id",
+                    &value,
+                )
+                .expect("store the account's selector");
+            }
+        }
+        // The export was captured under `first`; `second` is active now.
+        partitions::set_active_user(&conn, second).expect("switch active account");
+
+        let mut options = None;
+        inject_rclone_oauth_export_options(&mut options, &store, Some(first), "onedrive", "shared")
+            .expect("the captured account's token is read");
+        inject_rclone_onedrive_export_options(
+            &mut options,
+            &store,
+            Some(first),
+            "onedrive",
+            "shared",
+        );
+        let options = options.expect("options object");
+        let token = options
+            .get("__aeroftp_oauth_token")
+            .and_then(|v| v.as_str())
+            .expect("oauth token injected");
+        assert!(
+            token.contains("first-access"),
+            "the token is the captured account's: {token}"
+        );
+        assert_eq!(
+            options.get("drive_id").and_then(|v| v.as_str()),
+            Some("drive-first"),
+            "the drive id is the captured account's"
+        );
+        assert_eq!(
+            options.get("drive_type").and_then(|v| v.as_str()),
+            Some("type-first"),
+            "the drive type is the captured account's"
         );
     }
 
@@ -4977,7 +5786,7 @@ mod tests {
             let conn = crate::user_partitions::open_or_init_cli().unwrap();
             crate::user_partitions::set_active_user(&conn, second).unwrap();
         }
-        let failures = store_rclone_provider_secrets(Some(&store), &result, Some(first));
+        let failures = store_rclone_provider_secrets(Some(&store), &result, Some(first), None);
         assert!(
             failures.is_empty(),
             "prepass must store cleanly: {failures:?}"
@@ -5059,7 +5868,7 @@ mod tests {
         let store = CredentialStore::from_cache().unwrap();
         crate::user_partitions::init_or_migrate_cli(&store).unwrap();
 
-        let failures = store_rclone_provider_secrets(None, &result, None);
+        let failures = store_rclone_provider_secrets(None, &result, None, None);
         assert_eq!(
             failures.len(),
             1,
@@ -5512,8 +6321,11 @@ mod tests {
         .expect("a confirmed legacy run exports with None");
         assert_eq!(out["exported"], 1, "{out}");
         let written = std::fs::read_to_string(&legacy_file).unwrap();
-        assert!(written.contains("PW-LEGACY"), "{written}");
-        assert!(!written.contains("PW-FIRST"), "{written}");
+        // A confirmed legacy run reads the legacy owner's copy: its
+        // partition row wins over the raw vault key, and no other account's
+        // row is ever read.
+        assert!(written.contains("PW-FIRST"), "{written}");
+        assert!(!written.contains("PW-LEGACY"), "{written}");
         assert!(!written.contains("PW-SECOND"), "{written}");
 
         match previous_xdg {
@@ -5810,10 +6622,10 @@ mod tests {
             "OLD-PART",
         )
         .unwrap();
-        crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(true));
+        crate::user_partitions::PARTITION_WRITE_REFUSED_THREAD_LOCAL.with(|c| c.set(true));
         let err = store_bridge_import_secret_for_user(&store, Some(uid), "server_rb18", "NEW")
             .expect_err("the refused partition mirror must fail the dual write");
-        crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(false));
+        crate::user_partitions::PARTITION_WRITE_REFUSED_THREAD_LOCAL.with(|c| c.set(false));
         assert!(
             err.contains("refused"),
             "the failure must be the refused mirror: {err}"
@@ -5833,9 +6645,9 @@ mod tests {
 
         // Case 2: no prior value anywhere; the landed vault copy of the new
         // secret must be deleted, and no partition row may appear.
-        crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(true));
+        crate::user_partitions::PARTITION_WRITE_REFUSED_THREAD_LOCAL.with(|c| c.set(true));
         let _ = store_bridge_import_secret_for_user(&store, Some(uid), "server_rb20", "NEW");
-        crate::user_partitions::PARTITION_WRITE_REFUSED.with(|c| c.set(false));
+        crate::user_partitions::PARTITION_WRITE_REFUSED_THREAD_LOCAL.with(|c| c.set(false));
         assert!(
             matches!(
                 store.get("server_rb20"),

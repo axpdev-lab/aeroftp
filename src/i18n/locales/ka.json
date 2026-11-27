@@ -1439,7 +1439,10 @@
             "templateLogImported": "კონფიგურაციის შაბლონი იმპორტირებულია: {imported} იმპორტირებული, {skipped} გამოტოვებული, {invalid} არასწორი",
             "templateLogBlocks": "ბლოკები: {blocks}",
             "templateDuplicateInTemplate": "დუბლიკატი შაბლონში",
-            "templateSelectProfile": "{name}-ის იმპორტი"
+            "templateSelectProfile": "{name}-ის იმპორტი",
+            "exportAccountUnbound": "პროფილების სია არ არის მიბმული ანგარიშზე; არაფერი ექსპორტირდა.",
+            "exportAccountChanged": "აქტიური ანგარიში შეიცვალა; არაფერი ექსპორტირდა.",
+            "exportAccountChangedDuringSave": "აქტიური ანგარიში შეიცვალა შენახვის დიალოგის ღია მდგომარეობისას; არაფერი ექსპორტირდა."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ უკვე შენახულია {user}-ში",
             "relocateError": "სერვერის გადატანა ვერ მოხერხდა: {error}",
             "relocateWrongPassword": "არასწორი პაროლი {user}-ისთვის.",
-            "relocateSecretsNotCopied": "„{name}“ {user}-ს მიაღწია, მაგრამ შენახული პაროლი ან ტოკენი ვერ მივიდა, ამიტომ იქ მათ ხელახლა მოითხოვს."
+            "relocateSecretsNotCopied": "„{name}“ {user}-ს მიაღწია, მაგრამ შენახული პაროლი ან ტოკენი ვერ მივიდა, ამიტომ იქ მათ ხელახლა მოითხოვს.",
+            "relocateMovedCleanupFailed": "\"{name}\" გადატანილია {user}-თან, მაგრამ მისი Proton Drive სესიის საწყისი ანგარიშიდან წაშლა ვერ მოხერხდა."
         },
         "cyberTools": {
             "title": "უსაფრთხოების ხელსაწყოები",
@@ -5923,7 +5927,9 @@
                 "months": "{count} თვე"
             },
             "demoTabLabel": "დემო: {protocol}",
-            "newTabLabel": "ახალი: {name}"
+            "newTabLabel": "ახალი: {name}",
+            "protonSessionEndsAtUnlock": "ამ პროფილის Proton სესია დასრულდება ამ ანგარიშის შემდეგი განბლოკვისას, თუ მას ამ კომპიუტერზე სხვა ანგარიში არ იყენებს.",
+            "profileSecretsNotRemoved": "პროფილი წაიშალა, მაგრამ მისი შენახული ზოგიერთი რწმუნებათა სიგელი ვერ წაიშალა სეიფიდან."
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",

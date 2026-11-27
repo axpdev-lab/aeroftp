@@ -133,6 +133,24 @@ pub struct ProfileDecisionInput {
     pub copy_name: Option<String>,
 }
 
+/// The account an import writes its profile step to, chosen with the plan:
+/// the active account of the partition the import restores, or of this
+/// device's when it restores none. The legacy owner's private tokens are the
+/// vault's too; another account's are its partition row alone
+/// (`user_partitions::vault_copy_is_another_accounts`).
+///
+/// Two databases number their accounts each on their own, so an equal id is
+/// not the same account: `identity` is the account's DEK verifier
+/// (`user_partitions::account_identity`), the same in every copy of one
+/// account's database and different for any other account, and two
+/// receivers are equal only when it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Receiver {
+    pub user_id: i64,
+    pub legacy_owner: bool,
+    pub identity: [u8; 16],
+}
+
 /// The two lists and the secrets the plan works on.
 pub struct PlanInputs {
     pub local: Vec<Value>,
@@ -153,6 +171,47 @@ pub struct PlanInputs {
     pub local_secrets: HashMap<String, Option<Zeroizing<String>>>,
     /// The backup's value for the same keys. Absent keys are not in the map.
     pub backup_secrets: HashMap<String, Zeroizing<String>>,
+    /// The account the secrets are read for and written to; `None` on an
+    /// install without accounts.
+    pub receiver: Option<Receiver>,
+    /// The plan is for the backup's partition, which the import restores
+    /// whole: its decisions are written only once that partition is the one
+    /// this device uses, never into the one it keeps when the restore fails.
+    pub targets_restored_partition: bool,
+    /// The vault's own value of every private token key the plan read, before
+    /// the import wrote anything: what a failed step puts back in the vault
+    /// when the receiver's writes leave it alone.
+    pub local_vault: HashMap<String, Option<Zeroizing<String>>>,
+    /// The recorded digest of each private token key's `vault_blocked_secret:`
+    /// record as the plan found it, before the import wrote anything: a
+    /// failed step's rollback puts the record back beside the vault value it
+    /// hid, since the writes that ran lifted it.
+    pub blocked_vault: HashMap<String, String>,
+    /// Private token keys whose local vault value belongs to a different
+    /// account identity than the receiver, which "Skip existing" leaves in
+    /// the vault: once the backup's partition is published its owner has no
+    /// row for them and would read that foreign token as its own, so the
+    /// import deletes each while it still holds the value read here.
+    pub vault_foreign_private: Vec<(String, Zeroizing<String>, Option<Zeroizing<String>>)>,
+    /// The partition the import publishes has a legacy owner, the account
+    /// whose private tokens fall back to the vault copy: the foreign-token
+    /// sweep runs for it even when the plan's receiver, the active account,
+    /// reads rows alone.
+    pub legacy_owner_reads_vault: bool,
+    /// The receiver's row of each key (the row that mirrors a vault value,
+    /// or a private token's only copy), as the import leaves it, read when
+    /// the plan was made: the restored partition's row when the import
+    /// restores one, this device's otherwise. `None` = no row; a key whose row
+    /// could not be read is not in the map. A decision replaces the row only
+    /// while it still holds this (or the vault section's value), so a token
+    /// refreshed while the import runs is kept.
+    pub receiver_rows: HashMap<String, Option<Zeroizing<String>>>,
+    /// The receiver is this device's own account, by its identity: its
+    /// local values are its own.
+    pub receiver_is_here: bool,
+    /// The private token keys whose local row the receiver's own sign-in
+    /// stamped (`receiver_is_here` only): a carried row keeps its stamp.
+    pub local_signed_in: HashSet<String>,
     /// What bringing the backup's profiles to their safe state reset: a
     /// restore takes no relaxing option from the backup (CodeRabbit on #1524).
     pub security_reset: Vec<crate::profile_security::ProfileReset>,
@@ -388,6 +447,50 @@ fn copy_of(
     copy
 }
 
+/// "Skip existing" over a partition the import restores whole, for this
+/// device's own account other than the legacy owner: a private token it
+/// signed in to after the backup lives in its row alone, which the restored
+/// partition does not have, so the key the backup does not carry would be
+/// lost with it. Every profile the final list keeps gets this device's value
+/// of such a key back, unless a write of the key is already planned. The keys
+/// are those of the version kept: a profile whose provider changed keeps no
+/// token of the provider it left.
+fn carry_local_private_tokens(
+    inputs: &PlanInputs,
+    profiles: &[Value],
+    local_ids: &HashSet<String>,
+    ops: &mut Vec<SecretOp>,
+) {
+    if !(inputs.targets_restored_partition
+        && inputs.keep_local_by_default
+        && inputs.receiver_is_here
+        && inputs.receiver.is_some_and(|r| !r.legacy_owner))
+    {
+        return;
+    }
+    let mut planned: HashSet<String> = ops.iter().map(|(k, _)| k.clone()).collect();
+    for profile in profiles {
+        // Only a profile this device's version was kept for: a backup-accepted
+        // profile that shares the id must not pick up this device's private
+        // token, which is not the version the user chose.
+        if !profile_id(profile).is_some_and(|id| local_ids.contains(id)) {
+            continue;
+        }
+        for key in secret_keys(profile) {
+            if crate::user_partitions::private_token_type(&key).is_none()
+                || inputs.backup_secrets.contains_key(&key)
+                || planned.contains(&key)
+            {
+                continue;
+            }
+            if let Some(Some(local)) = inputs.local_secrets.get(&key) {
+                planned.insert(key.clone());
+                ops.push((key, Some(local.clone())));
+            }
+        }
+    }
+}
+
 /// Build the list the user chose, and the secret writes that make each
 /// profile's credentials match the version kept.
 ///
@@ -415,12 +518,14 @@ pub fn fingerprint(inputs: &PlanInputs) -> String {
     };
     field(
         format!(
-            "{:?}|{:?}|{}|{}|{}",
+            "{:?}|{:?}|{}|{}|{}|{:?}|{}",
             inputs.source,
             inputs.local_source,
             inputs.replaces_list,
             inputs.keep_local_by_default,
-            inputs.backup_unreadable
+            inputs.backup_unreadable,
+            inputs.receiver,
+            inputs.receiver_is_here
         )
         .as_bytes(),
     );
@@ -536,62 +641,72 @@ pub fn apply(
     let backup_by_id = index_by_id(backup);
 
     let mut ops = Vec::new();
+    // The ids whose kept version is this device's: only those may carry its
+    // private tokens back into the restored partition.
+    let mut local_ids = HashSet::new();
     // Resolve each id to the profiles it contributes, in place.
-    let mut resolve = |id: &str, ops: &mut Vec<SecretOp>| -> Vec<Value> {
-        let local = local_by_id.get(id).copied();
-        let bak = backup_by_id.get(id).copied();
-        let keys = keys_for(local, bak);
-        let Some(change) = change_by_id.get(id) else {
-            // Unchanged, or local-only under a merge: this machine's copy.
-            return local.or(bak).cloned().into_iter().collect();
-        };
-        let input = chosen.get(id);
-        let decision = input.map_or(change.default_decision, |d| d.decision);
-        match (change.kind, decision) {
-            (ProfileChangeKind::Added, ProfileDecision::Accept) => {
-                take_backup(inputs, &keys, ops);
-                bak.cloned().into_iter().collect()
-            }
-            (ProfileChangeKind::Added, _) => {
-                restore_local(inputs, &keys, ops);
-                Vec::new()
-            }
-            (ProfileChangeKind::Removed, ProfileDecision::Accept) => {
-                // Removing a profile in the GUI purges its secrets; an
-                // accepted removal must not leave them behind (CWE-459).
-                for k in &keys {
-                    ops.push((k.clone(), None));
+    let mut resolve =
+        |id: &str, ops: &mut Vec<SecretOp>, local_ids: &mut HashSet<String>| -> Vec<Value> {
+            let local = local_by_id.get(id).copied();
+            let bak = backup_by_id.get(id).copied();
+            let keys = keys_for(local, bak);
+            let Some(change) = change_by_id.get(id) else {
+                // Unchanged, or local-only under a merge: this machine's copy.
+                if local.is_some() {
+                    local_ids.insert(id.to_string());
                 }
-                Vec::new()
+                return local.or(bak).cloned().into_iter().collect();
+            };
+            let input = chosen.get(id);
+            let decision = input.map_or(change.default_decision, |d| d.decision);
+            match (change.kind, decision) {
+                (ProfileChangeKind::Added, ProfileDecision::Accept) => {
+                    take_backup(inputs, &keys, ops);
+                    bak.cloned().into_iter().collect()
+                }
+                (ProfileChangeKind::Added, _) => {
+                    restore_local(inputs, &keys, ops);
+                    Vec::new()
+                }
+                (ProfileChangeKind::Removed, ProfileDecision::Accept) => {
+                    // Removing a profile in the GUI purges its secrets; an
+                    // accepted removal must not leave them behind (CWE-459).
+                    for k in &keys {
+                        ops.push((k.clone(), None));
+                    }
+                    Vec::new()
+                }
+                (ProfileChangeKind::Removed, _) => {
+                    restore_local(inputs, &keys, ops);
+                    local_ids.insert(id.to_string());
+                    local.cloned().into_iter().collect()
+                }
+                (ProfileChangeKind::Changed, ProfileDecision::Accept) => {
+                    take_backup(inputs, &keys, ops);
+                    bak.cloned().into_iter().collect()
+                }
+                (ProfileChangeKind::Changed, ProfileDecision::Reject) => {
+                    restore_local(inputs, &keys, ops);
+                    local_ids.insert(id.to_string());
+                    local.cloned().into_iter().collect()
+                }
+                (ProfileChangeKind::Changed, ProfileDecision::Both) => {
+                    restore_local(inputs, &keys, ops);
+                    let (Some(l), Some(b)) = (local, bak) else {
+                        return Vec::new();
+                    };
+                    local_ids.insert(id.to_string());
+                    let name = input
+                        .and_then(|d| d.copy_name.clone())
+                        .filter(|n| !n.trim().is_empty())
+                        .unwrap_or_else(|| {
+                            format!("{} (imported)", string_field(b, "name").unwrap_or_default())
+                        });
+                    let copy = copy_of(inputs, b, &new_id(), name, ops);
+                    vec![l.clone(), copy]
+                }
             }
-            (ProfileChangeKind::Removed, _) => {
-                restore_local(inputs, &keys, ops);
-                local.cloned().into_iter().collect()
-            }
-            (ProfileChangeKind::Changed, ProfileDecision::Accept) => {
-                take_backup(inputs, &keys, ops);
-                bak.cloned().into_iter().collect()
-            }
-            (ProfileChangeKind::Changed, ProfileDecision::Reject) => {
-                restore_local(inputs, &keys, ops);
-                local.cloned().into_iter().collect()
-            }
-            (ProfileChangeKind::Changed, ProfileDecision::Both) => {
-                restore_local(inputs, &keys, ops);
-                let (Some(l), Some(b)) = (local, bak) else {
-                    return Vec::new();
-                };
-                let name = input
-                    .and_then(|d| d.copy_name.clone())
-                    .filter(|n| !n.trim().is_empty())
-                    .unwrap_or_else(|| {
-                        format!("{} (imported)", string_field(b, "name").unwrap_or_default())
-                    });
-                let copy = copy_of(inputs, b, &new_id(), name, ops);
-                vec![l.clone(), copy]
-            }
-        }
-    };
+        };
 
     let mut profiles = Vec::new();
     let mut placed = HashSet::new();
@@ -603,7 +718,7 @@ pub fn apply(
     for p in first.iter().chain(second) {
         let Some(id) = profile_id(p) else { continue };
         if placed.insert(id.to_string()) {
-            profiles.extend(resolve(id, &mut ops));
+            profiles.extend(resolve(id, &mut ops, &mut local_ids));
         }
     }
     // A profile the backup adds, renames or copies onto a name this
@@ -612,6 +727,7 @@ pub fn apply(
     // applies (`util::profile_name`), against the list the plan was read
     // from: the partition the write lands in may already be the backup's.
     let (profiles, _) = crate::util::profile_name::unique_profile_names(&inputs.local, &profiles);
+    carry_local_private_tokens(inputs, &profiles, &local_ids, &mut ops);
 
     Ok(PlanOutcome {
         profiles,
@@ -673,6 +789,15 @@ mod tests {
                 ("server_srv_b", "pw-b-backup"),
                 ("server_srv_d", "pw-d"),
             ]),
+            receiver: None,
+            targets_restored_partition: false,
+            local_vault: HashMap::new(),
+            blocked_vault: HashMap::new(),
+            vault_foreign_private: Vec::new(),
+            legacy_owner_reads_vault: false,
+            receiver_rows: HashMap::new(),
+            receiver_is_here: false,
+            local_signed_in: HashSet::new(),
             security_reset: Vec::new(),
         }
     }
@@ -962,6 +1087,128 @@ mod tests {
         let out = apply(&i, &[], &fp(&i), &mut || unreachable!()).unwrap();
         assert_eq!(ids(&out.profiles), vec!["srv_a", "srv_b", "srv_d", "srv_c"]);
         assert_eq!(out.profiles[1]["name"], "Beta");
+    }
+
+    /// "Skip existing" over a restored partition, a profile that moved from
+    /// Dropbox to SFTP, the change accepted: the carry of this device's
+    /// private tokens follows the version kept, so the Dropbox token the SFTP
+    /// profile no longer uses is not written into the restored partition.
+    /// Kept from this device instead, the Dropbox profile gets it back.
+    #[test]
+    fn a_carry_takes_only_the_keys_of_the_version_kept() {
+        let carried = |decision: ProfileDecision| {
+            let mut i = inputs(true);
+            i.local = vec![
+                json!({"id": "srv_box", "name": "Box", "protocol": "dropbox", "host": "", "port": 0}),
+            ];
+            i.backup = Some(vec![
+                json!({"id": "srv_box", "name": "Box", "protocol": "sftp", "host": "b.example", "port": 22}),
+            ]);
+            i.keep_local_by_default = true;
+            i.targets_restored_partition = true;
+            i.receiver_is_here = true;
+            i.receiver = Some(Receiver {
+                user_id: 2,
+                legacy_owner: false,
+                identity: [7; 16],
+            });
+            i.local_secrets = local_secrets(&[("oauth_dropbox_srv_box", "local-dropbox-token")]);
+            i.backup_secrets = secrets(&[("server_srv_box", "pw-sftp")]);
+            let decisions = [ProfileDecisionInput {
+                id: "srv_box".into(),
+                decision,
+                copy_name: None,
+            }];
+            let out = apply(&i, &decisions, &fp(&i), &mut || unreachable!()).unwrap();
+            op(&out.secret_ops, "oauth_dropbox_srv_box").map(|v| v.map(str::to_string))
+        };
+        assert_eq!(
+            carried(ProfileDecision::Accept),
+            None,
+            "the SFTP version kept gets no Dropbox token"
+        );
+        assert_eq!(
+            carried(ProfileDecision::Reject),
+            Some(Some("local-dropbox-token".to_string()))
+        );
+    }
+
+    /// CodeRabbit 4661188761: a backup profile accepted over this device's
+    /// own, same id and same provider but another account, is not this
+    /// device's version: the carry must not hand it this device's private
+    /// token, which would sign the kept profile in to the previous account.
+    /// Rejecting the replacement keeps this device's profile and its token.
+    /// An accepted backup-only addition carries nothing either.
+    #[test]
+    fn an_accepted_replacement_of_the_same_id_carries_no_local_token() {
+        let dropbox = |id: &str, user: &str| json!({"id": id, "name": "Box", "protocol": "dropbox", "host": "", "port": 0, "username": user});
+        let carried = |decision: ProfileDecision, added_decision: ProfileDecision| {
+            let mut i = inputs(true);
+            i.local = vec![dropbox("srv_box", "alice")];
+            i.backup = Some(vec![dropbox("srv_box", "bob"), dropbox("srv_new", "carol")]);
+            i.keep_local_by_default = true;
+            i.targets_restored_partition = true;
+            i.receiver_is_here = true;
+            i.receiver = Some(Receiver {
+                user_id: 2,
+                legacy_owner: false,
+                identity: [7; 16],
+            });
+            i.local_secrets = local_secrets(&[
+                ("oauth_dropbox_srv_box", "alice-token"),
+                ("oauth_dropbox_srv_new", "carol-token"),
+            ]);
+            i.backup_secrets = secrets(&[]);
+            let decisions = [
+                ProfileDecisionInput {
+                    id: "srv_box".into(),
+                    decision,
+                    copy_name: None,
+                },
+                ProfileDecisionInput {
+                    id: "srv_new".into(),
+                    decision: added_decision,
+                    copy_name: None,
+                },
+            ];
+            let out = apply(&i, &decisions, &fp(&i), &mut || unreachable!()).unwrap();
+            (
+                op(&out.secret_ops, "oauth_dropbox_srv_box").map(|v| v.map(str::to_string)),
+                op(&out.secret_ops, "oauth_dropbox_srv_new").map(|v| v.map(str::to_string)),
+                ids(&out.profiles)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let (box_op, new_op, profiles) = carried(ProfileDecision::Accept, ProfileDecision::Accept);
+        assert_eq!(
+            box_op, None,
+            "the accepted backup profile gets no local Dropbox token"
+        );
+        assert_eq!(
+            new_op, None,
+            "the accepted backup-only addition gets no local token either"
+        );
+        assert!(
+            profiles.iter().any(|id| id == "srv_new"),
+            "the accepted addition stays in the output list"
+        );
+        let (box_op, new_op, profiles) = carried(ProfileDecision::Reject, ProfileDecision::Reject);
+        assert_eq!(
+            box_op,
+            Some(Some("alice-token".to_string())),
+            "the kept local profile keeps its token"
+        );
+        assert_eq!(
+            new_op,
+            Some(Some("carol-token".to_string())),
+            "the rejected addition restores this device's orphaned secret"
+        );
+        assert!(
+            !profiles.iter().any(|id| id == "srv_new"),
+            "the rejected addition leaves the output list"
+        );
     }
 
     #[test]

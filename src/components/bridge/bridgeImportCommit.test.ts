@@ -3,7 +3,8 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
-import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, commitImportedServersForScan, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
+import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, commitImportedServersForScan, createScanSettler, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
+import panelSource from '../BridgeSourcePanel.tsx?raw';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
@@ -475,8 +476,8 @@ describe('BridgeSourcePanel scan generation', () => {
         vi.mocked(invoke).mockReset();
     });
 
-    /// Two dropped files resolving in REVERSE order: the newer scan's rows,
-    /// account id and errors win, the older one is dropped entirely.
+    /// Two dropped files: the newer scan owns the panel, the older one is
+    /// never even scanned (the generation check runs before the invoke).
     it('a superseded scan cannot overwrite the newer scan\'s rows', async () => {
         const { BridgeSourcePanel } = await import('../BridgeSourcePanel');
         const { detectBridgeConfigBounded } = await import('../../hooks/useDetectedBridgeConfigs');
@@ -503,19 +504,16 @@ describe('BridgeSourcePanel scan generation', () => {
         };
         act(() => { root.render(createElement(BridgeSourcePanel, { ...props, presetFilePath: '/a.ini' })); });
         act(() => { root.render(createElement(BridgeSourcePanel, { ...props, presetFilePath: '/b.ini' })); });
-        expect(deferred.length).toBe(2);
+        await act(async () => {});
+        expect(deferred.length).toBe(1);
 
-        const scanA = {
-            servers: [{ id: 'a1', name: 'scan-A', host: '', port: 443, username: 'x', protocol: 's3' }],
-            skipped: [], sourcePath: '/a.ini', totalRemotes: 1, scanUserId: 7,
-        };
         const scanB = {
             servers: [{ id: 'b1', name: 'scan-B', host: '', port: 443, username: 'x', protocol: 's3' }],
             skipped: [], sourcePath: '/b.ini', totalRemotes: 1, scanUserId: 9,
         };
-        // Reverse order: the NEWER scan (b) resolves first, then the older (a).
-        await act(async () => { deferred[1].resolve(scanB); });
-        await act(async () => { deferred[0].resolve(scanA); });
+        // Only the newer scan (b) was ever invoked; the superseded one (a)
+        // never reached the backend.
+        await act(async () => { deferred[0].resolve(scanB); });
         expect(host.textContent).toContain('scan-B');
         expect(host.textContent).not.toContain('scan-A');
 
@@ -531,5 +529,183 @@ describe('BridgeSourcePanel scan generation', () => {
             9,
             undefined,
         );
+    });
+});
+describe('createScanSettler', () => {
+    it('settles a scan once, and the scans of closed windows on opening', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.open();
+        expect(settle).toHaveBeenLastCalledWith(null);
+        await scans.track('scan-1');
+        await scans.release();
+        await scans.release();
+        expect(settle.mock.calls).toEqual([[null], ['scan-1']]);
+    });
+
+    it('settles the scan a closed panel held, and one that ends after it closed', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+        await scans.track('scan-2');
+        expect(settle.mock.calls).toEqual([['scan-1'], ['scan-2']]);
+        await scans.track(undefined);
+        expect(settle).toHaveBeenCalledTimes(2);
+    });
+
+    it('settles a panel closed during a confirm only once the confirm is done', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        let saved!: () => void;
+        const save = new Promise<void>(resolve => { saved = resolve; });
+        const confirmed = scans.confirming(() => save.then(() => 'stored'));
+        const closed = scans.close();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(settle).not.toHaveBeenCalled();
+        saved();
+        await expect(confirmed).resolves.toBe('stored');
+        await closed;
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+    });
+
+    it('settles after a confirm that failed, and does not wait for one done', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await expect(scans.confirming(() => Promise.reject(new Error('refused')))).rejects.toThrow('refused');
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+    });
+
+    it('is the confirm the panel runs, so its close waits for the save', () => {
+        expect(panelSource).toMatch(/await scans\.confirming\(\s*\(\) => commitImportedServersForScan\(/);
+        expect(panelSource.match(/commitImportedServersForScan\(/g)).toHaveLength(1);
+    });
+
+    // Two files dropped before either was read: whichever scan returns first,
+    // the later request owns the preview and both scans are settled in the end.
+    it.each(['earlier', 'later'] as const)('of two overlapping scans publishes the later one and settles both, the %s one returning first', async (first) => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        const answer: Record<string, (r: { scanId: string }) => void> = {};
+        const earlier = scans.begin();
+        const earlierDone = scans.latest(earlier, () => new Promise<{ scanId: string }>(r => { answer.earlier = r; }));
+        const later = scans.begin();
+        const laterDone = scans.latest(later, () => new Promise<{ scanId: string }>(r => { answer.later = r; }));
+        const second = first === 'earlier' ? 'later' : 'earlier';
+        answer[first]({ scanId: `scan-${first}` });
+        answer[second]({ scanId: `scan-${second}` });
+        await expect(earlierDone).resolves.toBeNull();
+        await expect(laterDone).resolves.toEqual({ scanId: 'scan-later' });
+        expect(settle.mock.calls).toEqual([['scan-earlier']]);
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-earlier'], ['scan-later']]);
+    });
+
+    it('does not run a scan request overtaken before it started, and drops the failure of one overtaken', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        const notStarted = scans.begin();
+        scans.begin();
+        const scan = vi.fn().mockResolvedValue({ scanId: 'never' });
+        await expect(scans.latest(notStarted, scan)).resolves.toBeNull();
+        expect(scan).not.toHaveBeenCalled();
+        let fail!: (e: Error) => void;
+        const failing = scans.latest(scans.begin(), () => new Promise<{ scanId: string }>((_, reject) => { fail = reject; }));
+        scans.begin();
+        fail(new Error('unreadable'));
+        await expect(failing).resolves.toBeNull();
+        await expect(scans.latest(scans.begin(), () => Promise.reject(new Error('unreadable')))).rejects.toThrow('unreadable');
+        expect(settle).not.toHaveBeenCalled();
+    });
+
+    it('settles a held scan that another one replaces', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await scans.track('scan-2');
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-1'], ['scan-2']]);
+    });
+
+    it('is the scan the panel runs: the request is taken before the first await and published only while latest', () => {
+        const body = panelSource.slice(panelSource.indexOf('const runScan = async'), panelSource.indexOf('// Drag-and-drop entry point'));
+        expect(body.indexOf('const request = scans.begin();')).toBeGreaterThan(0);
+        expect(body.indexOf('const request = scans.begin();')).toBeLessThan(body.indexOf('await '));
+        expect(body).toMatch(/await scans\.latest\(request, \(\) => invoke<BridgeImportResult>\('import_bridge_config'/);
+        const overtaken = body.indexOf('if (r === null) { latest = false; return; }');
+        expect(overtaken).toBeGreaterThan(0);
+        expect(overtaken).toBeLessThan(body.indexOf('setResult(r);'));
+        expect(panelSource).not.toMatch(/scans\.track\(/);
+    });
+
+    it('holds a confirmed preview as confirmed until a new scan replaces it', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        expect(scans.isCommitted()).toBe(false);
+        scans.markCommitted();
+        await scans.release();
+        expect(scans.isCommitted()).toBe(true);
+        await scans.latest(scans.begin(), async () => ({ scanId: 'scan-2' }));
+        expect(scans.isCommitted()).toBe(false);
+    });
+
+    // A confirm of scan-1 still running when scan-2 lands: the commit belongs
+    // to scan-1, so scan-2's preview must stay confirmable, not marked.
+    it('marks committed only the scan its confirm ran for', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        let finish!: () => void;
+        const gate = new Promise<void>(resolve => { finish = resolve; });
+        const confirming = scans.confirming(() => gate.then(() => 'stored'));
+        // The newer scan's track waits for the confirm in flight before it
+        // settles the scan it replaces.
+        const second = scans.latest(scans.begin(), async () => ({ scanId: 'scan-2' }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        finish();
+        await expect(confirming).resolves.toBe('stored');
+        await expect(second).resolves.toEqual({ scanId: 'scan-2' });
+        expect(settle).toHaveBeenCalledWith('scan-1');
+        expect(scans.markCommitted()).toBe(false);
+        expect(scans.isCommitted()).toBe(false);
+        // The confirm of the scan now held marks it.
+        await scans.confirming(async () => 'stored-2');
+        expect(scans.markCommitted()).toBe(true);
+        expect(scans.isCommitted()).toBe(true);
+    });
+
+    // Confirm only A: the settle takes back B's secrets. A second confirm of
+    // that preview, B ticked before the close timer fires, must not save B.
+    it('is the confirm the panel runs: once a preview is confirmed it cannot be confirmed again', () => {
+        const body = panelSource.slice(panelSource.indexOf('const confirmImport = async'), panelSource.indexOf('const selectImport'));
+        const guard = body.indexOf('scans.isCommitted()) return;');
+        expect(guard).toBeGreaterThan(0);
+        expect(guard).toBeLessThan(body.indexOf('commitImportedServersForScan('));
+        const marked = body.indexOf('if (!scans.markCommitted()) return;');
+        expect(marked).toBeGreaterThan(body.indexOf('commitImportedServersForScan('));
+        expect(marked).toBeLessThan(body.indexOf('setCommitted(true);'));
+        expect(body.indexOf('await scans.release();')).toBeLessThan(body.indexOf('setCommitted(true);'));
+        expect(panelSource).toMatch(/onClick=\{confirmImport\}\s*disabled=\{loading \|\| committed \|\| selectedIds\.size === 0\}/);
+        expect(panelSource).toMatch(/if \(!committed\) setSelectedIds\(next\);/);
+        expect(panelSource.match(/toggle\(s\.id, setSelectedIds\)|onChange=\{setSelectedIds\}/g)).toBeNull();
+    });
+
+    it('keeps going when a settle fails', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const settle = vi.fn().mockRejectedValueOnce(new Error('locked')).mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await expect(scans.release()).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalled();
+        await scans.track('scan-2');
+        await scans.release();
+        expect(settle.mock.calls).toEqual([['scan-1'], ['scan-2']]);
+        warn.mockRestore();
     });
 });

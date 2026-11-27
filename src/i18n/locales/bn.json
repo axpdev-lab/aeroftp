@@ -1439,7 +1439,10 @@
             "templateLogImported": "কনফিগারেশন টেমপ্লেট আমদানি হয়েছে: {imported}টি আমদানি, {skipped}টি এড়ানো হয়েছে, {invalid}টি অবৈধ",
             "templateLogBlocks": "ব্লকসমূহ: {blocks}",
             "templateDuplicateInTemplate": "টেমপ্লেটে অনুলিপি",
-            "templateSelectProfile": "{name} আমদানি করুন"
+            "templateSelectProfile": "{name} আমদানি করুন",
+            "exportAccountUnbound": "প্রোফাইল তালিকাটি কোনো অ্যাকাউন্টের সাথে যুক্ত নয়; কিছুই রপ্তানি করা হয়নি।",
+            "exportAccountChanged": "সক্রিয় অ্যাকাউন্ট বদলে গেছে; কিছুই রপ্তানি করা হয়নি।",
+            "exportAccountChangedDuringSave": "সেভ ডায়ালগ খোলা থাকাকালীন সক্রিয় অ্যাকাউন্ট বদলে গেছে; কিছুই রপ্তানি করা হয়নি।"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "\"{name}\" ইতিমধ্যে {user}-এ সংরক্ষিত আছে",
             "relocateError": "সার্ভার স্থানান্তর করা যায়নি: {error}",
             "relocateWrongPassword": "{user}-এর জন্য ভুল পাসওয়ার্ড।",
-            "relocateSecretsNotCopied": "\"{name}\" {user}-এ পৌঁছেছে, কিন্তু এর সংরক্ষিত পাসওয়ার্ড বা টোকেন পৌঁছায়নি, তাই সেখানে সেগুলো আবার চাওয়া হবে।"
+            "relocateSecretsNotCopied": "\"{name}\" {user}-এ পৌঁছেছে, কিন্তু এর সংরক্ষিত পাসওয়ার্ড বা টোকেন পৌঁছায়নি, তাই সেখানে সেগুলো আবার চাওয়া হবে।",
+            "relocateMovedCleanupFailed": "\"{name}\" {user}-এ সরানো হয়েছে, কিন্তু এর Proton Drive সেশন উৎস অ্যাকাউন্ট থেকে সরানো যায়নি।"
         },
         "cyberTools": {
             "title": "নিরাপত্তা সরঞ্জাম",
@@ -5923,7 +5927,9 @@
                 "months": "{count} মাস"
             },
             "demoTabLabel": "ডেমো: {protocol}",
-            "newTabLabel": "নতুন: {name}"
+            "newTabLabel": "নতুন: {name}",
+            "protonSessionEndsAtUnlock": "এই প্রোফাইলের Proton সেশনটি পরের বার এই অ্যাকাউন্টটি আনলক করা হলে শেষ হয়, যদি না এই কম্পিউটারের অন্য কোনো অ্যাকাউন্ট এটি ব্যবহার করে।",
+            "profileSecretsNotRemoved": "প্রোফাইলটি সরানো হয়েছে, কিন্তু এর কিছু সংরক্ষিত শংসাপত্র ভল্ট থেকে মুছে ফেলা যায়নি."
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

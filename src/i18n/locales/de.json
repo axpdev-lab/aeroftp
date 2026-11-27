@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurationsvorlage importiert: {imported} importiert, {skipped} übersprungen, {invalid} ungültig",
             "templateLogBlocks": "Blöcke: {blocks}",
             "templateDuplicateInTemplate": "Duplikat in Vorlage",
-            "templateSelectProfile": "{name} importieren"
+            "templateSelectProfile": "{name} importieren",
+            "exportAccountUnbound": "Die Profilliste ist mit keinem Konto verknüpft; es wurde nichts exportiert.",
+            "exportAccountChanged": "Das aktive Konto hat sich geändert; es wurde nichts exportiert.",
+            "exportAccountChangedDuringSave": "Das aktive Konto hat sich geändert, während das Speicherdialogfenster geöffnet war; es wurde nichts exportiert."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ ist bereits in {user} gespeichert",
             "relocateError": "Server konnte nicht übertragen werden: {error}",
             "relocateWrongPassword": "Falsches Passwort für {user}.",
-            "relocateSecretsNotCopied": "„{name}“ ist bei {user} angekommen, das gespeicherte Passwort oder Token jedoch nicht, daher wird dort erneut danach gefragt."
+            "relocateSecretsNotCopied": "„{name}“ ist bei {user} angekommen, das gespeicherte Passwort oder Token jedoch nicht, daher wird dort erneut danach gefragt.",
+            "relocateMovedCleanupFailed": "\"{name}\" wurde zu {user} verschoben, aber die zugehörige Proton Drive-Sitzung konnte nicht aus dem Quellkonto entfernt werden."
         },
         "cyberTools": {
             "title": "Sicherheitstools",
@@ -5923,7 +5927,9 @@
                 "months": "{count} Mon."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Neu: {name}"
+            "newTabLabel": "Neu: {name}",
+            "protonSessionEndsAtUnlock": "Die Proton-Sitzung dieses Profils endet, wenn dieses Konto das nächste Mal entsperrt wird, es sei denn, ein anderes Konto auf diesem Computer verwendet sie.",
+            "profileSecretsNotRemoved": "Das Profil wurde entfernt, aber einige seiner gespeicherten Zugangsdaten konnten nicht aus dem Tresor gelöscht werden."
         },
         "gitlab": {
             "projectPath": "Projektpfad",

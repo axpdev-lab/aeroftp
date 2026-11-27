@@ -1439,7 +1439,10 @@
             "templateLogImported": "Predložak konfiguracije uvezen: {imported} uvezeno, {skipped} preskočeno, {invalid} nevažećih",
             "templateLogBlocks": "Blokovi: {blocks}",
             "templateDuplicateInTemplate": "duplikat u predlošku",
-            "templateSelectProfile": "Uvezi {name}"
+            "templateSelectProfile": "Uvezi {name}",
+            "exportAccountUnbound": "Popis profila nije povezan s računom; ništa nije izvezeno.",
+            "exportAccountChanged": "Aktivni račun se promijenio; ništa nije izvezeno.",
+            "exportAccountChangedDuringSave": "Aktivni račun se promijenio dok je dijalog za spremanje bio otvoren; ništa nije izvezeno."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ je već spremljen u {user}",
             "relocateError": "Poslužitelj nije moguće prenijeti: {error}",
             "relocateWrongPassword": "Pogrešna lozinka za {user}.",
-            "relocateSecretsNotCopied": "„{name}“ je stigao do {user}, ali spremljena lozinka ili token nisu, pa će ih ondje ponovno zatražiti."
+            "relocateSecretsNotCopied": "„{name}“ je stigao do {user}, ali spremljena lozinka ili token nisu, pa će ih ondje ponovno zatražiti.",
+            "relocateMovedCleanupFailed": "\"{name}\" je premješten korisniku {user}, ali se njegova Proton Drive sesija nije mogla ukloniti s izvornog računa."
         },
         "cyberTools": {
             "title": "Sigurnosni alati",
@@ -5923,7 +5927,9 @@
                 "months": "{count} mj."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Novo: {name}"
+            "newTabLabel": "Novo: {name}",
+            "protonSessionEndsAtUnlock": "Proton sesija ovog profila završava pri sljedećem otključavanju ovog računa, osim ako je koristi drugi račun na ovom računalu.",
+            "profileSecretsNotRemoved": "Profil je uklonjen, ali neki od njegovih spremljenih vjerodajnica nisu se mogli izbrisati iz trezora."
         },
         "gitlab": {
             "projectPath": "Putanja projekta",

@@ -610,11 +610,11 @@ See [SECURITY.md](SECURITY.md) for the security policy and architecture summary,
 AeroFTP runs its own vulnerability audit pipeline that does not depend on any vendor SaaS. The pipeline aggregates three independent advisory databases (RustSec, npm registry, Google OSV) and cross-references findings against a documented suppression list with written rationales for every accepted advisory.
 
 ```bash
-npm run security:report        # generate HTML report
+npm run security:report        # generate HTML + Markdown reports
 npm run security:report -- --json    # machine-readable output
 ```
 
-Output is published in [`docs/security/security-report-latest.html`](docs/security/security-report-latest.html). The script and suppression list ([`src-tauri/.cargo/audit.toml`](src-tauri/.cargo/audit.toml)) are in the repository. `npm run security:report` regenerates that HTML report on a developer machine. It is not a GitHub Actions step. The Checks workflow runs `cargo audit --deny warnings`. On a pull request that whole step is non-blocking. A push to `main` and the Monday run fail the job.
+Output is published in [`docs/security/security-report-latest.md`](docs/security/security-report-latest.md) (rendered by GitHub; the HTML twin [`security-report-latest.html`](docs/security/security-report-latest.html) stays for local browser viewing). The script and suppression list ([`src-tauri/.cargo/audit.toml`](src-tauri/.cargo/audit.toml)) are in the repository. `npm run security:report` regenerates those reports on a developer machine. It is not a GitHub Actions step. The Checks workflow runs `cargo audit --deny warnings`. On a pull request that whole step is non-blocking. A push to `main` and the Monday run fail the job.
 
 | Month | Version | Open | Suppressed (justified) | Notes |
 |---|---|---|---|---|
@@ -622,14 +622,15 @@ Output is published in [`docs/security/security-report-latest.html`](docs/securi
 | Jun 2026 | v4.0.5 | **0** | 23 | russh 0.61.2 cleared GHSA-wwx6-x28x-8259 (HIGH) + GHSA-hpv4-5h6f-wqr3 (MEDIUM) + SFTP parsing advisories; 2 suppressions removed |
 | Jun 2026 | v4.0.7 | **0** | 28 | Full self-hosted run (`cargo audit` + `npm audit` + `osv-scanner` 2.4.0): 0 open, 28 advisories suppressed per `audit.toml`; dual blind AeroVault audit remediation shipped (grade A) |
 | Nov 2026 | v4.2.6 (`main` at `9fe735ab8` plus this audit's changes) | **0** | 25 | Full self-hosted run (`cargo audit` 0.22.2 + `npm audit` + `osv-scanner` 2.4.0). The one open finding on `main` at `ccf3f4be9`, tokio RUSTSEC-2026-0386 in the test-only fake portal lockfile, was cleared by moving it to tokio 1.54.1; the scanned tree includes that change. 16 ignores that no longer matched any advisory were removed from `audit.toml`, which now lists 17 IDs. From this run a suppressed finding is one package version and one advisory, counted once across lockfiles; earlier rows counted one per lockfile record |
+| Nov 2026 | v4.2.8+ (`main` at `5baea18e` plus the RUSTSEC-2026-0592 fix in peer-l0) | **0** | 35 | Full self-hosted run (`cargo-audit` 0.22.2 + `npm audit` 11.19.0 + `osv-scanner` 2.3.8): 0 open, 35 advisories suppressed per `audit.toml`. `url` 2.5.8 -> 2.5.9 in `src-tauri/peer-l0/Cargo.lock` cleared RUSTSEC-2026-0592; `cargo audit` is clean on all three lockfiles. The report is now also emitted as GitHub-rendered Markdown (`security-report-latest.md`) |
 
-The rows above are dated runs. The newest one is a scan of `main` at `9fe735ab8` (after 4.2.6) with this audit's lockfile and `audit.toml` changes applied, not of a later revision. Release preparation must use current audit results. Past Aikido Security reports remain linked in the Security Posture table below for archive.
+The rows above are dated runs. The newest one is a scan of `main` at `5baea18e` (after 4.2.6) with the peer-l0 lockfile fix applied, not of a later revision. Release preparation must use current audit results. Past Aikido Security reports remain linked in the Security Posture table below for archive.
 
 ### Security Posture
 
 | Area | Details |
 |---|---|
-| **Self-Hosted Audit** | `cargo audit` + `npm audit` + `osv-scanner` aggregator with documented suppression list - dated results in the [checked-in report](docs/security/security-report-latest.html); rerun for the release revision |
+| **Self-Hosted Audit** | `cargo audit` + `npm audit` + `osv-scanner` aggregator with documented suppression list - dated results in the [checked-in report](docs/security/security-report-latest.md) ([HTML](docs/security/security-report-latest.html)); rerun for the release revision |
 | **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) - all 67 criteria met |
 | **Aikido Security** | Past audits archived - **Top 5% benchmark**, 0 open issues during trial period (Feb-May 2026) |
 | **Socket.dev** | Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection |

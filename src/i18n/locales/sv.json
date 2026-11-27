@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurationsmall importerad: {imported} importerade, {skipped} överhoppade, {invalid} ogiltiga",
             "templateLogBlocks": "Block: {blocks}",
             "templateDuplicateInTemplate": "dubblett i mallen",
-            "templateSelectProfile": "Importera {name}"
+            "templateSelectProfile": "Importera {name}",
+            "exportAccountUnbound": "Profilistan är inte knuten till ett konto; ingenting exporterades.",
+            "exportAccountChanged": "Det aktiva kontot ändrades; ingenting exporterades.",
+            "exportAccountChangedDuringSave": "Det aktiva kontot ändrades medan spara-dialogen var öppen; ingenting exporterades."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "”{name}” är redan sparat i {user}",
             "relocateError": "Det gick inte att överföra servern: {error}",
             "relocateWrongPassword": "Fel lösenord för {user}.",
-            "relocateSecretsNotCopied": "”{name}” kom fram till {user}, men det sparade lösenordet eller tokenet följde inte med, så de efterfrågas på nytt där."
+            "relocateSecretsNotCopied": "”{name}” kom fram till {user}, men det sparade lösenordet eller tokenet följde inte med, så de efterfrågas på nytt där.",
+            "relocateMovedCleanupFailed": "\"{name}\" flyttades till {user}, men dess Proton Drive-session kunde inte tas bort från källkontot."
         },
         "cyberTools": {
             "title": "Säkerhetsverktyg",
@@ -5923,7 +5927,9 @@
                 "months": "{count} mån"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Ny: {name}"
+            "newTabLabel": "Ny: {name}",
+            "protonSessionEndsAtUnlock": "Proton-sessionen för den här profilen avslutas nästa gång det här kontot låses upp, såvida inte ett annat konto på den här datorn använder den.",
+            "profileSecretsNotRemoved": "Profilen togs bort, men vissa av dess sparade inloggningsuppgifter kunde inte raderas från valvet."
         },
         "gitlab": {
             "projectPath": "Projektsökväg",

@@ -1439,7 +1439,10 @@
             "templateLogImported": "Шаблон конфигурације увезен: {imported} увезено, {skipped} прескочено, {invalid} неважећих",
             "templateLogBlocks": "Блокови: {blocks}",
             "templateDuplicateInTemplate": "дупликат у шаблону",
-            "templateSelectProfile": "Увези {name}"
+            "templateSelectProfile": "Увези {name}",
+            "exportAccountUnbound": "Листа профила није повезана са налогом; ништа није извезено.",
+            "exportAccountChanged": "Активни налог се променио; ништа није извезено.",
+            "exportAccountChangedDuringSave": "Активни налог се променио откако је овај дијалог за чување отворен; ништа није извезено."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ је већ сачуван у {user}",
             "relocateError": "Сервер није могуће пренети: {error}",
             "relocateWrongPassword": "Погрешна лозинка за {user}.",
-            "relocateSecretsNotCopied": "„{name}“ је стигао на {user}, али сачувана лозинка или токен нису, па ће их тамо поново затражити."
+            "relocateSecretsNotCopied": "„{name}“ је стигао на {user}, али сачувана лозинка или токен нису, па ће их тамо поново затражити.",
+            "relocateMovedCleanupFailed": "\"{name}\" је премештен код корисника {user}, али се његова Proton Drive сесија није могла уклонити са изворног налога."
         },
         "cyberTools": {
             "title": "Безбедносни алати",
@@ -5923,7 +5927,9 @@
                 "months": "{count} мес"
             },
             "demoTabLabel": "Демо: {protocol}",
-            "newTabLabel": "Ново: {name}"
+            "newTabLabel": "Ново: {name}",
+            "protonSessionEndsAtUnlock": "Proton сесија овог профила завршава се при следећем откључавању овог налога, осим ако је користи други налог на овом рачунару.",
+            "profileSecretsNotRemoved": "Профил је уклоњен, али неке од његових сачуваних акредитива није било могуће обрисати из сефа."
         },
         "gitlab": {
             "projectPath": "Путања пројекта",

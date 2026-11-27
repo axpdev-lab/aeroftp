@@ -1439,7 +1439,10 @@
             "templateLogImported": "Konfigurációs sablon importálva: {imported} importálva, {skipped} kihagyva, {invalid} érvénytelen",
             "templateLogBlocks": "Blokkok: {blocks}",
             "templateDuplicateInTemplate": "duplikátum a sablonban",
-            "templateSelectProfile": "{name} importálása"
+            "templateSelectProfile": "{name} importálása",
+            "exportAccountUnbound": "A profillista nincs fiókhoz kötve; semmi sem került exportálásra.",
+            "exportAccountChanged": "Az aktív fiók megváltozott; semmi sem került exportálásra.",
+            "exportAccountChangedDuringSave": "Az aktív fiók megváltozott, miközben a mentési párbeszédpanel nyitva volt; semmi sem került exportálásra."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "A(z) „{name}” már mentve van itt: {user}",
             "relocateError": "A kiszolgálót nem sikerült átvinni: {error}",
             "relocateWrongPassword": "Helytelen jelszó a következőhöz: {user}.",
-            "relocateSecretsNotCopied": "A(z) „{name}” megérkezett ide: {user}, de a mentett jelszava vagy tokenje nem, ezért ott újra kérni fogja őket."
+            "relocateSecretsNotCopied": "A(z) „{name}” megérkezett ide: {user}, de a mentett jelszava vagy tokenje nem, ezért ott újra kérni fogja őket.",
+            "relocateMovedCleanupFailed": "A(z) \"{name}\" átkerült {user} fiókjához, de a Proton Drive-munkamenetét nem sikerült eltávolítani a forrásfiókról."
         },
         "cyberTools": {
             "title": "Biztonsági eszközök",
@@ -5923,7 +5927,9 @@
                 "months": "{count} hó"
             },
             "demoTabLabel": "Bemutató: {protocol}",
-            "newTabLabel": "Új: {name}"
+            "newTabLabel": "Új: {name}",
+            "protonSessionEndsAtUnlock": "Ennek a profilnak a Proton-munkamenete a fiók következő feloldásakor véget ér, hacsak nem használja egy másik fiók ezen a számítógépen.",
+            "profileSecretsNotRemoved": "A profil el lett távolítva, de néhány mentett hitelesítő adatát nem sikerült törölni a széfből."
         },
         "gitlab": {
             "projectPath": "Projekt útvonal",

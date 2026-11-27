@@ -772,9 +772,68 @@ fn vault_temporary(path: &Path) -> PathBuf {
 pub(crate) fn off_async_worker<T>(write: impl FnOnce() -> T) -> T {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
-            tokio::task::block_in_place(write)
+            tokio::task::block_in_place(|| {
+                #[cfg(test)]
+                let _off = off_worker_probe::Off::enter();
+                write()
+            })
         }
         _ => write(),
+    }
+}
+
+/// Mark a function that reads the partition database or the vault, or takes
+/// a lock held across them, as one that must not run on an async worker. In
+/// tests a call made on a multi-thread runtime outside [`off_async_worker`]
+/// is recorded ([`off_worker_probe::take`]); elsewhere it does nothing.
+#[inline]
+pub(crate) fn expect_off_worker(_what: &'static str) {
+    #[cfg(test)]
+    off_worker_probe::check(_what);
+}
+
+/// What [`expect_off_worker`] records, in tests.
+#[cfg(test)]
+pub(crate) mod off_worker_probe {
+    use std::cell::Cell;
+    use std::sync::Mutex;
+
+    thread_local! {
+        static OFF: Cell<bool> = const { Cell::new(false) };
+    }
+
+    static ON_WORKER: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+
+    /// This thread runs a closure handed to `off_async_worker` while held.
+    pub(super) struct Off(bool);
+
+    impl Off {
+        pub(super) fn enter() -> Self {
+            Self(OFF.with(|off| off.replace(true)))
+        }
+    }
+
+    impl Drop for Off {
+        fn drop(&mut self) {
+            OFF.with(|off| off.set(self.0));
+        }
+    }
+
+    pub(super) fn check(what: &'static str) {
+        let on_runtime = tokio::runtime::Handle::try_current().is_ok_and(|handle| {
+            handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
+        });
+        if on_runtime && !OFF.with(Cell::get) {
+            ON_WORKER
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(what);
+        }
+    }
+
+    /// What ran on an async worker since the last call, and forget it.
+    pub(crate) fn take() -> Vec<&'static str> {
+        std::mem::take(&mut *ON_WORKER.lock().unwrap_or_else(|e| e.into_inner()))
     }
 }
 
@@ -853,6 +912,29 @@ thread_local! {
     /// A vault file name whose permissions [`secure_vault_file`] refuses.
     static SECURE_FAILS_FOR: std::cell::RefCell<Option<String>> =
         const { std::cell::RefCell::new(None) };
+    /// An account name whose [`CredentialStore::store`] and
+    /// [`CredentialStore::store_entries`] refuse, to prove a multi-key update
+    /// cannot be split into separate writes.
+    static STORE_FAILS_FOR: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Whether tests refuse a store of `account` (see [`STORE_FAILS_FOR`]).
+#[cfg(test)]
+fn store_fails_for(account: &str) -> bool {
+    STORE_FAILS_FOR.with(|name| name.borrow().as_deref().is_some_and(|name| name == account))
+}
+
+/// Refuse stores of `account` on this thread until [`allow_store_for_test`].
+#[cfg(test)]
+pub(crate) fn refuse_store_for_test(account: &str) {
+    STORE_FAILS_FOR.with(|name| *name.borrow_mut() = Some(account.to_string()));
+}
+
+/// Lift a [`refuse_store_for_test`] refusal on this thread.
+#[cfg(test)]
+pub(crate) fn allow_store_for_test() {
+    STORE_FAILS_FOR.with(|name| *name.borrow_mut() = None);
 }
 
 fn write_and_rename(tmp_path: &Path, path: &Path, data: &[u8]) -> Result<(), CredentialError> {
@@ -2480,6 +2562,95 @@ impl CredentialStore {
         Ok(true)
     }
 
+    /// Stores `secret` under `account` and returns the value it replaced
+    /// (`None`: there was none), read and written under one cross-process
+    /// vault lock, so the value returned is the one this write replaced and
+    /// never one read before another writer stored its own. A previous value
+    /// that cannot be decrypted refuses the write.
+    pub(crate) fn store_returning_previous(
+        &self,
+        account: &str,
+        secret: &str,
+    ) -> Result<Option<Zeroizing<String>>, CredentialError> {
+        Self::reject_reserved_account(account)?;
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
+        let previous = match vault.entries.get(account) {
+            Some(entry) => {
+                let plaintext = Zeroizing::new(
+                    crate::crypto::decrypt_aes_gcm(&self.vault_key, &entry.nonce, &entry.data)
+                        .map_err(CredentialError::Encryption)?,
+                );
+                let previous = std::str::from_utf8(&plaintext)
+                    .map_err(|e| CredentialError::Encryption(e.to_string()))?;
+                Some(Zeroizing::new(previous.to_owned()))
+            }
+            None => None,
+        };
+        let nonce = crate::crypto::random_bytes(12);
+        let data = crate::crypto::encrypt_aes_gcm(&self.vault_key, &nonce, secret.as_bytes())
+            .map_err(CredentialError::Encryption)?;
+        vault
+            .entries
+            .insert(account.to_owned(), VaultEntry { nonce, data });
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
+        info!("Credential stored: {}", account);
+        Ok(previous)
+    }
+
+    /// Deletes `account` only while it still holds `expected`, so a write
+    /// being undone never removes a value another writer stored since.
+    /// Whether it was deleted.
+    pub(crate) fn delete_secret_if_unchanged(
+        &self,
+        account: &str,
+        expected: &str,
+    ) -> Result<bool, CredentialError> {
+        Self::reject_reserved_account(account)?;
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
+        let Some(entry) = vault.entries.get(account) else {
+            return Ok(false);
+        };
+        let plaintext = Zeroizing::new(
+            crate::crypto::decrypt_aes_gcm(&self.vault_key, &entry.nonce, &entry.data)
+                .map_err(CredentialError::Encryption)?,
+        );
+        use subtle::ConstantTimeEq;
+        if !bool::from(plaintext.as_slice().ct_eq(expected.as_bytes())) {
+            return Ok(false);
+        }
+        vault.entries.remove(account);
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
+        Ok(true)
+    }
+
+    /// Put `value` under `account` (`None`: remove it) only while it holds
+    /// `expected` (`None`: absent), under the cross-process vault lock, so a
+    /// write being undone never replaces a value another writer stored since.
+    /// Whether it was written.
+    pub(crate) fn swap_secret_if(
+        &self,
+        account: &str,
+        expected: Option<&str>,
+        value: Option<&str>,
+    ) -> Result<bool, CredentialError> {
+        match (expected, value) {
+            (Some(expected), Some(value)) => {
+                self.replace_secret_if_unchanged(account, expected, value)
+            }
+            (Some(expected), None) => self.delete_secret_if_unchanged(account, expected),
+            (None, Some(value)) => self.store_secret_if_absent(account, value),
+            (None, None) => match self.get(account) {
+                Ok(_) => Ok(false),
+                Err(CredentialError::NotFound(_)) => Ok(true),
+                Err(e) => Err(e),
+            },
+        }
+    }
+
     /// Legacy migration never replaces an authorization created in the meantime.
     pub(crate) fn store_secret_if_absent(
         &self,
@@ -2549,8 +2720,54 @@ impl CredentialStore {
         self.store_entry(account, secret)
     }
 
+    /// Apply several entry updates in ONE vault write: each `Some` stores the
+    /// plaintext, each `None` removes the key. Read, change and write share
+    /// the cross-process vault lock, so an interrupted update can never
+    /// publish one key without the others.
+    pub(crate) fn store_entries(
+        &self,
+        updates: &[(&str, Option<&str>)],
+    ) -> Result<(), CredentialError> {
+        for (account, _) in updates {
+            Self::reject_reserved_account(account)?;
+            #[cfg(test)]
+            if store_fails_for(account) {
+                return Err(CredentialError::Io(std::io::Error::other(
+                    "store refused (test)",
+                )));
+            }
+        }
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
+        for (account, secret) in updates {
+            match secret {
+                Some(secret) => {
+                    let nonce = crate::crypto::random_bytes(12);
+                    let data =
+                        crate::crypto::encrypt_aes_gcm(&self.vault_key, &nonce, secret.as_bytes())
+                            .map_err(CredentialError::Encryption)?;
+                    vault
+                        .entries
+                        .insert((*account).to_string(), VaultEntry { nonce, data });
+                }
+                None => {
+                    vault.entries.remove(*account);
+                }
+            }
+        }
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
+        Ok(())
+    }
+
     /// Shared store implementation
     fn store_entry(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+        #[cfg(test)]
+        if store_fails_for(account) {
+            return Err(CredentialError::Io(std::io::Error::other(
+                "store refused (test)",
+            )));
+        }
         // Read under the lock, so a write of another process is never lost.
         let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
         let mut vault = Self::read_vault(&self.vault_path)?;
@@ -2628,7 +2845,8 @@ impl CredentialStore {
 
     /// Flip one ciphertext byte of `account`'s entry, so reading it fails
     /// with an `Encryption` error while every other entry still reads.
-    // Used only by profile_auth_tests.rs, which builds on Linux alone.
+    // Used by profile_auth_tests.rs, which builds on Linux alone, and the
+    // profile purge tests, built there too.
     #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn corrupt_entry_for_test(&self, account: &str) {
         let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path).unwrap()).unwrap();
@@ -4290,6 +4508,166 @@ mod vault_lock_tests {
             let rest = &source[start..];
             &rest[..rest.find("\n    }\n").unwrap()]
         }
+        /// `source` with every comment, string and character literal blanked
+        /// out, byte for byte, so offsets stay where they were.
+        fn code_only(source: &str) -> String {
+            let bytes = source.as_bytes();
+            let mut out = bytes.to_vec();
+            let mut at = 0;
+            let blank = |out: &mut Vec<u8>, from: usize, to: usize| {
+                for byte in &mut out[from..to] {
+                    if *byte != b'\n' {
+                        *byte = b' ';
+                    }
+                }
+            };
+            while at < bytes.len() {
+                let rest = &bytes[at..];
+                if rest.starts_with(b"//") {
+                    let end = rest.iter().position(|&b| b == b'\n').unwrap_or(rest.len());
+                    blank(&mut out, at, at + end);
+                    at += end;
+                } else if rest.starts_with(b"/*") {
+                    // Block comments nest in Rust: the comment ends at the
+                    // `*/` that closes the first `/*`.
+                    let mut depth = 0;
+                    let mut end = 0;
+                    while end < rest.len() {
+                        if rest[end..].starts_with(b"/*") {
+                            depth += 1;
+                            end += 2;
+                        } else if rest[end..].starts_with(b"*/") {
+                            depth -= 1;
+                            end += 2;
+                            if depth == 0 {
+                                break;
+                            }
+                        } else {
+                            end += 1;
+                        }
+                    }
+                    blank(&mut out, at, at + end);
+                    at += end;
+                } else if rest[0] == b'r' && rest.get(1).is_some_and(|&b| b == b'"' || b == b'#') {
+                    let hashes = rest[1..].iter().take_while(|&&b| b == b'#').count();
+                    if rest.get(1 + hashes) != Some(&b'"') {
+                        at += 1;
+                        continue;
+                    }
+                    let close = format!("\"{}", "#".repeat(hashes));
+                    let end = source[at + 2 + hashes..]
+                        .find(&close)
+                        .map_or(rest.len(), |e| 2 + hashes + e + close.len());
+                    blank(&mut out, at, at + end);
+                    at += end;
+                } else if rest[0] == b'"' {
+                    let mut end = 1;
+                    while end < rest.len() && rest[end] != b'"' {
+                        end += if rest[end] == b'\\' { 2 } else { 1 };
+                    }
+                    let end = (end + 1).min(rest.len());
+                    blank(&mut out, at, at + end);
+                    at += end;
+                } else if rest[0] == b'\'' {
+                    // A character literal ('x', '\n', '\''), not a lifetime.
+                    let len = if rest.get(1) == Some(&b'\\') {
+                        rest[2..].iter().position(|&b| b == b'\'').map(|e| e + 3)
+                    } else {
+                        let width = source[at + 1..].chars().next().map_or(1, char::len_utf8);
+                        (rest.get(1 + width) == Some(&b'\'')).then_some(width + 2)
+                    };
+                    match len {
+                        Some(len) => {
+                            blank(&mut out, at, at + len);
+                            at += len;
+                        }
+                        None => at += 1,
+                    }
+                } else {
+                    at += 1;
+                }
+            }
+            String::from_utf8(out).expect("blanked source")
+        }
+        /// Where the body of the closure handed to each `off_async_worker(`
+        /// call in `source` lies, after its `||`, parentheses matched, in the
+        /// code alone: what runs off the worker. An argument that is not a
+        /// closure (a value computed on the calling thread) has no body.
+        fn worker_spans(source: &str) -> Vec<std::ops::Range<usize>> {
+            let code = code_only(source);
+            code.match_indices("off_async_worker(")
+                .filter_map(|(call, name)| {
+                    let open = call + name.len() - 1;
+                    let argument = code[open + 1..].trim_start();
+                    let argument = argument
+                        .strip_prefix("move")
+                        .map_or(argument, str::trim_start);
+                    let body = argument.strip_prefix("||")?;
+                    let start = code.len() - body.len();
+                    let mut depth = 1;
+                    for (at, c) in code[open + 1..].char_indices() {
+                        match c {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return Some(start..open + 1 + at);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    panic!("unbalanced off_async_worker call")
+                })
+                .collect()
+        }
+        /// How many times `call` appears in the code of `source`, and how many
+        /// of them run off the worker: comments and strings are no calls.
+        fn calls(source: &str, call: &str) -> (usize, usize) {
+            let code = code_only(source);
+            let spans = worker_spans(source);
+            let all = code.matches(call).count();
+            let off = code
+                .match_indices(call)
+                .filter(|(at, _)| spans.iter().any(|span| span.contains(at)))
+                .count();
+            (all, off)
+        }
+        // The count: a name in a string or in a nested comment is no call,
+        // and a real call on the calling thread is still one.
+        let clock = "deletion_clock()";
+        assert_eq!(
+            calls(
+                "off_async_worker(|| deletion_clock()); log(\"deletion_clock()\")",
+                clock
+            ),
+            (1, 1)
+        );
+        assert_eq!(
+            calls(
+                "/* a /* b */ deletion_clock() */ off_async_worker(|| deletion_clock())",
+                clock
+            ),
+            (1, 1)
+        );
+        assert_eq!(
+            calls(
+                "deletion_clock(); off_async_worker(|| deletion_clock())",
+                clock
+            ),
+            (2, 1)
+        );
+        // The scanner itself: a value computed before the closure is not off
+        // the worker, and a parenthesis in a comment or a string is not code.
+        assert!(worker_spans("off_async_worker({ let r = read(); move || r })").is_empty());
+        let commented = "off_async_worker(|| { // (\n read() })\nafter()";
+        let spans = worker_spans(commented);
+        assert_eq!(spans.len(), 1);
+        assert!(spans[0].contains(&commented.find("read").unwrap()));
+        assert!(!spans[0].contains(&commented.find("after").unwrap()));
+        let quoted = "off_async_worker(|| log(\")\")); after()";
+        let spans = worker_spans(quoted);
+        assert!(!spans[0].contains(&quoted.find("after").unwrap()));
         let oauth = include_str!("providers/oauth2.rs");
         let refresh = body(oauth, "pub async fn refresh_tokens(");
         assert!(
@@ -4300,30 +4678,79 @@ mod vault_lock_tests {
             !refresh.contains("\n        self.store_tokens("),
             "oauth2 refresh_tokens"
         );
+        // `inner` is the call without its arguments, so renaming an argument
+        // keeps the property: only the wrapper makes the call.
         for (source, signature, inner) in [
             (
                 include_str!("providers/jottacloud.rs"),
                 "fn persist_refresh_token(&self) {",
-                "persist_refresh_token_now(&accounts)",
+                "self.persist_refresh_token_now(",
             ),
             (
                 include_str!("providers/mega_native.rs"),
                 "fn persist_session(&self) -> Result<(), ProviderError> {",
-                "persist_session_now()",
+                "self.persist_session_now(",
             ),
         ] {
             let wrapper = body(source, signature);
             assert!(wrapper.contains("off_async_worker("), "{signature}");
-            assert!(wrapper.contains(inner), "{signature}");
+            // The call is the closure handed to the worker, not a call made
+            // before it on the async thread.
+            assert!(
+                wrapper.contains(&format!("off_async_worker(|| {inner}")),
+                "{signature}"
+            );
             assert_eq!(
                 source.matches(inner).count(),
                 1,
                 "{inner} is called only by its wrapper"
             );
         }
+        // The Jottacloud wrapper reads nothing itself: the deletion checks are
+        // in the body it hands to the worker.
+        let jotta = include_str!("providers/jottacloud.rs");
+        let wrapper = body(jotta, "fn persist_refresh_token(&self) {");
+        for read in ["chain_deletions", "DELETED_CHAINS", "PENDING_ROTATIONS"] {
+            assert!(
+                !wrapper.contains(read),
+                "persist_refresh_token reads {read}"
+            );
+        }
+        // A connection's reads of the partition database and the vault run off
+        // the worker: every call of each is the closure handed to it.
+        for (signature, expected) in [
+            (
+                "async fn connect(&mut self) -> Result<(), ProviderError> {",
+                &["self.bind_credential_owner()", "self.begin_login_chain()"][..],
+            ),
+            (
+                "async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {",
+                &[
+                    "self.bind_credential_owner()",
+                    "self.note_chain_generations()",
+                    "Self::load_refresh_chain(",
+                    "Self::stored_token_now(",
+                    "delete_user_credential_where(",
+                    "deletion_clock()",
+                ][..],
+            ),
+        ] {
+            let connection = body(jotta, signature);
+            for call in expected {
+                let (all, off) = calls(connection, call);
+                assert!(all > 0, "{signature}: {call} not found");
+                assert_eq!(off, all, "{signature}: {call} runs on the async worker");
+            }
+        }
         let proton = include_str!("providers/proton_native/vault.rs");
+        let save = body(proton, "fn save(&self, tokens: &SessionTokens) {");
+        // The write is inside the closure handed to the worker, never before
+        // or after it.
+        assert_eq!(save.matches("save_refreshed(").count(), 1, "proton save");
+        let at = save.find("save_refreshed(").unwrap();
         assert!(
-            body(proton, "fn save(&self, tokens: &SessionTokens) {").contains("off_async_worker(")
+            worker_spans(save).iter().any(|span| span.contains(&at)),
+            "proton save writes outside the worker closure"
         );
     }
 
@@ -4338,28 +4765,49 @@ mod vault_lock_tests {
 
     #[test]
     fn off_async_worker_hands_a_multi_thread_worker_back() {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_time()
-            .build()
-            .unwrap();
-        runtime.block_on(async {
-            // With one worker, a write that blocked it in place would starve
-            // this task; block_in_place hands the other task to a new worker.
-            let ticker = tokio::spawn(async {
-                tokio::time::sleep(Duration::from_millis(20)).await;
-                true
+        // Bounded by a thread of its own: a write that blocked the only worker
+        // in place drives no timer, so no timeout inside the runtime could.
+        let (done, finished) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_time()
+                .build()
+                .unwrap();
+            let times = runtime.block_on(async {
+                // With one worker, a write that blocked it in place would
+                // starve this task; block_in_place hands the other task to a
+                // new worker. When each began and ended: the ticker must come
+                // due after the write began and before it ended, which a
+                // ticker done before the write started would not show.
+                let started = std::sync::Arc::new(std::sync::Mutex::new(None));
+                let ticker = tokio::spawn(async {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    std::time::Instant::now()
+                });
+                let mark = started.clone();
+                let ran = tokio::spawn(async move {
+                    off_async_worker(move || {
+                        *mark.lock().unwrap() = Some(std::time::Instant::now());
+                        std::thread::sleep(Duration::from_millis(200));
+                    });
+                    std::time::Instant::now()
+                });
+                let ticked = ticker.await.unwrap();
+                let written = ran.await.unwrap();
+                let started = started.lock().unwrap().expect("the write ran");
+                (started, ticked, written)
             });
-            let ran = tokio::spawn(async {
-                off_async_worker(|| std::thread::sleep(Duration::from_millis(200)));
-                true
-            });
-            assert!(tokio::time::timeout(Duration::from_millis(150), ticker)
-                .await
-                .expect("the other task ran while the write waited")
-                .unwrap());
-            assert!(ran.await.unwrap());
+            let _ = done.send(times);
         });
+        let (started, ticked, written) = finished
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the runtime finished");
+        assert!(started < ticked, "the other task ran after the write began");
+        assert!(
+            ticked < written,
+            "the other task ran while the write waited"
+        );
     }
 
     /// No vault writer may bypass the unique temporaries again.

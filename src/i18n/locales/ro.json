@@ -1439,7 +1439,10 @@
             "templateLogImported": "Șablon de configurare importat: {imported} importate, {skipped} omise, {invalid} nevalide",
             "templateLogBlocks": "Blocuri: {blocks}",
             "templateDuplicateInTemplate": "duplicat în șablon",
-            "templateSelectProfile": "Importă {name}"
+            "templateSelectProfile": "Importă {name}",
+            "exportAccountUnbound": "Lista de profiluri nu este asociată cu un cont; nimic nu a fost exportat.",
+            "exportAccountChanged": "Contul activ s-a schimbat; nimic nu a fost exportat.",
+            "exportAccountChangedDuringSave": "Contul activ s-a schimbat în timp ce dialogul de salvare era deschis; nimic nu a fost exportat."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}” este deja salvat în {user}",
             "relocateError": "Serverul nu a putut fi transferat: {error}",
             "relocateWrongPassword": "Parolă greșită pentru {user}.",
-            "relocateSecretsNotCopied": "„{name}” a ajuns la {user}, dar parola sau tokenul salvate nu, așa că le va cere din nou acolo."
+            "relocateSecretsNotCopied": "„{name}” a ajuns la {user}, dar parola sau tokenul salvate nu, așa că le va cere din nou acolo.",
+            "relocateMovedCleanupFailed": "\"{name}\" a fost mutat la {user}, dar sesiunea sa Proton Drive nu a putut fi eliminată din contul sursă."
         },
         "cyberTools": {
             "title": "Instrumente de Securitate",
@@ -5923,7 +5927,9 @@
                 "months": "{count} luni"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nou: {name}"
+            "newTabLabel": "Nou: {name}",
+            "protonSessionEndsAtUnlock": "Sesiunea Proton a acestui profil se încheie la următoarea deblocare a acestui cont, cu excepția cazului în care o folosește un alt cont de pe acest computer.",
+            "profileSecretsNotRemoved": "Profilul a fost eliminat, dar unele dintre datele sale de autentificare salvate nu au putut fi șterse din seif."
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

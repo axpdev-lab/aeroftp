@@ -128,8 +128,10 @@ async fn sign_in_owned(
     if cancel.is_cancelled() {
         return Err(sign_in_error(ProtonError::SignInCancelled));
     }
-    // A session this one replaces is ended on Proton first (unless another
-    // saved profile still uses it), so a re-sign-in leaves none behind.
+    // A session this one replaces is ended on Proton once this one is saved
+    // (unless another saved profile still uses it), on a best-effort basis:
+    // Proton being unreachable leaves the old session alive, and a save that
+    // fails leaves the old one working either way.
     vault::replace_session(owner, profile_id, &session)
         .await
         .map_err(|error| error.to_string())?;

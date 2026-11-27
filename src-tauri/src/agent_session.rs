@@ -2144,19 +2144,35 @@ mod tests {
         let store = CredentialStore::from_cache().unwrap();
         crate::user_partitions::init_or_migrate_cli(&store).unwrap();
 
-        // The legacy blob holds one profile under the lookup name "lab".
+        // The legacy scope holds one profile under the lookup name "lab":
+        // the legacy owner's partition row, with the vault blob kept as its
+        // mirror carrying a decoy so a raw-blob read would answer wrongly.
         store
             .store(
                 "config_server_profiles",
-                &json!([{"id": "srv-legacy", "name": "lab", "protocol": "sftp",
-                    "host": "legacy.example", "port": 22, "username": "u"}])
+                &json!([{"id": "srv-stale", "name": "lab", "protocol": "sftp",
+                    "host": "stale.example", "port": 22, "username": "u"}])
                 .to_string(),
             )
             .unwrap();
-
-        // Capture with NO active account.
+        let owner;
         {
-            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+            owner = crate::user_partitions::get_active_user(&conn)
+                .unwrap()
+                .expect("the default account")
+                .id;
+            let root_key = store.derive_user_partition_wrapping_key();
+            crate::user_partitions::replace_server_profiles_for(
+                &mut conn,
+                &root_key,
+                owner,
+                &[
+                    json!({"id": "srv-legacy", "name": "lab", "protocol": "sftp",
+                    "host": "legacy.example", "port": 22, "username": "u"}),
+                ],
+            )
+            .unwrap();
             conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
                 .unwrap();
         }
@@ -2165,7 +2181,7 @@ mod tests {
             .map(|u| u.id);
         assert_eq!(captured, None, "precondition: no active account at capture");
 
-        // No-switch control: the captured None reads the legacy blob.
+        // No-switch control: the captured None reads the legacy owner's list.
         let found = lookup_profile_for_user(&store, captured, "lab").unwrap();
         assert_eq!(found.id, "srv-legacy");
         assert_eq!(found.host, "legacy.example");
@@ -2189,8 +2205,8 @@ mod tests {
         crate::user_partitions::set_active_user(&conn, second).unwrap();
         drop(conn);
 
-        // The SAME captured None must still answer from the legacy blob, never
-        // from the account activated after the capture.
+        // The SAME captured None must still answer from the legacy owner's
+        // list, never from the account activated after the capture.
         let found = lookup_profile_for_user(&store, captured, "lab").unwrap();
         assert_eq!(
             found.id, "srv-legacy",

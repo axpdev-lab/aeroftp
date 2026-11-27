@@ -1439,7 +1439,10 @@
             "templateLogImported": "Zaimportowano szablon konfiguracji: {imported} zaimportowano, {skipped} pominięto, {invalid} nieprawidłowych",
             "templateLogBlocks": "Bloki: {blocks}",
             "templateDuplicateInTemplate": "duplikat w szablonie",
-            "templateSelectProfile": "Importuj {name}"
+            "templateSelectProfile": "Importuj {name}",
+            "exportAccountUnbound": "Lista profili nie jest powiązana z kontem; nic nie zostało wyeksportowane.",
+            "exportAccountChanged": "Aktywne konto uległo zmianie; nic nie zostało wyeksportowane.",
+            "exportAccountChangedDuringSave": "Aktywne konto uległo zmianie, gdy okno dialogowe zapisu było otwarte; nic nie zostało wyeksportowane."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}” jest już zapisane w {user}",
             "relocateError": "Nie udało się przenieść serwera: {error}",
             "relocateWrongPassword": "Nieprawidłowe hasło do {user}.",
-            "relocateSecretsNotCopied": "„{name}” dotarł do {user}, ale zapisane hasło lub token nie dotarły, więc poprosi o nie tam ponownie."
+            "relocateSecretsNotCopied": "„{name}” dotarł do {user}, ale zapisane hasło lub token nie dotarły, więc poprosi o nie tam ponownie.",
+            "relocateMovedCleanupFailed": "Przeniesiono \"{name}\" do użytkownika {user}, ale nie udało się usunąć jego sesji Proton Drive z konta źródłowego."
         },
         "cyberTools": {
             "title": "Narzędzia bezpieczeństwa",
@@ -5923,7 +5927,9 @@
                 "months": "{count} mies."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nowy: {name}"
+            "newTabLabel": "Nowy: {name}",
+            "protonSessionEndsAtUnlock": "Sesja Proton tego profilu kończy się przy następnym odblokowaniu tego konta, chyba że korzysta z niej inne konto na tym komputerze.",
+            "profileSecretsNotRemoved": "Profil został usunięty, ale nie udało się usunąć z sejfu niektórych jego zapisanych danych logowania."
         },
         "gitlab": {
             "projectPath": "Ścieżka projektu",

@@ -46,6 +46,14 @@ impl<S: crate::profile_import_plan::SecretSlots> crate::profile_import_plan::Sec
     }
 }
 
+/// The account a purge names when the test means the active one: the
+/// explicit form `purge_profile_secrets` asks for once accounts exist.
+fn active_account(store: &CredentialStore) -> Option<i64> {
+    users::cli_get_active_user(store)
+        .unwrap()
+        .map(|user| user.id)
+}
+
 // Fork before initializing either vault or user partitions. The child binary
 // and portable marker have a private pathname, even in a full parallel suite.
 #[test]
@@ -560,6 +568,9 @@ async fn round_trip() {
         gaps.push("Corrupt non-object auth configuration is accepted");
     }
     durable_profile_auth_lifecycle(&store, &github, active.id, owner.id).await;
+    private_tokens_keep_to_their_account(&store, active.id, owner.id);
+    github_readiness_reads_the_asked_accounts_profile(&store, active.id, owner.id);
+    a_purge_reports_the_accounts_own_token(&store, active.id, owner.id).await;
     #[cfg(feature = "proton-native")]
     native_session_ownership(&store, active.id, owner.id).await;
     crate::crypt_overlay_provider::tests::captured_overlay_owner_survives_account_switch(
@@ -670,7 +681,7 @@ async fn durable_profile_auth_lifecycle(
     for prefix in TRANSIENT_KEY_PREFIXES {
         assert!(!encoded.contains(prefix));
     }
-    crate::purge_profile_secrets(source.into(), Some("github".into()))
+    crate::purge_profile_secrets(source.into(), Some("github".into()), active_account(store))
         .await
         .unwrap();
     for prefix in DURABLE_KEY_PREFIXES
@@ -761,7 +772,7 @@ async fn durable_profile_auth_lifecycle(
     }
     assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
     users::store_active_credential_typed_dual(store, &stale_key, "oauth", expected).unwrap();
-    crate::purge_profile_secrets(copy_id.into(), Some("github".into()))
+    crate::purge_profile_secrets(copy_id.into(), Some("github".into()), active_account(store))
         .await
         .unwrap();
     assert!(overwrite.jotta_chains.is_empty());
@@ -835,9 +846,13 @@ async fn durable_profile_auth_lifecycle(
                 store.get("jottacloud_refresh").unwrap(),
                 "other-profile-chain"
             );
-            crate::purge_profile_secrets(copy.into(), Some("jottacloud".into()))
-                .await
-                .unwrap();
+            crate::purge_profile_secrets(
+                copy.into(),
+                Some("jottacloud".into()),
+                active_account(store),
+            )
+            .await
+            .unwrap();
         }
     }
     // A backup that points the profile at another server is refused, and nothing
@@ -1135,7 +1150,8 @@ async fn durable_profile_auth_lifecycle(
         store.delete("oauth_rollback_app_client_id").unwrap();
 
         // An ordinary save that does not reach the row a reader prefers is an error
-        // that names the key, and never its value. The vault keeps the new value.
+        // that names the key, and never its value. The vault is put back as it
+        // was, so no reader finds the value of a save reported as failed.
         let conn = users::open_or_init_cli().unwrap();
         users::store_credential_for_user_dual(store, active_id, "server_dual-save", "old").unwrap();
         conn.execute_batch(
@@ -1162,7 +1178,7 @@ async fn durable_profile_auth_lifecycle(
         );
         assert!(refused.contains("server_dual-save"), "{refused}");
         assert!(!refused.contains("new-value"), "{refused}");
-        assert_eq!(store.get("server_dual-save").unwrap(), "new-value");
+        assert_eq!(store.get("server_dual-save").unwrap(), "old");
 
         // An app kept in the legacy settings blob counts as stored: a config with
         // another app must not put it in front of the one existing profiles use.
@@ -1184,8 +1200,7 @@ async fn durable_profile_auth_lifecycle(
         assert!(store.get("oauth_legacyapp_client_id").is_err());
         store.delete("config_oauth_clients").unwrap();
 
-        // A profile's token goes to the account holding it, not the active one, and a
-        // sign-out removes that row too.
+        // A profile's token goes to the account holding it, not the active one.
         let root = store.derive_user_partition_wrapping_key();
         users::set_user_credential_for(&conn, &root, other_id, "oauth_box_owned", "oauth", "old")
             .unwrap();
@@ -1205,10 +1220,23 @@ async fn durable_profile_auth_lifecycle(
         assert_eq!(row(other_id).as_deref(), Some("new"));
         users::set_user_credential_for(&conn, &root, active_id, "oauth_box_owned", "oauth", "own")
             .unwrap();
+        // Both accounts hold it now: a sign-in and a sign-out of the active one are
+        // its own, and the other account keeps its token.
+        users::store_profile_credential(
+            store,
+            "owned",
+            "oauth_box_owned",
+            Some("oauth"),
+            "active-new",
+        )
+        .unwrap();
+        assert_eq!(row(active_id).as_deref(), Some("active-new"));
+        assert_eq!(row(other_id).as_deref(), Some("new"));
         users::delete_profile_credential(store, "owned", "oauth_box_owned").unwrap();
-        assert_eq!(row(other_id), None);
+        assert_eq!(row(other_id).as_deref(), Some("new"));
         assert_eq!(row(active_id), None);
         assert!(store.get("oauth_box_owned").is_err());
+        users::unmirror_credential_for_user_best_effort_any(other_id, "oauth_box_owned");
 
         // A key outside the typed set follows its row, as a relocation leaves one.
         let root = store.derive_user_partition_wrapping_key();
@@ -1618,6 +1646,33 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     );
     assert!(vault::load_session(selected, None).unwrap().is_none());
     vault::delete_session(active, None).unwrap();
+    // The legacy owner's session is its vault entry and its row: a delete
+    // that leaves the row, which the account reads first, is an error.
+    let kept = vault::session_key(Some("native-row-kept"));
+    vault::store_session(
+        active,
+        Some("native-row-kept"),
+        &session("kept-uid", "kept"),
+    )
+    .unwrap();
+    let rows = users::open_or_init_cli().unwrap();
+    rows.execute_batch(&format!(
+        "CREATE TRIGGER keep_session_row BEFORE DELETE ON user_credentials
+         WHEN OLD.credential_id = '{kept}'
+         BEGIN SELECT RAISE(FAIL, 'disk full'); END;"
+    ))
+    .unwrap();
+    let refused = vault::delete_session(active, Some("native-row-kept"));
+    rows.execute_batch("DROP TRIGGER keep_session_row;")
+        .unwrap();
+    assert!(
+        refused.is_err(),
+        "a session delete that left the account's row was reported done"
+    );
+    assert!(vault::load_session(active, Some("native-row-kept"))
+        .unwrap()
+        .is_some());
+    vault::delete_session(active, Some("native-row-kept")).unwrap();
     let scoped = session("scoped-native-uid", "access-before");
     vault::store_session(selected, Some("native-selected"), &scoped).unwrap();
     let db = users::open_or_init_cli().unwrap();
@@ -1633,8 +1688,9 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     assert_eq!(count(selected_id, &selected_key), 1);
     assert_eq!(count(active_id, &selected_key), 0);
 
-    // Refreshes continue to update their captured owner after a user switch,
-    // and shared sessions reach the owners of the other profile keys.
+    // Refreshes continue to update their captured owner after a user switch.
+    // A session belongs to one account: a copy of it another account holds is
+    // not reached, and that account signs in again when its pair runs out.
     vault::store_session(active, Some("native-shared"), &scoped).unwrap();
     users::cli_set_active_user(store, selected_id).unwrap();
     let refresher = vault::VaultSession::new(selected, Some("native-selected"), &scoped);
@@ -1657,7 +1713,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
             .tokens
             .access_token
             .expose_secret(),
-        "access-after"
+        "access-before"
     );
     assert_eq!(count(active_id, &selected_key), 0);
     assert_eq!(
@@ -1711,6 +1767,10 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         count(active_id, &vault::session_key(Some("native-gui-copy"))),
         0
     );
+    // An import brings no session another account may hold
+    // (`an_import_brings_no_session_another_account_may_hold`): the legacy
+    // owner's copy goes first, so the account's own export brings it back.
+    vault::delete_session(active, Some("native-shared")).unwrap();
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("native.aeroftp");
     let metadata = crate::export_server_profiles_core(
@@ -1725,9 +1785,13 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     .await
     .unwrap();
     assert!(metadata.has_credentials);
-    crate::purge_profile_secrets("native-selected".into(), Some("proton".into()))
-        .await
-        .unwrap();
+    crate::purge_profile_secrets(
+        "native-selected".into(),
+        Some("proton".into()),
+        active_account(store),
+    )
+    .await
+    .unwrap();
     assert_eq!(count(selected_id, &selected_key), 0);
     import_over(
         store,
@@ -1756,9 +1820,13 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     // Another account is active than the one the import is for: nothing is
     // written, for either of them.
     users::cli_set_active_user(store, selected_id).unwrap();
-    crate::purge_profile_secrets("native-selected".into(), Some("proton".into()))
-        .await
-        .unwrap();
+    crate::purge_profile_secrets(
+        "native-selected".into(),
+        Some("proton".into()),
+        active_account(store),
+    )
+    .await
+    .unwrap();
     users::cli_set_active_user(store, active_id).unwrap();
     assert_eq!(count(selected_id, &selected_key), 0);
     let refused = crate::import_server_profiles_with_mode(
@@ -1844,6 +1912,436 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         0
     );
     assert!(vault::load_session(active, None).unwrap().is_some());
+}
+
+/// The purge of a profile, run by an account other than the legacy owner,
+/// reports a private token as removed where that account reads it: its own
+/// row, never the owner's vault key of the same name.
+async fn a_purge_reports_the_accounts_own_token(
+    store: &CredentialStore,
+    legacy_id: i64,
+    private_id: i64,
+) {
+    let key = "oauth_dropbox_purge-target";
+    let purge = || {
+        crate::purge_profile_secrets(
+            "purge-target".into(),
+            Some("dropbox".into()),
+            active_account(store),
+        )
+    };
+    users::cli_set_active_user(store, private_id).unwrap();
+    store.store(key, "owners-token").unwrap();
+    // No owner recorded yet: the delete records the one it checks against.
+    let conn = users::open_or_init_cli().unwrap();
+    conn.execute(
+        "DELETE FROM global_state WHERE key = 'legacy_credential_owner_id'",
+        [],
+    )
+    .unwrap();
+    // The account's own delete, with no read before it.
+    users::delete_credential_dual_as(store, Some(private_id), key).unwrap();
+    let recorded: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = 'legacy_credential_owner_id'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    let without_a_row = purge().await;
+    let after_the_first = store.get(key).ok();
+    // A change of admins after it does not hand the owner's key to another.
+    let set_admin = |id: i64, admin: i64| {
+        conn.execute(
+            "UPDATE users SET is_admin = ?2 WHERE id = ?1",
+            rusqlite::params![id, admin],
+        )
+        .unwrap();
+    };
+    set_admin(private_id, 1);
+    set_admin(legacy_id, 0);
+    users::store_credential_for_user_dual(store, private_id, key, "own-token").unwrap();
+    let with_its_row = purge().await;
+    set_admin(legacy_id, 1);
+    set_admin(private_id, 0);
+    users::cli_set_active_user(store, legacy_id).unwrap();
+    assert_eq!(recorded, Some(legacy_id.to_string()));
+    assert!(!without_a_row
+        .unwrap()
+        .removed
+        .iter()
+        .any(|removed| removed == key));
+    assert!(with_its_row
+        .unwrap()
+        .removed
+        .iter()
+        .any(|removed| removed == key));
+    // Neither purge took the owner's vault key of the same name.
+    assert_eq!(after_the_first.as_deref(), Some("owners-token"));
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    let conn = users::open_or_init_cli().unwrap();
+    let root = store.derive_user_partition_wrapping_key();
+    assert_eq!(
+        users::get_user_credential_for(&conn, &root, private_id, key).unwrap(),
+        None
+    );
+    // What the purge reports for a locked account: its row, seen by its key
+    // without the account's key, never the owner's vault copy of the same name.
+    let locked = {
+        let mut conn = users::open_or_init_cli().unwrap();
+        users::create_user(
+            &mut conn,
+            &root,
+            "Locked purge",
+            None,
+            None,
+            Some("purge pass"),
+        )
+        .unwrap()
+    };
+    users::cli_unlock_user(store, locked.id, Some("purge pass")).unwrap();
+    users::store_credential_for_user_dual(store, locked.id, key, "locked-token").unwrap();
+    users::clear_user_session();
+    let with_its_row = users::holds_credential(store, locked.id, key);
+    users::delete_user_credential_for(&conn, locked.id, key).unwrap();
+    let without_it = users::holds_credential(store, locked.id, key);
+    users::delete_user(&mut users::open_or_init_cli().unwrap(), locked.id).unwrap();
+    assert_eq!(
+        with_its_row,
+        Ok(true),
+        "a locked account's row was not seen"
+    );
+    assert_eq!(
+        without_it,
+        Ok(false),
+        "the owner's vault copy was counted as a locked account's"
+    );
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    let _ = store.delete(key);
+}
+
+/// A private token written through the untyped dual writer (a profile copy,
+/// `profile duplicate`) by an account other than the legacy owner lands in
+/// that account's partition only: the vault key of the same name, the legacy
+/// owner's, keeps its value. Read back, that account sees its own copy, or
+/// nothing once it is gone, never the owner's; the owner still reads its own.
+/// Any other key keeps the dual write.
+/// The GitHub readiness of a profile of `asked`, which is not the active
+/// account, reads that account's profile: the active account lists a
+/// profile of the same id in another sign-in mode, whose credential `asked`
+/// does not hold, and the answer would be that mode's.
+fn github_readiness_reads_the_asked_accounts_profile(
+    store: &CredentialStore,
+    active_id: i64,
+    asked: i64,
+) {
+    let id = "fixture-github-readiness";
+    let was_active = users::cli_get_active_user(store)
+        .unwrap()
+        .map(|user| user.id);
+    users::cli_set_active_user(store, active_id).unwrap();
+    let profile = |mode: &str| {
+        json!({"id": id, "name": id, "protocol": "github", "host": "",
+               "options": {"githubAuthMode": mode}})
+    };
+    let mut lists = Vec::new();
+    for (user, mode) in [(active_id, "app"), (asked, "authorize")] {
+        let mut before = Vec::new();
+        users::cli_update_server_profiles_for_user(store, user, |stored| {
+            before = stored.clone();
+            stored.push(profile(mode));
+            true
+        })
+        .unwrap();
+        lists.push((user, before));
+    }
+    let key = format!("github_oauth_{id}");
+    users::store_credential_for_user_typed_dual(store, asked, &key, "oauth", "gho_readiness")
+        .unwrap();
+    let readiness = saved_github_readiness(store, id, None, Some(asked));
+    users::delete_credential_for_user_dual(store, asked, &key).unwrap();
+    for (user, before) in lists {
+        users::cli_update_server_profiles_for_user(store, user, |stored| {
+            *stored = before.clone();
+            true
+        })
+        .unwrap();
+    }
+    if let Some(user) = was_active {
+        users::cli_set_active_user(store, user).unwrap();
+    }
+    assert_eq!(
+        readiness, "valid",
+        "the readiness read the active account's profile of the same id"
+    );
+}
+
+fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64, private_id: i64) {
+    for key in [
+        "oauth_dropbox_copy-target",
+        "jottacloud_refresh_copy-target",
+        "profile_auth_config_copy-target",
+        "github_oauth_copy-target",
+    ] {
+        store.store(key, "legacy-owners-token").unwrap();
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        let read = |user: i64| {
+            users::resolve_credential_for_user(store, user, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(read(private_id).as_deref(), Some("private-token"), "{key}");
+        users::unmirror_credential_for_user_best_effort_any(private_id, key);
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(
+            read(legacy_id).as_deref(),
+            Some("legacy-owners-token"),
+            "{key}"
+        );
+        // A sign-out or purge through the dual deletes removes the account's
+        // row, and the owner's vault key of the same name stays.
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        users::delete_credential_for_user_dual(store, private_id, key).unwrap();
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        users::delete_credential_dual_as(store, Some(private_id), key).unwrap();
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        // The rollback of a failed copy removes the account's row, and the
+        // owner's vault key of the same name stays.
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        users::delete_credential_for_user_checked(store, private_id, key).unwrap();
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        store.delete(key).unwrap();
+    }
+    // With the partition DB unopenable, the rollback still removes a plain
+    // secret from the vault and returns the error; a private token's vault
+    // key, whose owner only the DB names, is kept.
+    let unopenable = || Err("Open partition DB: refused".to_string());
+    store
+        .store("oauth_dropbox_copy-target", "legacy-owners-token")
+        .unwrap();
+    let kept = users::delete_credential_checked_with(
+        store,
+        unopenable(),
+        private_id,
+        "oauth_dropbox_copy-target",
+    )
+    .unwrap_err();
+    assert!(kept.contains("Open partition DB: refused"), "{kept}");
+    assert_eq!(
+        store.get("oauth_dropbox_copy-target").unwrap(),
+        "legacy-owners-token"
+    );
+    store.delete("oauth_dropbox_copy-target").unwrap();
+    store.store("server_copy-target", "server").unwrap();
+    let removed = users::delete_credential_checked_with(
+        store,
+        unopenable(),
+        private_id,
+        "server_copy-target",
+    )
+    .unwrap_err();
+    assert!(removed.contains("Open partition DB: refused"), "{removed}");
+    assert!(store.get("server_copy-target").is_err());
+
+    users::store_credential_for_user_dual(store, private_id, "server_copy-target", "server")
+        .unwrap();
+    assert_eq!(store.get("server_copy-target").unwrap(), "server");
+    // The row itself, not a reader that falls back to the vault.
+    assert_eq!(
+        users::get_user_credential_for(
+            &users::open_or_init_cli().unwrap(),
+            &store.derive_user_partition_wrapping_key(),
+            private_id,
+            "server_copy-target",
+        )
+        .unwrap()
+        .map(|value| value.to_string())
+        .as_deref(),
+        Some("server")
+    );
+    users::unmirror_credential_for_user_best_effort_any(private_id, "server_copy-target");
+    store.delete("server_copy-target").unwrap();
+
+    // Readiness reads the same place: the owner's live token in the vault
+    // says nothing about the other account, whose own token, expired, is
+    // the one that counts for it.
+    let token = |expires_at: i64| {
+        serde_json::json!({
+            "access_token": "access",
+            "refresh_token": "refresh",
+            "expires_at": expires_at,
+            "token_type": "Bearer",
+            "scopes": [],
+        })
+        .to_string()
+    };
+    let now = chrono::Utc::now().timestamp();
+    store
+        .store("oauth_dropbox_copy-target", &token(now + 3600))
+        .unwrap();
+    let readiness = |user: i64| {
+        let accounts = store.list_accounts().unwrap().into_iter().collect();
+        crate::profile_auth_state::derive_profile_auth_state_for_user(
+            store,
+            &accounts,
+            "copy-target",
+            "dropbox",
+            crate::profile_auth_state::AuthSource::Vault,
+            Some(user),
+        )
+    };
+    assert_eq!(readiness(legacy_id), "valid");
+    assert_eq!(readiness(private_id), "no_credentials");
+    users::store_credential_for_user_dual(
+        store,
+        private_id,
+        "oauth_dropbox_copy-target",
+        &token(now - 3600),
+    )
+    .unwrap();
+    assert_eq!(readiness(private_id), "needs_refresh");
+    assert_eq!(readiness(legacy_id), "valid");
+    users::unmirror_credential_for_user_best_effort_any(private_id, "oauth_dropbox_copy-target");
+    store.delete("oauth_dropbox_copy-target").unwrap();
+    // The legacy owner's state is read where its connection reads the token:
+    // its row first, the vault after it, so a valid row counts whatever the
+    // vault holds.
+    let conn = users::open_or_init_cli().unwrap();
+    let root = store.derive_user_partition_wrapping_key();
+    users::set_user_credential_for(
+        &conn,
+        &root,
+        legacy_id,
+        "oauth_dropbox_copy-target",
+        "oauth",
+        &token(now + 3600),
+    )
+    .unwrap();
+    assert_eq!(
+        readiness(legacy_id),
+        "valid",
+        "a valid row and no vault copy"
+    );
+    store
+        .store("oauth_dropbox_copy-target", &token(now - 3600))
+        .unwrap();
+    assert_eq!(
+        readiness(legacy_id),
+        "valid",
+        "a valid row over an expired vault copy"
+    );
+    users::delete_user_credential_for(&conn, legacy_id, "oauth_dropbox_copy-target").unwrap();
+    store.delete("oauth_dropbox_copy-target").unwrap();
+
+    // The same for a Jottacloud chain, under the profile's key and under the
+    // singleton, for GitHub's own authorization, which is read for the account
+    // asked about rather than the active one, and for an account whose locked
+    // partition cannot say.
+    let state = |user: i64, profile: &str, protocol: &str| {
+        let accounts = store.list_accounts().unwrap().into_iter().collect();
+        crate::profile_auth_state::derive_profile_auth_state_for_user(
+            store,
+            &accounts,
+            profile,
+            protocol,
+            crate::profile_auth_state::AuthSource::Vault,
+            Some(user),
+        )
+    };
+    for key in ["jottacloud_refresh_copy-target", "jottacloud_refresh"] {
+        store
+            .store(key, r#"{"refresh_token":"owners-chain"}"#)
+            .unwrap();
+        assert_eq!(
+            state(legacy_id, "copy-target", "jottacloud"),
+            "valid",
+            "{key}"
+        );
+        assert_eq!(
+            state(private_id, "copy-target", "jottacloud"),
+            "no_credentials",
+            "{key}"
+        );
+        users::store_credential_for_user_dual(
+            store,
+            private_id,
+            key,
+            r#"{"refresh_token":"others-chain"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            state(private_id, "copy-target", "jottacloud"),
+            "valid",
+            "{key}"
+        );
+        users::unmirror_credential_for_user_best_effort_any(private_id, key);
+        store.delete(key).unwrap();
+    }
+    store
+        .store("profile_auth_config_gh-target", r#"{"mode":"authorize"}"#)
+        .unwrap();
+    store.store("github_oauth_gh-target", "gho_owners").unwrap();
+    assert_eq!(state(legacy_id, "gh-target", "github"), "valid");
+    assert_eq!(state(private_id, "gh-target", "github"), "no_credentials");
+    store.delete("profile_auth_config_gh-target").unwrap();
+    store.delete("github_oauth_gh-target").unwrap();
+    let locked = {
+        let mut conn = users::open_or_init_cli().unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        users::create_user(
+            &mut conn,
+            &root,
+            "Locked",
+            None,
+            None,
+            Some("locked passphrase"),
+        )
+        .unwrap()
+    };
+    assert_eq!(state(locked.id, "copy-target", "dropbox"), "unknown");
+    users::delete_user(&mut users::open_or_init_cli().unwrap(), locked.id).unwrap();
+
+    // An import run by the other account writes, undoes and deletes its own
+    // row, also when the write names no type: the vault key of the same name
+    // keeps the owner's value throughout, and so does a sign-out.
+    let key = "oauth_box_import-target";
+    store.store(key, "owners-token").unwrap();
+    let row = |user: i64| {
+        let conn = users::open_or_init_cli().unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        users::get_user_credential_for(&conn, &root, user, key)
+            .unwrap()
+            .map(|value| value.to_string())
+    };
+    let before = users::snapshot_credential_for_user(store, private_id, key).unwrap();
+    users::store_imported_credential_for_user(store, private_id, key, None, "file-token").unwrap();
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    assert_eq!(row(private_id).as_deref(), Some("file-token"));
+    // The owner signs in meanwhile with the same value: the undo of the other
+    // account's write leaves it.
+    store.store(key, "file-token").unwrap();
+    users::restore_credential_for_user(store, private_id, key, None, "file-token", &before)
+        .unwrap();
+    assert_eq!(store.get(key).unwrap(), "file-token");
+    assert_eq!(row(private_id), None);
+    store.store(key, "owners-token").unwrap();
+    users::store_imported_credential_for_user(store, private_id, key, None, "file-token").unwrap();
+    users::delete_imported_credential_for_user(store, private_id, key).unwrap();
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    assert_eq!(row(private_id), None);
+    users::store_imported_credential_for_user(store, private_id, key, None, "file-token").unwrap();
+    users::cli_set_active_user(store, private_id).unwrap();
+    let signed_out = users::delete_profile_credential(store, "import-target", key);
+    users::cli_set_active_user(store, legacy_id).unwrap();
+    signed_out.unwrap();
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    assert_eq!(row(private_id), None);
+    store.delete(key).unwrap();
 }
 
 /// A fresh vault with no active user, for `test` to read and corrupt.
@@ -1932,6 +2430,11 @@ fn a_session_loss_after_the_snapshot_still_restores_the_shared_vault() {
 /// token through `resolve_profile_oauth_token` refuse instead of using it.
 #[test]
 fn an_unreadable_profile_token_never_falls_back_to_the_singleton() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_unreadable_profile_token_never_falls_back_to_the_singleton",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         store
             .store("oauth_fourshared_mine", "own-token:own-secret")
@@ -1978,7 +2481,7 @@ fn an_unreadable_profile_token_never_falls_back_to_the_singleton() {
         let injected = crate::bridge_commands::inject_rclone_oauth_export_options(
             &mut options,
             store,
-            None,
+            scope.user_id,
             "googledrive",
             "mine",
         );
@@ -1990,10 +2493,170 @@ fn an_unreadable_profile_token_never_falls_back_to_the_singleton() {
     });
 }
 
+/// CodeRabbit 4661188765: the rclone export resolves the OAuth token for the
+/// account the exported list belongs to, captured before the export ran.
+/// With that account holding no token and another account active with one
+/// for the same profile id, the export must not pick the active account's.
+#[test]
+fn the_rclone_export_reads_the_token_of_the_captured_account() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::the_rclone_export_reads_the_token_of_the_captured_account",
+    ) {
+        return;
+    }
+    with_unreadable_profile_vault(|store| {
+        let captured = users::cli_create_user(store, "Export captured", None, None, None).unwrap();
+        let active = users::cli_create_user(store, "Export active", None, None, None).unwrap();
+        users::cli_set_active_user(store, active.id).unwrap();
+        users::store_credential_for_user_dual(
+            store,
+            active.id,
+            "oauth_google_mine",
+            "active-google-token",
+        )
+        .unwrap();
+        // Sanity: the unscoped read is the active account's token, the bug
+        // this pins against.
+        assert_eq!(
+            crate::bridge_commands::resolve_profile_oauth_token(store, "google", "mine")
+                .unwrap()
+                .as_deref(),
+            Some("active-google-token")
+        );
+        // The captured account has no token for the profile: nothing is
+        // injected, and above all not the active account's.
+        let mut options = None;
+        let injected = crate::bridge_commands::inject_rclone_oauth_export_options(
+            &mut options,
+            store,
+            Some(captured.id),
+            "googledrive",
+            "mine",
+        );
+        assert!(
+            !options
+                .unwrap_or_default()
+                .to_string()
+                .contains("active-google-token"),
+            "the active account's token was exported for another account's profile: {injected:?}"
+        );
+    });
+}
+
+/// CodeRabbit 4661188765, the 4shared half: `provider_at` resolves the
+/// profile's OAuth token for the captured account, not the active one. The
+/// captured account holds no `oauth_fourshared_mine`; the active account
+/// does. The connect must fail as missing authorization and never see the
+/// active account's `token:secret`.
+#[test]
+fn a_fourshared_connect_reads_the_token_of_the_captured_account() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::a_fourshared_connect_reads_the_token_of_the_captured_account",
+    ) {
+        return;
+    }
+    with_unreadable_profile_vault(|store| {
+        let captured =
+            users::cli_create_user(store, "Fourshared captured", None, None, None).unwrap();
+        let active = users::cli_create_user(store, "Fourshared active", None, None, None).unwrap();
+        users::cli_set_active_user(store, active.id).unwrap();
+        users::store_credential_for_user_dual(
+            store,
+            active.id,
+            "oauth_fourshared_mine",
+            "active-token:active-secret",
+        )
+        .unwrap();
+        let scope = AuthScope {
+            store,
+            user_id: Some(captured.id),
+        };
+        let four = json!({"id":"mine","name":"synthetic","protocol":"fourshared","host":""});
+        let opened = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(provider_at(&scope, &four, &AuthEndpoints::default()));
+        let error = match opened {
+            Ok(_) => panic!("connected with the active account's token"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("authorization missing"),
+            "unexpected refusal: {error}"
+        );
+        assert!(
+            !error.contains("active-token"),
+            "the active account's token reached the error: {error}"
+        );
+        assert_eq!(
+            users::resolve_credential_for_user(store, active.id, "oauth_fourshared_mine")
+                .unwrap()
+                .map(|value| value.to_string())
+                .as_deref(),
+            Some("active-token:active-secret"),
+            "the active account's row changed"
+        );
+    });
+}
+
+/// CodeRabbit r4668519001: a connection captured while no account existed
+/// keeps `LEGACY_ONLY_ACCOUNT` in its scope, so the 4shared fallback reads
+/// the legacy owner's copies, never the token of whichever account is
+/// active now and holds a token under the same profile id.
+#[test]
+fn a_legacy_only_fourshared_connect_never_reads_the_active_accounts_token() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "profile_auth::tests::a_legacy_only_fourshared_connect_never_reads_the_active_accounts_token",
+        ) {
+            return;
+        }
+    with_unreadable_profile_vault(|store| {
+        let active = users::cli_create_user(store, "Fourshared active", None, None, None).unwrap();
+        users::cli_set_active_user(store, active.id).unwrap();
+        users::store_credential_for_user_dual(
+            store,
+            active.id,
+            "oauth_fourshared_mine",
+            "active-token:active-secret",
+        )
+        .unwrap();
+        let scope = AuthScope::for_captured(store, users::LEGACY_ONLY_ACCOUNT);
+        assert_eq!(scope.user_id, Some(users::LEGACY_ONLY_ACCOUNT));
+        let four = json!({"id":"mine","name":"synthetic","protocol":"fourshared","host":""});
+        let opened = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(provider_at(&scope, &four, &AuthEndpoints::default()));
+        let error = match opened {
+            Ok(_) => panic!("connected with the active account's token"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("authorization missing"),
+            "unexpected refusal: {error}"
+        );
+        assert!(
+            !error.contains("active-token"),
+            "the active account's token reached the error: {error}"
+        );
+        assert_eq!(
+            users::resolve_credential_for_user(store, active.id, "oauth_fourshared_mine")
+                .unwrap()
+                .map(|value| value.to_string())
+                .as_deref(),
+            Some("active-token:active-secret"),
+            "the active account's row changed"
+        );
+    });
+}
+
 /// The `.aeroftp` export of an OAuth profile whose own token cannot be read
 /// fails instead of bundling the legacy singleton (CodeRabbit, #1574).
 #[test]
 fn an_unreadable_oauth_token_fails_the_profile_export() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_unreadable_oauth_token_fails_the_profile_export",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         store.store("oauth_google_mine", "own-google").unwrap();
         store.store("oauth_google", "other-google").unwrap();
@@ -2019,9 +2682,77 @@ fn an_unreadable_oauth_token_fails_the_profile_export() {
     });
 }
 
+/// G1: inside the blocked-read rule a failed vault read is not an absent
+/// value. `Ok(None)` on a `get_secret` error would lift the
+/// `vault_blocked_secret:` record, and a later read would deliver the
+/// token; the record must stay while the entry cannot be decrypted.
+#[test]
+fn an_unreadable_blocked_token_keeps_its_record_on_the_legacy_read() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_unreadable_blocked_token_keeps_its_record_on_the_legacy_read",
+    ) {
+        return;
+    }
+    with_unreadable_profile_vault(|store| {
+        let key = "oauth_dropbox_mine";
+        store.store(key, "own-dropbox").unwrap();
+        let conn = users::open_or_init_cli().unwrap();
+        // The record names another value: a changed digest does not lift
+        // the block either, so only the read result decides.
+        users::block_vault_secret(&conn, key, "another-value").unwrap();
+        store.corrupt_entry_for_test(key);
+
+        let scope = AuthScope {
+            store,
+            user_id: None,
+        };
+        assert!(scope.read(key).is_err());
+        assert!(users::vault_secret_is_blocked(key).unwrap());
+    });
+}
+
+/// The same rule on the profile-bound fallback of the legacy owner: with no
+/// partition row, the vault copy proven the owner's own and no recorded
+/// profile owner, the read still goes through the vault, and a failed
+/// `get_secret` must not read as absent and lift the block.
+#[test]
+fn an_unreadable_blocked_token_keeps_its_record_on_the_owner_profile_read() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "profile_auth::tests::an_unreadable_blocked_token_keeps_its_record_on_the_owner_profile_read",
+        ) {
+            return;
+        }
+    with_unreadable_profile_vault(|store| {
+        let key = "oauth_dropbox_mine";
+        store.store(key, "own-dropbox").unwrap();
+        let conn = users::open_or_init_cli().unwrap();
+        users::block_vault_secret(&conn, key, "another-value").unwrap();
+        store.corrupt_entry_for_test(key);
+        let owner_id = users::legacy_credential_owner_id()
+            .unwrap()
+            .expect("the migrated fixture has a legacy owner");
+        assert!(!users::vault_copy_is_another_accounts(&conn, owner_id, key).unwrap());
+        assert!(users::profile_credential_owner_ids(store, "mine", key)
+            .unwrap()
+            .is_empty());
+
+        let scope = AuthScope {
+            store,
+            user_id: Some(owner_id),
+        };
+        assert!(scope.read_profile("mine", key).is_err());
+        assert!(users::vault_secret_is_blocked(key).unwrap());
+    });
+}
+
 /// The same for a Jottacloud refresh token (CodeRabbit, #1574).
 #[test]
 fn an_unreadable_jotta_token_fails_the_profile_export() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_unreadable_jotta_token_fails_the_profile_export",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         store.store("jottacloud_refresh_mine", "own-jotta").unwrap();
         store.store("jottacloud_refresh", "other-jotta").unwrap();
@@ -2041,5 +2772,335 @@ fn an_unreadable_jotta_token_fails_the_profile_export() {
         store.delete("jottacloud_refresh_mine").unwrap();
         let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
         assert_eq!(secrets.jotta_refresh.as_deref(), Some("other-jotta"));
+    });
+}
+
+/// The vault and partition database of an isolated child
+/// ([`crate::provider_commands::isolated_account_fixture`]), opened and
+/// migrated, the legacy owner active, and `others` more accounts without a
+/// passphrase, each one aligned already. Returns the owner and their ids.
+fn isolated_accounts(others: usize) -> (CredentialStore, i64, Vec<i64>) {
+    CredentialStore::clear_cache();
+    CredentialStore::bootstrap_master_password("synthetic profile auth fixture").unwrap();
+    CredentialStore::unlock_with_master("synthetic profile auth fixture", None).unwrap();
+    let store = CredentialStore::from_cache().unwrap();
+    users::init_or_migrate_cli(&store).unwrap();
+    let mut conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let owner = users::active_user_id(&conn).unwrap().unwrap();
+    let ids = (0..others)
+        .map(|n| {
+            users::create_passphrase_less_user(&mut conn, &root, &format!("Other {n}"), None, None)
+                .unwrap()
+                .id
+        })
+        .collect();
+    users::set_active_user(&conn, owner).unwrap();
+    // Their one-time passes run now, before the test writes a vault key.
+    users::init_or_migrate_cli(&store).unwrap();
+    (store, owner, ids)
+}
+
+/// `user`'s list, with a profile of each id in `ids`.
+fn hold_profiles(store: &CredentialStore, user: i64, ids: &[&str]) {
+    let mut conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let profiles: Vec<Value> = ids
+        .iter()
+        .map(|id| json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0}))
+        .collect();
+    users::replace_server_profiles_for(&mut conn, &root, user, &profiles).unwrap();
+}
+
+/// A profile-bound read of a private token by an account other than the
+/// legacy owner is its row alone: holding the profile alone does not make the
+/// vault key of that name its own. The legacy owner keeps the vault fallback,
+/// and a key that is not a private token keeps the sole holder's.
+#[test]
+fn a_sole_holder_reads_no_vault_token_of_another_account() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::a_sole_holder_reads_no_vault_token_of_another_account",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, owner, others) = isolated_accounts(1);
+    let other = others[0];
+    hold_profiles(&store, other, &["p"]);
+    hold_profiles(&store, owner, &["q"]);
+    store.store("oauth_dropbox_p", "owners-token").unwrap();
+    store.store("server_p", "p-password").unwrap();
+    store.store("oauth_dropbox_q", "q-token").unwrap();
+    let read = |user: i64, profile: &str, key: &str| {
+        AuthScope {
+            store: &store,
+            user_id: Some(user),
+        }
+        .read_profile(profile, key)
+        .unwrap()
+    };
+    assert_eq!(read(other, "p", "oauth_dropbox_p"), None);
+    assert_eq!(read(other, "p", "server_p").as_deref(), Some("p-password"));
+    assert_eq!(
+        read(owner, "q", "oauth_dropbox_q").as_deref(),
+        Some("q-token")
+    );
+}
+
+/// GitHub readiness without a profile reads the account once: the profile is
+/// the one that account lists and the credential the one it holds, never the
+/// profile of one account paired with another's credentials after a switch.
+#[test]
+fn github_readiness_reads_one_account_for_its_profile_and_credential() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::github_readiness_reads_one_account_for_its_profile_and_credential",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, owner, others) = isolated_accounts(1);
+    let other = others[0];
+    let mut conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    users::replace_server_profiles_for(
+        &mut conn,
+        &root,
+        owner,
+        &[json!({"id": "gh", "name": "gh", "protocol": "github", "host": ""})],
+    )
+    .unwrap();
+    users::set_user_credential_for(
+        &conn,
+        &root,
+        owner,
+        "server_gh",
+        users::relocate_secret_kind("server_gh"),
+        "ghp_synthetic",
+    )
+    .unwrap();
+    // The other account holds a profile of the same id signed in another
+    // way, with no token: a lookup of its list would read no credential.
+    users::replace_server_profiles_for(
+        &mut conn,
+        &root,
+        other,
+        &[
+            json!({"id": "gh", "name": "gh", "protocol": "github", "host": "",
+                 "options": {"githubAuthMode": "authorize"}}),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        saved_github_readiness(&store, "gh", None, Some(other)),
+        "no_credentials"
+    );
+    assert_eq!(saved_github_readiness(&store, "gh", None, None), "valid");
+    AFTER_READINESS_ACCOUNT.set(Some(Box::new(move || {
+        users::set_active_user(&users::open_or_init_cli().unwrap(), other).unwrap();
+    })));
+    assert_eq!(saved_github_readiness(&store, "gh", None, None), "valid");
+}
+
+/// GitHub readiness with no active account reads the legacy list and the
+/// vault: an account activated between its lookup and the list is not asked
+/// for its profile, whose mode would pair with the vault's credentials.
+#[test]
+fn github_readiness_with_no_account_reads_the_legacy_list() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::github_readiness_with_no_account_reads_the_legacy_list",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, _owner, others) = isolated_accounts(1);
+    let other = others[0];
+    let mut conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    users::replace_server_profiles_for(
+        &mut conn,
+        &root,
+        other,
+        &[
+            json!({"id": "gh", "name": "gh", "protocol": "github", "host": "",
+                 "options": {"githubAuthMode": "authorize"}}),
+        ],
+    )
+    .unwrap();
+    store
+        .store(
+            "config_server_profiles",
+            &json!([{"id": "gh", "name": "gh", "protocol": "github", "host": ""}]).to_string(),
+        )
+        .unwrap();
+    store.store("server_gh", "ghp_synthetic").unwrap();
+    conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+        .unwrap();
+    assert!(users::cli_get_active_user(&store).unwrap().is_none());
+    AFTER_READINESS_ACCOUNT.set(Some(Box::new(move || {
+        users::set_active_user(&users::open_or_init_cli().unwrap(), other).unwrap();
+    })));
+    assert_eq!(saved_github_readiness(&store, "gh", None, None), "valid");
+}
+
+/// A sign-in of a private token whose profile two accounts hold, while a
+/// third one is active or none is, is refused through
+/// `store_profile_credential` and writes nothing: neither holder's row and
+/// no vault key.
+#[test]
+fn a_sign_in_two_other_accounts_hold_is_refused_and_writes_nothing() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::a_sign_in_two_other_accounts_hold_is_refused_and_writes_nothing",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, _owner, others) = isolated_accounts(3);
+    let (first, second, active) = (others[0], others[1], others[2]);
+    let conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let key = "oauth_box_owned";
+    for (user, token) in [(first, "first-token"), (second, "second-token")] {
+        hold_profiles(&store, user, &["owned"]);
+        users::set_user_credential_for(&conn, &root, user, key, "oauth", token).unwrap();
+    }
+    users::set_active_user(&conn, active).unwrap();
+    let row = |user: i64| {
+        users::get_user_credential_for(&conn, &root, user, key)
+            .unwrap()
+            .map(|value| value.to_string())
+    };
+
+    let refused =
+        users::store_profile_credential(&store, "owned", key, Some("oauth"), "x").unwrap_err();
+    assert!(refused.starts_with(users::ACCOUNT_CHANGED), "{refused}");
+    assert_eq!(row(first).as_deref(), Some("first-token"));
+    assert_eq!(row(second).as_deref(), Some("second-token"));
+    assert_eq!(row(active), None);
+    assert!(store.get(key).is_err(), "no vault key");
+
+    // With no active account the same sign-in is refused the same way.
+    conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+        .unwrap();
+    assert_eq!(users::active_user_id(&conn).unwrap(), None);
+    let refused =
+        users::store_profile_credential(&store, "owned", key, Some("oauth"), "x").unwrap_err();
+    assert!(refused.starts_with(users::ACCOUNT_CHANGED), "{refused}");
+    assert_eq!(row(first).as_deref(), Some("first-token"));
+    assert_eq!(row(second).as_deref(), Some("second-token"));
+    assert!(
+        store.get(key).is_err(),
+        "no vault key with no active account"
+    );
+}
+
+/// Undoing an import write puts a private row back as it was held: one the
+/// account's own sign-in stamped comes back stamped, so the readers and the
+/// alignment keep taking it for the account's own, and one that was not
+/// stamped comes back unstamped.
+#[test]
+fn a_rollback_puts_a_rows_sign_in_stamp_back_with_it() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::a_rollback_puts_a_rows_sign_in_stamp_back_with_it",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, _, others) = isolated_accounts(1);
+    let other = others[0];
+    hold_profiles(&store, other, &["p", "q"]);
+    let (stamped, unstamped) = ("oauth_dropbox_p", "oauth_dropbox_q");
+    users::store_signed_in_credential_for_user(&store, other, stamped, "oauth", "mine").unwrap();
+    users::store_imported_credential_for_user(&store, other, unstamped, Some("oauth"), "copied")
+        .unwrap();
+    let conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    for (key, held, signed_in) in [(stamped, "mine", true), (unstamped, "copied", false)] {
+        assert_eq!(users::signed_in_row(&conn, other, key).unwrap(), signed_in);
+        let before = users::snapshot_credential_for_user(&store, other, key).unwrap();
+        users::store_imported_credential_for_user(&store, other, key, Some("oauth"), "file-value")
+            .unwrap();
+        users::restore_credential_for_user(
+            &store,
+            other,
+            key,
+            Some("oauth"),
+            "file-value",
+            &before,
+        )
+        .unwrap();
+        assert_eq!(
+            users::get_user_credential_for(&conn, &root, other, key)
+                .unwrap()
+                .as_deref()
+                .map(|value| value.as_str()),
+            Some(held)
+        );
+        assert_eq!(
+            users::signed_in_row(&conn, other, key).unwrap(),
+            signed_in,
+            "{key} came back with another sign-in stamp than it had"
+        );
+    }
+}
+
+/// CodeRabbit r6034350279: the export's secrets come from the account that
+/// produced the profile list. With `--user` naming a non-active account, the
+/// same profile id holds a different password in the active account's
+/// partition: the export bound to the list's account carries that account's
+/// password, never the active one's. Red if the export resolves the active
+/// account's credential.
+#[test]
+fn an_export_reads_the_secrets_of_the_account_that_produced_the_list() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_export_reads_the_secrets_of_the_account_that_produced_the_list",
+    ) {
+        return;
+    }
+    with_unreadable_profile_vault(|store| {
+        let active = users::cli_get_active_user(store)
+            .unwrap()
+            .expect("the fixture has an active account")
+            .id;
+        let listed = users::cli_create_user(store, "Listed account", None, None, None).unwrap();
+        let profile = json!({
+            "id": "srv_bound", "name": "Bound", "protocol": "ftp",
+            "host": "example.com", "port": 21, "username": "u",
+        });
+        users::store_credential_for_user(
+            store,
+            listed.id,
+            "server_srv_bound",
+            "server",
+            "listed-password",
+        )
+        .unwrap();
+        users::store_credential_for_user(
+            store,
+            active,
+            "server_srv_bound",
+            "server",
+            "active-password",
+        )
+        .unwrap();
+
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("bound.aeroftp");
+        let metadata =
+            tauri::async_runtime::block_on(crate::export_server_profiles_core_with_policy(
+                json!([profile]).to_string(),
+                "fixture-export-password".into(),
+                true,
+                file.to_string_lossy().into_owned(),
+                crate::ExportAccountBinding::ExplicitUser(listed.id),
+            ))
+            .unwrap();
+        assert!(metadata.has_credentials);
+        let (out, _secrets, _) =
+            crate::profile_export::import_profiles(&file, "fixture-export-password").unwrap();
+        assert_eq!(
+            out[0].credential.as_deref(),
+            Some("listed-password"),
+            "the export carried the active account's credential, not the list account's"
+        );
     });
 }

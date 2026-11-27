@@ -22,7 +22,7 @@ import { useGuardedClose } from '../hooks/useGuardedClose';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetection } from '../hooks/useDetectedBridgeConfigs';
 import { announceStoredServerProfiles } from '../utils/serverProfileStore';
-import { accountChangeGeneration } from '../utils/userPartitions';
+import { accountChangeGeneration, getUnlockStatus } from '../utils/userPartitions';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
 
@@ -32,7 +32,9 @@ interface ExportImportDialogProps {
      * The account the `servers` list was read under, captured in that same
      * read. Sent with `serversJson` so the backend can refuse the export
      * (ACCOUNT_CHANGED, no file) when the active account changed since.
-     * Null/undefined for a pre-multi-user legacy list.
+     * Null/undefined for a pre-multi-user legacy list; an absent binding is
+     * refused before the write rather than falling back to the active
+     * account.
      */
     accountId?: number | null;
     /**
@@ -251,6 +253,26 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         }
         if (noneSelected) return;
 
+        // The export's secrets must come from the account that produced the
+        // profile list, not from whichever account is active when the write
+        // runs. `accountId` is that binding, captured by the caller when
+        // the list entered the dialog's state; the active account is read
+        // before the save picker opens and again after it closes, and any
+        // difference - including a switch another process already finished -
+        // refuses the export, like the import path's accountChangeGeneration
+        // check.
+        if (accountId === undefined) {
+            setError(t('settings.exportAccountUnbound'));
+            return;
+        }
+        const accountBefore = accountChangeGeneration();
+        const status = await getUnlockStatus().catch(() => null);
+        const activeId = status?.activeUserId ?? null;
+        if (accountChangeGeneration() !== accountBefore || activeId !== accountId) {
+            setError(t('settings.exportAccountChanged'));
+            return;
+        }
+
         // Open save dialog first
         const filePath = await pickSave({
             title: t('settings.exportServers'),
@@ -258,6 +280,14 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             defaultPath: `aeroftp_backup_${new Date().toISOString().slice(0, 10)}.aeroftp`,
         });
         if (!filePath) return;
+        const statusAfter = await getUnlockStatus().catch(() => null);
+        if (
+            accountChangeGeneration() !== accountBefore ||
+            (statusAfter?.activeUserId ?? null) !== accountId
+        ) {
+            setError(t('settings.exportAccountChangedDuringSave'));
+            return;
+        }
 
         setLoading(true);
         setError(null);

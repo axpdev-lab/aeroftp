@@ -1439,7 +1439,10 @@
             "templateLogImported": "Stillingasniðmát flutt inn: {imported} flutt inn, {skipped} sleppt, {invalid} ógild",
             "templateLogBlocks": "Blokkir: {blocks}",
             "templateDuplicateInTemplate": "tvítekning í sniðmáti",
-            "templateSelectProfile": "Flytja inn {name}"
+            "templateSelectProfile": "Flytja inn {name}",
+            "exportAccountUnbound": "Prófillistinn er ekki tengdur við reikning; ekkert var flutt út.",
+            "exportAccountChanged": "Virkalegur reikningur breyttist; ekkert var flutt út.",
+            "exportAccountChangedDuringSave": "Virkalegur reikningur breyttist á meðan vista glugginn var opinn; ekkert var flutt út."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "„{name}“ er þegar vistað á {user}",
             "relocateError": "Ekki tókst að flytja þjóninn: {error}",
             "relocateWrongPassword": "Rangt lykilorð fyrir {user}.",
-            "relocateSecretsNotCopied": "„{name}“ komst á {user}, en vistað lykilorð eða token fylgdu ekki með, svo beðið verður um þau aftur þar."
+            "relocateSecretsNotCopied": "„{name}“ komst á {user}, en vistað lykilorð eða token fylgdu ekki með, svo beðið verður um þau aftur þar.",
+            "relocateMovedCleanupFailed": "\"{name}\" var flutt til {user}, en ekki tókst að fjarlægja Proton Drive lotu þess af upprunalega reikningnum."
         },
         "cyberTools": {
             "title": "Öryggistæki",
@@ -5942,7 +5946,9 @@
                 "months": "{count} mán"
             },
             "demoTabLabel": "Sýnishorn: {protocol}",
-            "newTabLabel": "Nýtt: {name}"
+            "newTabLabel": "Nýtt: {name}",
+            "protonSessionEndsAtUnlock": "Proton-lotu þessa prófíls lýkur næst þegar þessi aðgangur er aflæstur, nema annar aðgangur á þessari tölvu noti hana.",
+            "profileSecretsNotRemoved": "Sniðið var fjarlægt, en ekki tókst að eyða sumum vistuðum auðkennisupplýsingum þess úr hvelfingunni."
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

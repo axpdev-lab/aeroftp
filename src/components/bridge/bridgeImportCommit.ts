@@ -229,3 +229,132 @@ export async function commitImportedServers(
 
     return { added: added.length, updated: updated.length };
 }
+/**
+ * The bridge scan a panel has not settled yet (`scanId` of
+ * `import_bridge_config`). `settle` is `settle_bridge_import`: a scan id
+ * settles that scan, `null` the scans of windows that are gone. A failed
+ * settle is logged, never thrown: the next scan or opening settles again. A
+ * scan that ends after the panel closed is settled at once. A confirm in
+ * flight is waited for first: settled while its profiles are still being
+ * saved, the scan would take back the secrets of profiles about to be saved.
+ * Of scan requests that overlap (two files dropped before either was read),
+ * the one begun last owns the panel, and every other one is settled when it
+ * returns: a scan no panel holds would keep its secrets for the life of the
+ * process.
+ */
+export function createScanSettler(settle: (scanId: string | null) => Promise<unknown>) {
+    let current: string | null = null;
+    let closed = false;
+    let confirm: Promise<unknown> | null = null;
+    let generation = 0;
+    let committed = false;
+    // The scan the running (or last finished) confirm belongs to: a newer
+    // preview that lands meanwhile is not the confirmed one, so
+    // `markCommitted` must not close it.
+    let confirmedScan: string | null | undefined;
+    const run = async (scanId: string | null) => {
+        try {
+            await settle(scanId);
+        } catch (e) {
+            console.warn('Bridge import: settle failed:', e);
+        }
+    };
+    const release = async () => {
+        const scanId = current;
+        current = null;
+        if (!scanId) return;
+        await confirm?.catch(() => undefined);
+        await run(scanId);
+    };
+    /**
+     * Holds the scan just made, a new preview not yet confirmed; one made
+     * after the panel closed is settled, and so is the one it replaces.
+     */
+    const track = async (scanId: string | null | undefined) => {
+        const previous = current;
+        current = scanId ?? null;
+        committed = false;
+        if (previous && previous !== current) {
+            // A confirm of the replaced scan still saving is waited for
+            // first, like in `release`: settling early would take back the
+            // secrets of the profiles it is writing.
+            await confirm?.catch(() => undefined);
+            await run(previous);
+        }
+        if (closed) await release();
+    };
+    return {
+        /** Runs the confirm of the scan held; a settle meanwhile waits for it. */
+        async confirming<T>(work: () => Promise<T>): Promise<T> {
+            const held = current;
+            const running = work();
+            confirm = running;
+            try {
+                return await running;
+            } finally {
+                if (confirm === running) {
+                    confirm = null;
+                    confirmedScan = held;
+                }
+            }
+        },
+        track,
+        /** A new scan request: the one begun last owns the panel. */
+        begin(): number {
+            return ++generation;
+        },
+        /**
+         * Runs the scan request `request` begun: its response while it is
+         * still the last one begun, its scan then held. A request overtaken
+         * meanwhile resolves to null: it is not run if it has not started, its
+         * scan is settled, and its failure is dropped, so only the last
+         * request speaks to the panel.
+         */
+        async latest<T extends { scanId?: string | null }>(request: number, scan: () => Promise<T>): Promise<T | null> {
+            if (request !== generation) return null;
+            let response: T;
+            try {
+                response = await scan();
+            } catch (e) {
+                if (request !== generation) return null;
+                throw e;
+            }
+            if (request !== generation) {
+                if (response.scanId) await run(response.scanId);
+                return null;
+            }
+            await track(response.scanId);
+            return response;
+        },
+        /**
+         * The preview held was confirmed: its scan is settled next, which takes
+         * back what it wrote for the profiles left out, so the preview can be
+         * confirmed no more. A failed confirm does not call this. Returns
+         * false when a newer scan replaced the confirmed one meanwhile: that
+         * preview is not committed and stays confirmable.
+         */
+        markCommitted(): boolean {
+            if (confirmedScan !== undefined && current !== confirmedScan) {
+                return false;
+            }
+            committed = true;
+            return true;
+        },
+        /** Whether the preview held was confirmed (a new scan clears it). */
+        isCommitted(): boolean {
+            return committed;
+        },
+        /** Settles the scan held, if any, once. */
+        release,
+        /** The panel is showing: settles the scans no window holds. */
+        async open() {
+            closed = false;
+            await run(null);
+        },
+        /** The panel closed: settles the scan held. */
+        async close() {
+            closed = true;
+            await release();
+        },
+    };
+}
