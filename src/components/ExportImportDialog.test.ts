@@ -4,7 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../types';
 
-import { PROFILES_CHANGED_EVENT, type ProfilesChangedDetail } from '../utils/serverProfileStore';
+import { PROFILES_CHANGED_EVENT, SERVERS_IMPORTED_EVENT, type ProfilesChangedDetail } from '../utils/serverProfileStore';
+import { IMPORT_SUCCESS_CLOSE_DELAY_MS } from './ImportSuccessOverlay';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/webview', () => ({
@@ -318,6 +319,84 @@ describe('ExportImportDialog .aeroftp import', () => {
         await click(card);
         expect(host.querySelector('[data-testid="mock-template-panel"]')).not.toBeNull();
         expect(host.textContent).toContain('settings.templateTitle');
+    });
+});
+
+describe('ExportImportDialog import success overlay and list refresh', () => {
+    const cleanImportResult = {
+        servers: [{ id: 'srv_new', name: 'New', host: 'n.example', port: 22, username: 'u', importOutcome: 'added' }],
+        skipped: ['Kept'],
+        similar: 0,
+        jottaChains: [],
+        oauthAppsKept: [],
+        sharedSecretsFailed: [],
+        targetChanged: [],
+        stored: [{ id: 'srv_new', name: 'New' }],
+        totalInFile: 2,
+        metadata: { exportDate: '', aeroftpVersion: '', serverCount: 2, hasCredentials: false },
+    };
+
+    it('announces the import, shows the counts overlay and closes after the short pause', async () => {
+        vi.mocked(invoke).mockResolvedValue(cleanImportResult);
+        const importedEvents: Event[] = [];
+        const listen = (e: Event) => importedEvents.push(e);
+        window.addEventListener(SERVERS_IMPORTED_EVENT, listen);
+        const onClose = vi.fn();
+        await openImport(vi.fn(), onClose);
+        await runImport('skip');
+        window.removeEventListener(SERVERS_IMPORTED_EVENT, listen);
+
+        // The My Servers list is told an import landed, so it can drop its
+        // active filter and show the new profiles without clicking "All".
+        expect(importedEvents.length).toBe(1);
+        // The overlay shows the real counts with the existing i18n keys.
+        expect(host.querySelector('[data-testid="import-success-overlay"]')).not.toBeNull();
+        expect(host.querySelector('[data-testid="import-success-check"]')).not.toBeNull();
+        const summary = host.querySelector('[data-testid="import-success-summary"]')?.textContent ?? '';
+        expect(summary).toContain('settings.importSuccess {"count":1}');
+        expect(summary).toContain('settings.bridgeSkippedCount {"count":1}');
+        expect(summary).not.toContain('overwrittenCount');
+        // The dialog closes only after the pause, not instantly.
+        await act(async () => { vi.advanceTimersByTime(IMPORT_SUCCESS_CLOSE_DELAY_MS - 1); });
+        expect(onClose).not.toHaveBeenCalled();
+        await act(async () => { vi.advanceTimersByTime(1); });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('a click on the overlay closes the dialog at once, and only once', async () => {
+        vi.mocked(invoke).mockResolvedValue(cleanImportResult);
+        const onClose = vi.fn();
+        await openImport(vi.fn(), onClose);
+        await runImport('skip');
+        await click(host.querySelector<HTMLElement>('[data-testid="import-success-overlay"]')!);
+        expect(onClose).toHaveBeenCalledTimes(1);
+        await act(async () => { vi.advanceTimersByTime(5000); });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('Escape on the overlay closes the dialog at once', async () => {
+        vi.mocked(invoke).mockResolvedValue(cleanImportResult);
+        const onClose = vi.fn();
+        await openImport(vi.fn(), onClose);
+        await runImport('skip');
+        await act(async () => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('a warned import keeps the dialog open and shows no overlay', async () => {
+        vi.mocked(invoke).mockResolvedValue({
+            ...cleanImportResult,
+            jottaChains: [{ id: 'srv_new', name: 'New' }],
+        });
+        const onClose = vi.fn();
+        await openImport(vi.fn(), onClose);
+        await runImport('skip');
+        expect(host.querySelector('[data-testid="import-success-overlay"]')).toBeNull();
+        expect(host.querySelector('[data-testid="import-warning"]')).not.toBeNull();
+        await act(async () => { vi.advanceTimersByTime(5000); });
+        expect(onClose).not.toHaveBeenCalled();
     });
 });
 

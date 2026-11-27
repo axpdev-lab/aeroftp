@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
 import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, commitImportedServersForScan, createScanSettler, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
 import panelSource from '../BridgeSourcePanel.tsx?raw';
-import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { announceServersImported, readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
     readSavedServerProfilesForWrite: vi.fn(), storeSavedServerProfiles: vi.fn().mockResolvedValue(undefined),
+    announceServersImported: vi.fn(),
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('../../i18n', () => ({
@@ -37,6 +38,8 @@ describe('Crypt bridge import', () => {
         // Bound to the account the list was read from (3), so a switch in
         // between refuses the write instead of landing in another account.
         expect(onImport).toHaveBeenCalledWith([crypt], 3, undefined);
+        // A stored import tells the server list to drop its filters at once.
+        expect(announceServersImported).toHaveBeenCalled();
     });
 
     it('a failed commit write is reported as failed with the vault untouched (one atomic write, no rollback)', async () => {

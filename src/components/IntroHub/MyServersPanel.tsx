@@ -18,6 +18,7 @@ import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
 import { loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles, savedProfilesGeneration, PROFILES_CHANGED_EVENT, type ProfilesChangedDetail } from '../../utils/serverProfileStore';
+import { useServersImportedReset } from './serversImportedReset';
 import { getStorageDedupKey } from '../../utils/storageDedup';
 import { useActivityLog } from '../../hooks/useActivityLog';
 import { getProviderById } from '../../providers';
@@ -544,6 +545,10 @@ export function MyServersPanel({
         window.addEventListener(PROFILES_CHANGED_EVENT, onProfilesChanged);
         return () => window.removeEventListener(PROFILES_CHANGED_EVENT, onProfilesChanged);
     }, [showServers]);
+
+    // An import (`.aeroftp` or bridge) just stored profiles: drop any filter,
+    // group or search so the new cards show immediately, without clicking "All".
+    useServersImportedReset(setActiveFilter, setSearchQuery, setActiveGroupId);
 
     useEffect(() => {
         // N4 (#270): gate the cross-user copy/move menu entries on at least

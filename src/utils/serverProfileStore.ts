@@ -345,6 +345,22 @@ export const announceStoredServerProfiles = (
     }
 };
 
+// Custom DOM event fired when an import (a `.aeroftp` file or a bridge
+// config) stored new profiles. The My Servers list re-reads on
+// PROFILES_CHANGED_EVENT already; this one additionally tells it to drop any
+// active filter, group or search so the freshly imported profiles are visible
+// at once, without clicking "All" first.
+export const SERVERS_IMPORTED_EVENT = 'aeroftp-servers-imported';
+
+/** Tell this window that an import just stored profiles into the active account. */
+export const announceServersImported = (): void => {
+    try {
+        window.dispatchEvent(new CustomEvent(SERVERS_IMPORTED_EVENT));
+    } catch {
+        // SSR / non-DOM environment: dispatch is a best-effort notification.
+    }
+};
+
 /**
  * Run a read-modify-write on a fresh read, and once more on a new read if another
  * writer saved in between (`PROFILES_CHANGED`). The second try belongs to the account

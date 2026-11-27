@@ -49,6 +49,7 @@ function fixture() {
         setError: vi.fn(),
         setCommitted: vi.fn(),
         setSuccess: vi.fn(),
+        setImportSummary: vi.fn(),
         cancelDelayedClose: vi.fn(),
         closeTimerRef: { current: null },
         onClose: vi.fn(),
@@ -77,6 +78,10 @@ describe('BridgeSourcePanel confirmImport', () => {
         expect(scans.isCommitted()).toBe(true);
         const passed = onImport.mock.calls[0][0] as ServerProfile[];
         expect(passed.map(s => s.id)).toEqual(['srv_a']);
+        // The real counts go to the success overlay (added / skipped /
+        // replaced), and no close timer is scheduled: the overlay closes.
+        expect(context.setImportSummary).toHaveBeenCalledWith({ imported: 1, skipped: 1, overwritten: 0 });
+        expect((context.closeTimerRef as { current: unknown }).current).toBeNull();
 
         // Before the 2.5 s close timer fires, a confirm of another
         // selection must not import again: the first settle already took
@@ -128,6 +133,7 @@ describe('BridgeSourcePanel confirmImport', () => {
         expect(onImport).toHaveBeenCalledTimes(1);
         expect(context.setCommitted).not.toHaveBeenCalled();
         expect(context.setSuccess).not.toHaveBeenCalled();
+        expect(context.setImportSummary).not.toHaveBeenCalled();
         expect((context.closeTimerRef as { current: unknown }).current).toBeNull();
         expect(scans.isCommitted()).toBe(false);
     });
