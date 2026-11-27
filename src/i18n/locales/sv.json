@@ -400,6 +400,16 @@
                 "copyKept": "Startmappen {path} har ingen motsvarighet i {mode}-läge och behölls som den är."
             }
         },
+        "connectUrl": {
+            "title": "Anslut till URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Inloggningsscheman öppnar motsvarande sparade profil",
+            "password": "Lösenord (valfritt, sparas i valvet)",
+            "inlinePasswordWarning": "Denna URL innehåller ett lösenord i klartext. Använd lösenordsfältet eller en sparad profil, så att hemligheten inte hamnar i URL:en.",
+            "saveToServers": "Spara i Mina servrar",
+            "profileName": "Profilnamn",
+            "saveSignInHint": "Inloggningsscheman öppnar en befintlig sparad profil"
+        },
         "browser": {
             "remote": "Fjärr",
             "local": "Lokal",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Anslut till URL...",
             "file": "Arkiv",
             "edit": "Redigera",
             "view": "Visa",

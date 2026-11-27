@@ -400,6 +400,16 @@
                 "copyKept": "প্রারম্ভিক ফোল্ডার {path}-এর {mode} মোডে কোনো সমতুল্য নেই এবং এটি যেমন ছিল তেমনই রাখা হয়েছে।"
             }
         },
+        "connectUrl": {
+            "title": "সংযোগ URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "সাইন ইন স্কিম মিলিয়ে সেভ করা প্রোফাইল খোলে",
+            "password": "পাসওয়ার্ড (ঐচ্ছিক, ভল্টে সংরক্ষিত)",
+            "inlinePasswordWarning": "এই URL-এ পাসওয়ার্ড সরাসরি text আছে। field বা saved profile ব্যবহার করুন",
+            "saveToServers": "আমার সার্ভারে সংরক্ষণ করুন",
+            "profileName": "প্রোফাইলের নাম",
+            "saveSignInHint": "সাইন ইন scheme একটি সংরক্ষিত প্রোফাইল খোলে"
+        },
         "browser": {
             "remote": "রিমোট",
             "local": "লোকাল",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "সংযোগ URL...",
             "file": "ফাইল",
             "edit": "সম্পাদনা",
             "view": "দেখুন",

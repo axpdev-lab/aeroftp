@@ -400,6 +400,16 @@
                 "copyKept": "{path} hasierako karpetak ez du baliokiderik {mode} moduan, eta dagoen bezala mantendu da."
             }
         },
+        "connectUrl": {
+            "title": "Konektatu URL batera",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Saioa hasteko eskemek dagokion gordetako profila irekitzen dute",
+            "password": "Pasahitza (hautazkoa, kutxan gordea)",
+            "inlinePasswordWarning": "URL honek pasahitza testu irekian darama. Erabili pasahitzaren eremua edo gordetako profil bat, sekretua URL-an ez izateko.",
+            "saveToServers": "Gorde Nire zerbitzarietan",
+            "profileName": "Profilaren izena",
+            "saveSignInHint": "Saioa hasteko eskemek gordetako profil bat irekitzen dute"
+        },
         "browser": {
             "remote": "Urrunekoa",
             "local": "Tokikoa",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Konektatu URL batera...",
             "file": "Fitxategia",
             "edit": "Editatu",
             "view": "Ikusi",

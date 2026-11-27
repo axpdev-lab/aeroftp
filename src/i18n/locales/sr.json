@@ -400,6 +400,16 @@
                 "copyKept": "Почетна фасцикла {path} нема еквивалент у режиму {mode} и задржана је непромењена."
             }
         },
+        "connectUrl": {
+            "title": "Poveži se na URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Šeme prijave otvaraju odgovarajući sačuvani profil",
+            "password": "Lozinka (opciono, čuva se u sefu)",
+            "inlinePasswordWarning": "Ovaj URL sadrži lozinku u otvorenom tekstu. Koristi polje Lozinka ili sačuvani profil da lozinka ne završi u URL-u.",
+            "saveToServers": "Sačuvaj u Mojim serverima",
+            "profileName": "Naziv profila",
+            "saveSignInHint": "Šeme prijave otvaraju postojeći sačuvani profil"
+        },
         "browser": {
             "remote": "Удаљено",
             "local": "Локално",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Poveži se na URL...",
             "file": "Фајл",
             "edit": "Уреди",
             "view": "Приказ",

@@ -400,6 +400,16 @@
                 "copyKept": "Folder awal {path} tidak memiliki padanan dalam mode {mode} dan dipertahankan apa adanya."
             }
         },
+        "connectUrl": {
+            "title": "Hubungkan ke URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Skema masuk membuka profil tersimpan yang cocok",
+            "password": "Kata sandi (opsional, disimpan di brankas)",
+            "inlinePasswordWarning": "URL ini memuat kata sandi secara langsung. Gunakan kolom Kata sandi atau profil tersimpan agar rahasia tidak masuk ke URL.",
+            "saveToServers": "Simpan di Server Saya",
+            "profileName": "Nama profil",
+            "saveSignInHint": "Skema masuk membuka profil tersimpan yang sudah ada"
+        },
         "browser": {
             "remote": "Jarak Jauh",
             "local": "Lokal",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Hubungkan ke URL...",
             "file": "File",
             "edit": "Edit",
             "view": "Tampilan",

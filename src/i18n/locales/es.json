@@ -400,6 +400,16 @@
                 "copyKept": "La carpeta inicial {path} no tiene equivalente en el modo {mode} y se ha conservado tal cual."
             }
         },
+        "connectUrl": {
+            "title": "Conectar a URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Los esquemas de inicio de sesión abren el perfil guardado correspondiente",
+            "password": "Contraseña (opcional, se guarda en la bóveda)",
+            "inlinePasswordWarning": "Esta URL lleva una contraseña en línea. Usa el campo Contraseña o un perfil guardado para mantener el secreto fuera de la URL.",
+            "saveToServers": "Guardar en Mis servidores",
+            "profileName": "Nombre del perfil",
+            "saveSignInHint": "Los esquemas de inicio de sesión abren un perfil guardado existente"
+        },
         "browser": {
             "remote": "Remoto",
             "local": "Local",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Conectar a URL...",
             "file": "Archivo",
             "edit": "Editar",
             "view": "Ver",

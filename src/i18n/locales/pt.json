@@ -400,6 +400,16 @@
                 "copyKept": "A pasta inicial {path} não tem equivalente no modo {mode} e foi mantida como está."
             }
         },
+        "connectUrl": {
+            "title": "Conectar a URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Os esquemas de login abrem o perfil salvo correspondente",
+            "password": "Senha (opcional, salva no cofre)",
+            "inlinePasswordWarning": "Esta URL traz uma senha embutida. Use o campo Senha ou um perfil salvo para manter o segredo fora da URL.",
+            "saveToServers": "Salvar em Meus servidores",
+            "profileName": "Nome do perfil",
+            "saveSignInHint": "Os esquemas de login abrem um perfil salvo existente"
+        },
         "browser": {
             "remote": "Remoto",
             "local": "Local",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Conectar a URL...",
             "file": "Arquivo",
             "edit": "Editar",
             "view": "Visualizar",

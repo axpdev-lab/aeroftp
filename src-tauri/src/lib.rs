@@ -16031,6 +16031,43 @@ impl SecondLaunch for AppSecondLaunch<'_> {
     }
 }
 
+/// File > Connect to URL...: validate `url` with the one launch-URL parser
+/// the CLI and the single-instance hook read, then queue it exactly like a
+/// second-instance launch, so the existing tab-reuse dispatch in the
+/// frontend opens it. `password` is the dialog's masked Password field,
+/// wrapped in `Zeroizing` until it is copied into the request; a parse error is returned to the modal, which shows
+/// it without closing. The raw URL (it may hold credentials) is never logged.
+#[tauri::command]
+async fn open_launch_url(
+    app: tauri::AppHandle,
+    url: String,
+    password: Option<String>,
+) -> Result<(), String> {
+    // Zeroizing guards the masked field until it is copied into the request;
+    // from there the request's plain `password` field carries it exactly as
+    // the single-instance launch path already does.
+    let password = password.map(zeroize::Zeroizing::new);
+    let masked = password.as_ref().map(|p| p.as_str());
+    let request = open_request::launch_url_request(&url, masked)?;
+    open_request::deliver(&app, vec![request]);
+    Ok(())
+}
+
+/// Parse a launch URL exactly like `open_launch_url` but without queueing it:
+/// the Connect to URL... dialog reads the request to pre-fill and store a
+/// "Save to My Servers" profile. Same parser, same errors, raw URL never
+/// logged. The request's `password` field travels back over IPC the same way
+/// the queued single-instance request travels to the webview.
+#[tauri::command]
+async fn parse_launch_url(
+    url: String,
+    password: Option<String>,
+) -> Result<open_request::OpenRequest, String> {
+    let password = password.map(zeroize::Zeroizing::new);
+    let masked = password.as_ref().map(|p| p.as_str());
+    open_request::launch_url_request(&url, masked)
+}
+
 /// Handles a second launch once the UI origin is known to be ours (see
 /// [`SecondLaunchGate`]). Otherwise the
 /// OS "Extract here / to folder" verb (Deliverable G) opens only the
@@ -29313,6 +29350,8 @@ pub fn run() {
             file_associations::file_associations_status,
             file_associations::file_associations_set_integration,
             open_request::take_open_requests,
+            open_launch_url,
+            parse_launch_url,
             file_associations::file_associations_set_default,
             file_associations::file_associations_open_settings,
             ftp_read_file_base64,

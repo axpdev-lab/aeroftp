@@ -400,6 +400,16 @@
                 "copyKept": "Folder początkowy {path} nie ma odpowiednika w trybie {mode} i został zachowany bez zmian."
             }
         },
+        "connectUrl": {
+            "title": "Połącz z URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Schematy logowania otwierają odpowiedni zapisany profil",
+            "password": "Hasło (opcjonalne, zapisywane w sejfie)",
+            "inlinePasswordWarning": "Ten URL zawiera hasło jawnie. Użyj pola hasła lub zapisanego profilu, aby hasło nie trafiało do URL.",
+            "saveToServers": "Zapisz w Moich serwerach",
+            "profileName": "Nazwa profilu",
+            "saveSignInHint": "Schematy logowania otwierają istniejący zapisany profil"
+        },
         "browser": {
             "remote": "Zdalny",
             "local": "Lokalny",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Połącz z URL...",
             "file": "Plik",
             "edit": "Edycja",
             "view": "Widok",

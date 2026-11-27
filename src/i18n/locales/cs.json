@@ -400,6 +400,16 @@
                 "copyKept": "Počáteční složka {path} nemá v režimu {mode} žádný ekvivalent a zůstala beze změny."
             }
         },
+        "connectUrl": {
+            "title": "Připojit k URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Schémata přihlášení otevírají odpovídající uložený profil",
+            "password": "Heslo (volitelné, uloženo v trezoru)",
+            "inlinePasswordWarning": "Toto URL obsahuje heslo přímo v textu. Použijte pole Heslo nebo uložený profil, aby heslo nezůstalo v URL.",
+            "saveToServers": "Uložit do Mých serverů",
+            "profileName": "Název profilu",
+            "saveSignInHint": "Schémata přihlášení otevírají existující uložený profil"
+        },
         "browser": {
             "remote": "Vzdálený",
             "local": "Místní",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Připojit k URL...",
             "file": "Soubor",
             "edit": "Upravit",
             "view": "Zobrazit",

@@ -400,6 +400,16 @@
                 "copyKept": "Aloituskansiolla {path} ei ole vastinetta {mode}-tilassa, ja se säilytettiin sellaisenaan."
             }
         },
+        "connectUrl": {
+            "title": "Yhdistä URL-osoitteeseen",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Kirjautumisjärjestelmät avaavat vastaavan tallennetun profiilin",
+            "password": "Salasana (valinnainen, tallennetaan holviin)",
+            "inlinePasswordWarning": "Tämä URL sisältää salasanan selkokielisenä. Käytä salasanakenttää tai tallennettua profiilia, jotta salaisuus ei päädy URL-osoitteeseen.",
+            "saveToServers": "Tallenna Omaan palvelimiin",
+            "profileName": "Profiilin nimi",
+            "saveSignInHint": "Kirjautumisjärjestelmät avaavat olemassa olevan tallennetun profiilin"
+        },
         "browser": {
             "remote": "Etä",
             "local": "Paikallinen",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Yhdistä URL-osoitteeseen...",
             "file": "Tiedosto",
             "edit": "Muokkaa",
             "view": "Näytä",

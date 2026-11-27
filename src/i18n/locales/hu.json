@@ -400,6 +400,16 @@
                 "copyKept": "A(z) {path} kezdőmappának nincs megfelelője {mode} módban, ezért változatlanul megmaradt."
             }
         },
+        "connectUrl": {
+            "title": "Csatlakozás URL-hez",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "A bejelentkezési sémák a megfelelő mentett profilt nyitják meg",
+            "password": "Jelszó (opcionális, a széfbe mentve)",
+            "inlinePasswordWarning": "Ez az URL nyílt szövegben tartalmazza a jelszót. Használd a Jelszó mezőt vagy egy mentett profilt, hogy a jelszó ne kerüljön az URL-be.",
+            "saveToServers": "Mentés a Saját kiszolgálók közé",
+            "profileName": "Profil neve",
+            "saveSignInHint": "A bejelentkezési sémák egy meglévő mentett profilt nyitnak meg"
+        },
         "browser": {
             "remote": "Távoli",
             "local": "Helyi",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Csatlakozás URL-hez...",
             "file": "Fájl",
             "edit": "Szerkesztés",
             "view": "Nézet",

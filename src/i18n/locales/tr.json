@@ -400,6 +400,16 @@
                 "copyKept": "{path} başlangıç klasörünün {mode} modunda bir karşılığı yok ve olduğu gibi korundu."
             }
         },
+        "connectUrl": {
+            "title": "URL'ye bağlan",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Oturum açma şemaları eşleşen kayıtlı profili açar",
+            "password": "Şifre (isteğe bağlı, kasaya kaydedilir)",
+            "inlinePasswordWarning": "Bu URL şifreyi düz metin olarak içeriyor. Şifrenin URL'ye girmemesi için Şifre alanını veya kayıtlı bir profili kullan.",
+            "saveToServers": "Sunucularıma kaydet",
+            "profileName": "Profil adı",
+            "saveSignInHint": "Oturum açma şemaları mevcut kayıtlı profili açar"
+        },
         "browser": {
             "remote": "Uzak",
             "local": "Yerel",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "URL'ye bağlan...",
             "file": "Dosya",
             "edit": "Düzenle",
             "view": "Görünüm",

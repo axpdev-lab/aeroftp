@@ -400,6 +400,16 @@
                 "copyKept": "初始文件夹 {path} 在 {mode} 模式下没有对应项，已保持原样。"
             }
         },
+        "connectUrl": {
+            "title": "连接到 URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "登录方案将打开匹配的已保存配置文件",
+            "password": "密码（可选，将保存到保险库）",
+            "inlinePasswordWarning": "此 URL 内嵌了明文密码。请使用密码框或已保存的配置文件，避免密码出现在 URL 中。",
+            "saveToServers": "保存到我的服务器",
+            "profileName": "配置文件名称",
+            "saveSignInHint": "登录方案将打开现有的已保存配置文件"
+        },
         "browser": {
             "remote": "远程",
             "local": "本地",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "连接到 URL...",
             "file": "文件",
             "edit": "编辑",
             "view": "视图",

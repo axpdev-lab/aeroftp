@@ -400,6 +400,16 @@
                 "copyKept": "Početna mapa {path} nema ekvivalent u načinu {mode} i zadržana je kakva jest."
             }
         },
+        "connectUrl": {
+            "title": "Poveži se na URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Sheme prijave otvaraju odgovarajući spremljeni profil",
+            "password": "Lozinka (izborno, sprema se u sef)",
+            "inlinePasswordWarning": "Ovaj URL sadrži lozinku u čistom tekstu. Koristi polje Lozinka ili spremljeni profil kako lozinka ne bi završila u URL-u.",
+            "saveToServers": "Spremi u Moje poslužitelje",
+            "profileName": "Naziv profila",
+            "saveSignInHint": "Sheme prijave otvaraju postojeći spremljeni profil"
+        },
         "browser": {
             "remote": "Udaljeno",
             "local": "Lokalno",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Poveži se na URL...",
             "file": "Datoteka",
             "edit": "Uredi",
             "view": "Prikaz",

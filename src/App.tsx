@@ -382,6 +382,7 @@ import { AzureTrashManager } from './components/AzureTrashManager';
 import { FilenNotesPanel } from './components/FilenNotesPanel';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import { ShareLinkModal } from './components/ShareLinkModal';
+import { ConnectUrlModal } from './components/ConnectUrlModal';
 import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
@@ -1361,6 +1362,7 @@ const App: React.FC = () => {
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
+  const [showConnectUrlModal, setShowConnectUrlModal] = useState(false);
   const [showCyberTools, setShowCyberTools] = useState(false);
   const [showProvidersDialog, setShowProvidersDialog] = useState(false);
   const [showMountManager, setShowMountManager] = useState<false | MountManagerOpenOptions>(false);
@@ -3289,6 +3291,8 @@ const App: React.FC = () => {
     'F1': () => setShowShortcutsDialog(v => !v),
     'Ctrl+,': () => setShowSettingsPanel(true),
     'Ctrl+Shift+P': () => setShowCommandPalette(v => !v),
+    // File > Connect to URL...: always available, also on the connection screen.
+    'Ctrl+L': () => setShowConnectUrlModal(true),
     'Ctrl+Shift+L': () => setShowActivityLog(v => !v),
     'Ctrl+Shift+M': () => setShowDebugPanel(v => !v),
     'Ctrl+T': cycleTheme,
@@ -19934,6 +19938,7 @@ const App: React.FC = () => {
           onShowSiteCommand={() => setShowSiteCommand(true)}
           onShowConnectionScreen={handleNewTabFromSavedServer}
           showConnectionScreen={showConnectionScreen}
+          onConnectToUrl={() => setShowConnectUrlModal(true)}
           onOpenSettings={() => setShowSettingsPanel(true)}
           onShowExportImport={async () => {
             try {
@@ -21367,6 +21372,9 @@ const App: React.FC = () => {
             onClose={() => setShowNextcloudTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
+        )}
+        {showConnectUrlModal && (
+          <ConnectUrlModal onClose={() => setShowConnectUrlModal(false)} />
         )}
         {shareLinkDialog && (
           <ShareLinkModal

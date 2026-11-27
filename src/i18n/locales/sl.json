@@ -400,6 +400,16 @@
                 "copyKept": "Začetna mapa {path} nima ustreznice v načinu {mode} in je bila ohranjena nespremenjena."
             }
         },
+        "connectUrl": {
+            "title": "Poveži z URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Sheme prijave odprejo ustrezen shranjen profil",
+            "password": "Geslo (izbirno, shranjeno v trezorju)",
+            "inlinePasswordWarning": "Ta URL vsebuje geslo v čistem besedilu. Uporabi polje Geslo ali shranjen profil, da geslo ne konča v URL-ju.",
+            "saveToServers": "Shrani v Moje strežnike",
+            "profileName": "Ime profila",
+            "saveSignInHint": "Sheme prijave odprejo obstoječi shranjen profil"
+        },
         "browser": {
             "remote": "Oddaljeno",
             "local": "Lokalno",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Poveži z URL...",
             "file": "Datoteka",
             "edit": "Uredi",
             "view": "Pogled",

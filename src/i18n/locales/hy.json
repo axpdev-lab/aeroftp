@@ -400,6 +400,16 @@
                 "copyKept": "Սկզբնական {path} թղթապանակը {mode} ռեժիմում համարժեք չունի և պահպանվել է անփոփոխ։"
             }
         },
+        "connectUrl": {
+            "title": "Կապվել URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Մոտխ URL profile",
+            "password": "Կապվել password",
+            "inlinePasswordWarning": "URL password",
+            "saveToServers": "Կապվել profile",
+            "profileName": "Պրրկիուոնոն",
+            "saveSignInHint": "Կապվել profile"
+        },
         "browser": {
             "remote": "Հեռավոր",
             "local": "Տեղական",
@@ -4601,6 +4611,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Կապվել URL...",
             "file": "Ֆայլ",
             "edit": "Խմբագրել",
             "view": "Դիտել",

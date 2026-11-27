@@ -400,6 +400,16 @@
                 "copyKept": "Upphafsmappan {path} á sér enga samsvörun í {mode}-ham og var haldið óbreyttri."
             }
         },
+        "connectUrl": {
+            "title": "Tengjast URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Innskráningarskemu opna samsvarandi vistað prófíl",
+            "password": "Aðgangsorð (valfrjálst, vistað í hvelfingunni)",
+            "inlinePasswordWarning": "Þessi URL inniheldur aðgangsorð í hreinum texta. Notaðu aðgangsorðareitinn eða vistað prófíl svo leyndarmálið lendi ekki í URL-inu.",
+            "saveToServers": "Vista í Þjónarnir mínir",
+            "profileName": "Prófílsheiti",
+            "saveSignInHint": "Innskráningarskemu opna núverandi vistað prófíl"
+        },
         "browser": {
             "remote": "Fjartengdur",
             "local": "Staðbundinn",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Tengjast URL...",
             "file": "Skrá",
             "edit": "Breyta",
             "view": "Skoða",

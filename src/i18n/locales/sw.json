@@ -400,6 +400,16 @@
                 "copyKept": "Folda ya mwanzo {path} haina kilinganishi katika hali ya {mode} na imehifadhiwa kama ilivyo."
             }
         },
+        "connectUrl": {
+            "title": "Unganisha kwa URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Mifumo ya kuingia hufungua wasifu unaolingana",
+            "password": "Nenosiri (hiari, huhifadhiwa kwenye hazina)",
+            "inlinePasswordWarning": "URL hii ina nenosiri kwa maandishi wazi. Tumia sehemu ya Nenosiri au wasifu ulioshifadhiwa ili siri isiendelee kwenye URL.",
+            "saveToServers": "Hifadhi kwa Seva Zangu",
+            "profileName": "Jina la wasifu",
+            "saveSignInHint": "Mifumo ya kuingia hufungua wasifu uliohifadhiwa"
+        },
         "browser": {
             "remote": "Mbali",
             "local": "Ya Karibu",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Unganisha kwa URL...",
             "file": "Faili",
             "edit": "Hariri",
             "view": "Mtazamo",

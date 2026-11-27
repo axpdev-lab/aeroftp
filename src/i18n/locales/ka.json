@@ -400,6 +400,16 @@
                 "copyKept": "საწყის საქაღალდეს {path} არ აქვს შესატყვისი {mode} რეჟიმში და შენარჩუნდა უცვლელად."
             }
         },
+        "connectUrl": {
+            "title": "დაკავშირება URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "აუტეთტიფიკატსია URL profile აეეთს",
+            "password": "დაკავშირება password",
+            "inlinePasswordWarning": "URL password",
+            "saveToServers": "დაკავშირება profile",
+            "profileName": "ერიფილილ",
+            "saveSignInHint": "დაკავშირება profile"
+        },
         "browser": {
             "remote": "დისტანციური",
             "local": "ლოკალური",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "დაკავშირება URL...",
             "file": "ფაილი",
             "edit": "რედაქტირება",
             "view": "ხედი",

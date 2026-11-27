@@ -440,6 +440,34 @@ fn local_path(raw: &str, cwd: Option<&Path>) -> Option<PathBuf> {
     })
 }
 
+/// Validate `raw` as a launch URL and read it into the OpenRequest a
+/// second-instance launch carries, so the GUI's Connect to URL... dialog and
+/// `aeroftp <url>` share one parser and one tab-reuse dispatch. The parse
+/// error is returned unchanged: it names the problem without repeating any
+/// secret the URL holds, and the raw URL itself is never logged here.
+///
+/// `password` is the dialog's masked Password field: it fills the request's
+/// password when the URL carries none. Both together are refused, with an
+/// error that repeats neither secret.
+pub fn launch_url_request(raw: &str, password: Option<&str>) -> Result<OpenRequest, String> {
+    let target = crate::launch_url::parse(raw)?;
+    let mut request = parse_remote_url(raw)
+        .ok_or_else(|| "The URL cannot be opened as a connection".to_string())?;
+    let inline = target.url_secret.as_deref().filter(|s| !s.is_empty());
+    let masked = password.filter(|p| !p.is_empty());
+    match (inline, masked) {
+        (Some(_), Some(_)) => {
+            return Err(
+                "The URL already carries a password: use either the URL or the Password field, not both"
+                    .to_string(),
+            )
+        }
+        (_, Some(p)) => request.password = Some(p.to_string()),
+        _ => {}
+    }
+    Ok(request)
+}
+
 /// Classify one argument, a relative path read against `cwd` (the current
 /// folder when `None`). `None` for a flag, a URL, or anything that is not an
 /// existing regular file or folder once symlinks are resolved.
@@ -1594,5 +1622,57 @@ mod tests {
         assert_eq!(parse_remote_url("sftp:///path"), None);
         assert_eq!(parse_remote_url("gopher://host/path"), None);
         assert_eq!(classify("gopher://host/path", None), None);
+    }
+
+    #[test]
+    fn launch_url_request_delegates_to_the_launch_url_parser() {
+        // A valid URL parses into the same RemoteUrl request a second
+        // instance would carry.
+        let req = launch_url_request("sftp://bob:secret@example.com:2222/var/www", None).unwrap();
+        assert_eq!(req.kind, OpenKind::RemoteUrl);
+        assert_eq!(req.server.as_deref(), Some("example.com"));
+        assert_eq!(req.port, Some(2222));
+        assert_eq!(req.username.as_deref(), Some("bob"));
+        // The request's path is the redacted URL: the password never travels
+        // in it, and the error below never repeats it either.
+        assert!(!req.path.contains("secret"));
+
+        // An unknown scheme returns the parser's error, which lists the
+        // supported schemes.
+        let err = launch_url_request("gopher://host/path", None).unwrap_err();
+        assert!(err.contains("Unsupported URL scheme"), "{err}");
+        assert!(err.contains("sftp"), "{err}");
+
+        // A secret-looking query option is refused without echoing its value.
+        let err = launch_url_request("s3://bucket?token=abcdef123456", None).unwrap_err();
+        assert!(err.contains("never carries a secret"), "{err}");
+        assert!(!err.contains("abcdef123456"), "{err}");
+
+        // A raw '/' in the password is rejected without echoing it: the URL
+        // parser reads the rest of the password as a port and refuses it.
+        let err = launch_url_request("ftp://user:pa/ss@host/", None).unwrap_err();
+        assert!(err.contains("Invalid URL"), "{err}");
+        assert!(!err.contains("pa/ss"), "{err}");
+    }
+
+    #[test]
+    fn launch_url_request_masked_password_fills_and_never_leaks() {
+        // The masked Password field fills the request when the URL carries
+        // no inline password.
+        let req = launch_url_request("sftp://bob@example.com/reports", Some("hunter2")).unwrap();
+        assert_eq!(req.password.as_deref(), Some("hunter2"));
+        assert!(!req.path.contains("hunter2"));
+
+        // Both an inline URL password and the masked field are refused, and
+        // the error repeats neither secret.
+        let err =
+            launch_url_request("sftp://bob:inlinepw@example.com/", Some("maskedpw")).unwrap_err();
+        assert!(err.contains("not both"), "{err}");
+        assert!(!err.contains("inlinepw"), "{err}");
+        assert!(!err.contains("maskedpw"), "{err}");
+
+        // An empty masked password changes nothing.
+        let req = launch_url_request("sftp://bob:inlinepw@example.com/", Some("")).unwrap();
+        assert_eq!(req.password.as_deref(), Some("inlinepw"));
     }
 }

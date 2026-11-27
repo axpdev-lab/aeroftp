@@ -119,15 +119,80 @@ const launchEndpoint = (req: OpenRequest) => {
   };
 };
 
+/** The AWS region an S3 host names, lowercased: `s3.eu-west-1.amazonaws.com`
+ *  names `eu-west-1`, the global `s3.amazonaws.com` names `us-east-1`, any
+ *  other host names none. */
+const awsRegionFromHost = (host: string): string | undefined => {
+  if (host === 's3.amazonaws.com') return 'us-east-1';
+  const regional = /^s3\.([a-z0-9-]+)\.amazonaws\.com(\.cn)?$/.exec(host);
+  return regional ? regional[1] : undefined;
+};
+
+/** The AWS host a region is matched by: the global endpoint for `us-east-1`,
+ *  else the regional one. China regions also answer on the `.com.cn` spelling;
+ *  that spelling is kept here only so `hostsMatch` reads both host spellings
+ *  of one region as the same endpoint (the backend itself builds
+ *  `s3.<region>.amazonaws.com`). */
+const awsHostForRegion = (region: string): string => {
+  if (region === 'us-east-1') return 's3.amazonaws.com';
+  return region.startsWith('cn-') ? `s3.${region}.amazonaws.com.cn` : `s3.${region}.amazonaws.com`;
+};
+
+/** Whether two hosts name the same endpoint: equal, or both AWS hosts of the
+ *  same region (`s3.amazonaws.com` and `s3.us-east-1.amazonaws.com` are both
+ *  us-east-1, so either spelling matches the other). */
+const hostsMatch = (a: string, b: string): boolean => {
+  if (a === b) return true;
+  const region = awsRegionFromHost(a);
+  return region !== undefined && region === awsRegionFromHost(b);
+};
+
+/** The host and port of an endpoint option: the host without any scheme, and
+ *  the port when the endpoint spells one. */
+const endpointHostPort = (endpoint: string | undefined): { host: string; port?: number } | null => {
+  const value = (endpoint || '').trim();
+  if (!value) return null;
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`);
+    if (!url.hostname) return null;
+    return { host: url.hostname.toLowerCase(), port: url.port ? Number(url.port) : undefined };
+  } catch {
+    return null;
+  }
+};
+
+/** The host and port an S3 side matches a launch URL by. A side whose `host`
+ *  field is empty (the `amazon-s3` preset stores none, only a region and a
+ *  bucket) or is the global AWS host resolves through its explicit endpoint's
+ *  host, else the regional AWS host its region names (`s3.<region>.amazonaws.com`,
+ *  the host the backend builds when no endpoint is set; the `.com.cn` spelling
+ *  of a China region reads as the same region), so a launch URL's regional
+ *  host matches the profile and its secret is loaded (#1534). */
+const sideHostPort = (
+  protocol: string,
+  side: { host?: string; port?: number; options?: { endpoint?: string; region?: string } },
+): { host: string; port: number } => {
+  const fallbackPort = side.port || launchDefaultPort(protocol);
+  const host = (side.host || '').toLowerCase();
+  if (protocol !== 's3' || (host && host !== 's3.amazonaws.com')) return { host, port: fallbackPort };
+  const explicit = endpointHostPort(side.options?.endpoint);
+  if (explicit) return { host: explicit.host, port: explicit.port ?? fallbackPort };
+  const regionOption = (side.options?.region || '').trim().toLowerCase();
+  const region = regionOption || awsRegionFromHost(host) || 'us-east-1';
+  return { host: awsHostForRegion(region), port: fallbackPort };
+};
+
 /** Whether an open session already is the one a launch URL names, so a
  *  second launch switches to it instead of opening a duplicate tab. Another
  *  bucket, S3 endpoint or branch on the same server is another session. */
 export const openSessionMatchesLaunch = (params: ConnectionParams, req: OpenRequest): boolean => {
   const target = launchEndpoint(req);
   const protocol = params.protocol || 'ftp';
+  const side = sideHostPort(protocol, { host: params.server, port: params.port, options: params.options });
+  const targetSide = sideHostPort(target.protocol, { host: req.server, port: req.port, options: req.options });
   return protocol === target.protocol
-    && (params.server || '').toLowerCase() === target.host
-    && (params.port || launchDefaultPort(protocol)) === target.port
+    && hostsMatch(side.host, targetSide.host)
+    && side.port === targetSide.port
     && (params.options?.bucket || '') === target.bucket
     && normalizedEndpoint(params.options?.endpoint) === target.endpoint
     && (params.options?.githubBranch || '') === target.branch
@@ -140,9 +205,12 @@ export const openSessionMatchesLaunch = (params: ConnectionParams, req: OpenRequ
  *  branch does not change the secret, and the URL's branch is the one used. */
 export const savedProfileMatchesLaunch = (profile: ServerProfile, req: OpenRequest): boolean => {
   const target = launchEndpoint(req);
-  return (profile.protocol || 'ftp') === target.protocol
-    && (profile.host || '').toLowerCase() === target.host
-    && (profile.port || launchDefaultPort(target.protocol)) === target.port
+  const protocol = profile.protocol || 'ftp';
+  const side = sideHostPort(protocol, profile);
+  const targetSide = sideHostPort(target.protocol, { host: req.server, port: req.port, options: req.options });
+  return protocol === target.protocol
+    && hostsMatch(side.host, targetSide.host)
+    && side.port === targetSide.port
     && effectiveUsername(target.protocol, profile.username) === target.username
     && (!target.bucket || (profile.options?.bucket || '') === target.bucket)
     && (!target.endpoint || normalizedEndpoint(profile.options?.endpoint) === target.endpoint);

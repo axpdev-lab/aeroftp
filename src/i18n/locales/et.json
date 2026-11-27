@@ -400,6 +400,16 @@
                 "copyKept": "Algkaustal {path} pole režiimis {mode} vastet ja see säilitati muutmata kujul."
             }
         },
+        "connectUrl": {
+            "title": "Ühenda URL-iga",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Sisselogimisskeemid avavad vastava salvestatud profiili",
+            "password": "Parool (valikuline, salvestatakse seifi)",
+            "inlinePasswordWarning": "See URL sisaldab parooli avatud tekstina. Kasuta paroolivälja või salvestatud profiili, et parool ei satuks URL-i.",
+            "saveToServers": "Salvesta Minu serveritesse",
+            "profileName": "Profiili nimi",
+            "saveSignInHint": "Sisselogimisskeemid avavad olemasoleva salvestatud profiili"
+        },
         "browser": {
             "remote": "Kaugserver",
             "local": "Kohalik",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Ühenda URL-iga...",
             "file": "Fail",
             "edit": "Redigeeri",
             "view": "Vaade",

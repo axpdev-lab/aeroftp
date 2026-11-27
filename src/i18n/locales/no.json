@@ -400,6 +400,16 @@
                 "copyKept": "Startmappen {path} har ingen tilsvarende i {mode}-modus og ble beholdt som den er."
             }
         },
+        "connectUrl": {
+            "title": "Koble til URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Innloggingsskjemaer åpner tilsvarende lagrede profil",
+            "password": "Passord (valgfritt, lagres i hvelvet)",
+            "inlinePasswordWarning": "Denne URL-en inneholder et passord i klartekst. Bruk passordfeltet eller en lagret profil, så hemmeligheten ikke havner i URL-en.",
+            "saveToServers": "Lagre i Mine servere",
+            "profileName": "Profilnavn",
+            "saveSignInHint": "Innloggingsskjemaer åpner en eksisterende lagret profil"
+        },
         "browser": {
             "remote": "Ekstern",
             "local": "Lokal",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Koble til URL...",
             "file": "Fil",
             "edit": "Rediger",
             "view": "Vis",

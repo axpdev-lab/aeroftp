@@ -400,6 +400,16 @@
                 "copyKept": "시작 폴더 {path}에 해당하는 항목이 {mode} 모드에 없어 그대로 유지되었습니다."
             }
         },
+        "connectUrl": {
+            "title": "URL에 연결",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "로그인 스킴이 일치하는 저장된 프로필을 엽니다",
+            "password": "비밀번호(선택 사항, 금고에 저장됨)",
+            "inlinePasswordWarning": "이 URL에는 평문 비밀번호가 포함되어 있습니다. 비밀번호 필드 또는 저장된 프로필을 사용하여 비밀번호가 URL에 노출되지 않게 하세요.",
+            "saveToServers": "내 서버에 저장",
+            "profileName": "프로필 이름",
+            "saveSignInHint": "로그인 스킴은 기존 저장된 프로필을 엽니다"
+        },
         "browser": {
             "remote": "원격",
             "local": "로컬",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "URL에 연결...",
             "file": "파일",
             "edit": "편집",
             "view": "보기",

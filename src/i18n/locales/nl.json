@@ -400,6 +400,16 @@
                 "copyKept": "De beginmap {path} heeft geen equivalent in de {mode}-modus en is ongewijzigd behouden."
             }
         },
+        "connectUrl": {
+            "title": "Verbinden met URL",
+            "placeholder": "sftp://user@host/path",
+            "signInHint": "Inlogschema's openen het bijbehorende opgeslagen profiel",
+            "password": "Wachtwoord (optioneel, opgeslagen in de kluis)",
+            "inlinePasswordWarning": "Deze URL bevat een inline wachtwoord. Gebruik het wachtwoordveld of een opgeslagen profiel, zodat het geheim buiten de URL blijft.",
+            "saveToServers": "Opslaan in Mijn servers",
+            "profileName": "Profielnaam",
+            "saveSignInHint": "Inlogschema's openen een bestaand opgeslagen profiel"
+        },
         "browser": {
             "remote": "Extern",
             "local": "Lokaal",
@@ -4608,6 +4618,7 @@
             }
         },
         "menu": {
+            "connectToUrl": "Verbinden met URL...",
             "file": "Bestand",
             "edit": "Bewerken",
             "view": "Weergave",
