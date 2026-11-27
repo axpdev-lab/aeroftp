@@ -37,13 +37,26 @@ use super::{
 /// repeat a value this session sent (its session token), so that value is
 /// removed, or the key is withheld when it cannot be cut out.
 fn listed_key_text(key: &str, sent: &SentSecrets) -> String {
+    text_without_sent_values(key, sent, "a listed key")
+}
+
+/// What an error may show of the cause of a step on a listed key: a cause
+/// composed here can repeat that key (`Path not found: /<key>`), so it goes
+/// through the same removal as the key itself.
+fn listed_key_cause_text(cause: &dyn std::fmt::Display, sent: &SentSecrets) -> String {
+    text_without_sent_values(&cause.to_string(), sent, "the cause")
+}
+
+/// `text` with this session's sent values removed, or `what` withheld when
+/// a value cannot be cut out (too short to redact, or a retired token that
+/// is no longer known).
+fn text_without_sent_values(text: &str, sent: &SentSecrets, what: &str) -> String {
     if sent.missing_token {
-        return "a listed key, withheld: a session token it may repeat is no longer known"
-            .to_string();
+        return format!("{what}, withheld: a session token it may repeat is no longer known");
     }
-    match super::without_sent_values(key, &sent.values) {
+    match super::without_sent_values(text, &sent.values) {
         Some(shown) => shown,
-        None => "a listed key, withheld: it contains a value this session sent".to_string(),
+        None => format!("{what}, withheld: it contains a value this session sent"),
     }
 }
 
@@ -2644,11 +2657,13 @@ impl S3Provider {
     async fn delete_if_match(&mut self, key: &str, etag: &str) -> Result<(), ProviderError> {
         // A rename deletes listed keys, whose names can repeat this
         // session's token: the errors name the key without it.
-        let shown = listed_key_text(key, &self.sent_secrets());
+        let sent = self.sent_secrets();
+        let shown = listed_key_text(key, &sent);
         let response = self
             .s3_request_ext(Method::DELETE, key, None, None, &[("if-match", etag)])
             .await
             .map_err(|e| {
+                let e = listed_key_cause_text(&e, &sent);
                 ProviderError::Other(format!(
                     "deleting {shown} is unconfirmed: the request failed before an answer \
                      arrived ({e}); the server may already have deleted it, so inspect \
@@ -2875,9 +2890,11 @@ impl S3Provider {
                 other => other,
             };
             if let Err(error) = step {
-                let shown_key = listed_key_text(key, &self.sent_secrets());
+                let sent = self.sent_secrets();
+                let shown_key = listed_key_text(key, &sent);
+                let shown_cause = listed_key_cause_text(&error, &sent);
                 let message =
-                    partial_folder_copy_message(copied, total, from, to, &shown_key, &error);
+                    partial_folder_copy_message(copied, total, from, to, &shown_key, &shown_cause);
                 // The copy pipeline answers a capability error with a
                 // download and upload of the source, which for a folder
                 // would only fail again as "not found" and lose this message.
@@ -3324,7 +3341,7 @@ impl S3Provider {
                         from,
                         to,
                         &listed_key_text(old_key, &self.sent_secrets()),
-                        &e,
+                        &listed_key_cause_text(&e, &self.sent_secrets()),
                     )));
                 }
                 to_delete.push(old_key.clone());
@@ -15069,6 +15086,9 @@ mod tests {
         /// Copy sources the bucket writes and then answers 500: a reply lost
         /// after the server wrote the copy.
         write_then_fail: Vec<String>,
+        /// Keys the bucket lists but answers 404 to on HEAD: an object
+        /// deleted between the listing and the copy.
+        listed_then_gone: Vec<String>,
     }
 
     async fn folder_bucket_with(
@@ -15151,6 +15171,9 @@ mod tests {
                                 )
                                 .into_bytes(),
                             )
+                        }
+                        ("HEAD", _, _) if quirks.listed_then_gone.contains(&key) => {
+                            reply(404, Vec::new())
                         }
                         ("HEAD", _, _) => match objects.get(&key) {
                             Some(bytes) => {
@@ -15509,6 +15532,40 @@ mod tests {
             };
             assert!(text.contains(&expected), "{text}");
         }
+    }
+
+    /// A cause composed here can repeat the listed key: a key gone between
+    /// the listing and the copy fails with `Path not found: /<key>`. Neither
+    /// the folder copy nor the folder rename that stops on it shows the
+    /// token, in the key or in the cause.
+    #[tokio::test]
+    async fn a_listed_key_gone_before_its_copy_never_shows_a_sent_token() {
+        const TOKEN: &str = "SESSIONabc123token";
+        let gone = format!("docs/z-{TOKEN}.txt");
+        let objects: &[(&str, &[u8])] = &[("docs/a.txt", b"alpha"), (gone.as_str(), b"z")];
+        let quirks = FolderBucketQuirks {
+            listed_then_gone: vec![gone.clone()],
+            ..FolderBucketQuirks::default()
+        };
+        let (mut provider, _) = folder_bucket_with(objects, &[], quirks.clone()).await;
+        provider.config.session_token = Some(secrecy::SecretString::from(TOKEN.to_string()));
+        let copy = provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect_err("the listed key is gone")
+            .to_string();
+        assert!(copy.contains("not found"), "{copy}");
+        assert!(!copy.contains(TOKEN), "{copy}");
+
+        let (mut provider, _) = folder_bucket_with(objects, &[], quirks).await;
+        provider.config.session_token = Some(secrecy::SecretString::from(TOKEN.to_string()));
+        let rename = provider
+            .rename("/docs", "/moved")
+            .await
+            .expect_err("the listed key is gone")
+            .to_string();
+        assert!(!rename.contains(TOKEN), "{rename}");
+        assert!(rename.contains("[REDACTED]"), "{rename}");
     }
 
     /// The same for a folder rename that stops on a listed key.
