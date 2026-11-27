@@ -2583,13 +2583,6 @@ impl S3Provider {
         }
     }
 
-    /// The ETag a HEAD names for `key` when the object exists and its
-    /// `Content-Length` is named as exactly 0: the proof a folder marker is
-    /// empty. [`Self::stat`] reads a missing or unreadable length as 0, which
-    /// proves nothing about the data the object holds, so a length that is
-    /// not named 0 yields `None`. `If-Match` compares strong tags only, so a
-    /// weak or missing ETag yields `None` too: without it no delete can be
-    /// bound to this validation.
     /// Whether a HEAD of `key` names its length as exactly 0. A missing or
     /// unreadable length proves nothing, so it answers false.
     async fn key_names_zero_length(&self, key: &str) -> bool {
@@ -2600,6 +2593,13 @@ impl S3Provider {
         )
     }
 
+    /// The ETag a HEAD names for `key` when the object exists and its
+    /// `Content-Length` is named as exactly 0: the proof a folder marker is
+    /// empty. [`Self::stat`] reads a missing or unreadable length as 0, which
+    /// proves nothing about the data the object holds, so a length that is
+    /// not named 0 yields `None`. `If-Match` compares strong tags only, so a
+    /// weak or missing ETag yields `None` too: without it no delete can be
+    /// bound to this validation.
     async fn empty_marker_etag(&mut self, key: &str) -> Option<String> {
         match self.s3_request(Method::HEAD, key, None, None).await {
             Ok(response) if response.status() == StatusCode::OK => {
@@ -6269,11 +6269,17 @@ impl S3Provider {
             )));
         }
         match self.copy_with_source_meta(marker, to, false, meta).await {
-            // The marker holds no data (HEAD proved it empty): a copy refused
-            // for a capability reason writes it the way `mkdir` does, as the
-            // folder loop does for its markers.
+            // A copy refused for a capability reason writes the marker the
+            // way `mkdir` does, as the folder loop does, but only when a HEAD
+            // names its length as 0: `stat` reads a missing length as 0, and
+            // a marker that holds bytes keeps the error, so the copy pipeline
+            // moves it with its data through download and upload.
             Err(error) if crate::copy_fallback::should_attempt_copy_fallback(&error) => {
-                self.put_folder_marker_as_copy(to_trimmed).await
+                if self.key_names_zero_length(marker.trim_matches('/')).await {
+                    self.put_folder_marker_as_copy(to_trimmed).await
+                } else {
+                    Err(error)
+                }
             }
             other => other,
         }
@@ -14820,6 +14826,123 @@ mod tests {
         let mut provider = make_provider(Some(&format!("http://{addr}")));
         provider.connected = true;
         (provider, log)
+    }
+
+    /// A raw HTTP double for a gateway's slashless directory object `docs`
+    /// whose HEAD answers 200, `application/x-directory`, and no length at
+    /// all (hyper would write `Content-Length: 0`). Nothing is under
+    /// `docs/`, nothing is at `dest/docs`, and CopyObject is refused as not
+    /// implemented. Every request is logged as `METHOD path`.
+    async fn provider_for_lengthless_directory_object_double(
+    ) -> (S3Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let seen = Arc::clone(&seen);
+                tokio::spawn(async move {
+                    let mut stream = BufReader::new(socket);
+                    loop {
+                        let mut request_line = String::new();
+                        if stream.read_line(&mut request_line).await.unwrap_or(0) == 0 {
+                            return;
+                        }
+                        let mut parts = request_line.split_whitespace();
+                        let method = parts.next().unwrap_or("").to_string();
+                        let target = parts.next().unwrap_or("").to_string();
+                        let (mut length, mut copy) = (0usize, false);
+                        loop {
+                            let mut line = String::new();
+                            stream.read_line(&mut line).await.unwrap();
+                            let line = line.trim_end();
+                            if line.is_empty() {
+                                break;
+                            }
+                            if let Some((name, value)) = line.split_once(':') {
+                                match name.trim().to_ascii_lowercase().as_str() {
+                                    "content-length" => length = value.trim().parse().unwrap(),
+                                    "x-amz-copy-source" => copy = true,
+                                    _ => {}
+                                }
+                            }
+                        }
+                        let mut body = vec![0; length];
+                        stream.read_exact(&mut body).await.unwrap();
+                        let url = reqwest::Url::parse(&format!("http://h{target}")).unwrap();
+                        let path = url.path().to_string();
+                        let suffix = if copy { " copy" } else { "" };
+                        seen.lock()
+                            .unwrap()
+                            .push(format!("{method} {path}{suffix}"));
+                        let listing = url.query_pairs().any(|(k, _)| k == "prefix");
+                        let reply = match (method.as_str(), path.as_str(), listing, copy) {
+                            ("HEAD", "/test-bucket/docs", _, _) => {
+                                "HTTP/1.1 200 OK\r\nETag: \"dir-v1\"\r\n\
+                                 Content-Type: application/x-directory\r\n\r\n"
+                                    .to_string()
+                            }
+                            ("HEAD", _, _, _) => {
+                                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_string()
+                            }
+                            ("GET", _, true, _) => {
+                                let xml = "<ListBucketResult><IsTruncated>false</IsTruncated>\
+                                           </ListBucketResult>";
+                                format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{xml}",
+                                    xml.len()
+                                )
+                            }
+                            ("PUT", _, _, true) => {
+                                let xml = "<Error><Code>NotImplemented</Code><Message>\
+                                           server-side copy not supported</Message></Error>";
+                                format!(
+                                    "HTTP/1.1 501 Not Implemented\r\nContent-Length: {}\r\n\r\n{xml}",
+                                    xml.len()
+                                )
+                            }
+                            _ => "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_string(),
+                        };
+                        stream.get_mut().write_all(reply.as_bytes()).await.unwrap();
+                    }
+                });
+            }
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (provider, log)
+    }
+
+    /// A directory-typed object whose HEAD names no length reads as size 0
+    /// to `stat`, but that proves nothing about its bytes. With CopyObject
+    /// refused, no empty marker is written in its place: the refusal goes
+    /// back to the copy pipeline, which moves the bytes by download and
+    /// upload.
+    #[tokio::test]
+    async fn a_refused_copy_of_a_directory_object_with_no_named_length_writes_no_marker() {
+        let (mut provider, log) = provider_for_lengthless_directory_object_double().await;
+        // `stat` reads the missing length as 0, or this test proves nothing.
+        assert_eq!(provider.stat("/docs").await.expect("stat").size, 0);
+        let err = provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect_err("the refusal goes back to the copy pipeline");
+        assert!(
+            crate::copy_fallback::should_attempt_copy_fallback(&err),
+            "{err:?}"
+        );
+        let log = log.lock().unwrap().clone();
+        assert!(
+            log.contains(&"PUT /test-bucket/dest/docs copy".to_string()),
+            "{log:?}"
+        );
+        assert!(
+            !log.contains(&"PUT /test-bucket/dest/docs".to_string()),
+            "{log:?}"
+        );
     }
 
     /// A HEAD that names no length does not prove the marker empty: the
