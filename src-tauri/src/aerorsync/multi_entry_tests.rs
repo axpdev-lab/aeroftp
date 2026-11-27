@@ -2093,3 +2093,499 @@ fn b2_id_names_table_full_at_cap() {
         .expect("overwrite under the cap");
     assert_eq!(tables.uid_name(1), Some("renamed"));
 }
+
+// ---------------------------------------------------------------------------
+// B3.1: tree list reception
+// ---------------------------------------------------------------------------
+
+mod b3_1 {
+    use super::*;
+    use crate::aerorsync::events::CollectingSink;
+    use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
+    use crate::aerorsync::native_driver::AerorsyncDriver;
+    use crate::aerorsync::real_wire::{
+        encode_ndx, encode_server_preamble, MuxHeader, MuxTag, ServerPreamble, XattrDatum,
+    };
+    use crate::aerorsync::remote_command::RemoteCommandSpec;
+    use crate::aerorsync::transport::CancelHandle;
+    use crate::aerorsync::tree_driver::{
+        classify_tree_ndx, DirSegment, TreeListLimits, TreeListState, TreeNdx,
+        DEFAULT_MAX_TREE_ENTRIES,
+    };
+    use crate::aerorsync::types::{AerorsyncErrorKind, SessionRole};
+
+    fn mux_frame(payload: &[u8]) -> Vec<u8> {
+        let header = MuxHeader {
+            tag: MuxTag::Data,
+            length: payload.len() as u32,
+        };
+        let mut out = Vec::with_capacity(4 + payload.len());
+        out.extend_from_slice(&header.encode());
+        out.extend_from_slice(payload);
+        out
+    }
+
+    fn sample_entry(path: &str) -> FileListEntry {
+        const XMIT_SAME_UID: u32 = 0x0008;
+        const XMIT_SAME_GID: u32 = 0x0010;
+        const XMIT_LONG_NAME: u32 = 0x0040;
+        const XMIT_SAME_TIME: u32 = 0x0080;
+        FileListEntry {
+            flags: XMIT_LONG_NAME | XMIT_SAME_UID | XMIT_SAME_GID | XMIT_SAME_TIME,
+            path: path.as_bytes().to_vec(),
+            size: 1,
+            mtime: 0,
+            mtime_nsec: None,
+            mode: FILE_MODE,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: Vec::new(),
+            symlink_target: None,
+            rdev: None,
+            xattrs: None,
+            acls: None,
+        }
+    }
+
+    /// A driver on a mock whose inbound is the capture's own server
+    /// preamble followed by the sender's app stream, re-muxed into
+    /// `MSG_DATA` frames of `chunk` bytes (arbitrary boundaries, as on a
+    /// real socket).
+    async fn driver_for_capture(
+        run: &str,
+        chunk: usize,
+    ) -> AerorsyncDriver<MockRemoteShellTransport> {
+        let app = sender_app_stream(run);
+        let (compat, _) = server_compat(run);
+        let mut inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: compat as i32,
+            checksum_algos: "xxh128".to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0,
+            consumed: 0,
+        });
+        for piece in app.chunks(chunk) {
+            inbound.extend_from_slice(&mux_frame(piece));
+        }
+        let cfg = MockTransportConfig::healthy_download().with_raw_inbound(inbound);
+        let mut d = AerorsyncDriver::new(MockRemoteShellTransport::new(cfg), CancelHandle::inert());
+        d.session_role = Some(SessionRole::Receiver);
+        let (opts, _) = options_from_capture(run);
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_download("/remote/target"))
+            .await
+            .unwrap();
+        d.perform_preamble_exchange(31, "xxh128", "none")
+            .await
+            .unwrap();
+        // align the file-list checksum flag with what the capture's argv carried
+        d.file_list_checksum_enabled = opts.always_checksum;
+        d
+    }
+
+    /// A driver on a hand-built inbound stream (`preamble + frames`).
+    async fn hand_driver(
+        frames: Vec<u8>,
+        compat_flags: i32,
+        preserve_xattrs: bool,
+    ) -> AerorsyncDriver<MockRemoteShellTransport> {
+        let mut inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags,
+            checksum_algos: "xxh128".to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0,
+            consumed: 0,
+        });
+        inbound.extend_from_slice(&frames);
+        let cfg = MockTransportConfig::healthy_download().with_raw_inbound(inbound);
+        let mut d = AerorsyncDriver::new(MockRemoteShellTransport::new(cfg), CancelHandle::inert());
+        d.session_role = Some(SessionRole::Receiver);
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_download("/remote/target"))
+            .await
+            .unwrap();
+        d.perform_preamble_exchange(31, "xxh128", "none")
+            .await
+            .unwrap();
+        d.file_list_checksum_enabled = false;
+        d.effective_metadata.preserve_xattrs = preserve_xattrs;
+        d
+    }
+
+    /// Read the next ndx from the state's buffered bytes, pulling frames
+    /// only when the buffer runs dry. This is the B3.2 loop's read step.
+    async fn read_next_ndx(
+        d: &mut AerorsyncDriver<MockRemoteShellTransport>,
+        state: &mut TreeListState,
+        sink: &mut CollectingSink,
+    ) -> i32 {
+        loop {
+            if !state.buffered.is_empty() {
+                match decode_ndx(&state.buffered, &mut d.inbound_ndx_state) {
+                    Ok((n, consumed)) => {
+                        state.buffered.drain(..consumed);
+                        return n;
+                    }
+                    Err(RealWireError::NdxTruncated { .. }) => {}
+                    Err(e) => panic!("ndx decode: {e}"),
+                }
+            }
+            let payload = d.next_data_frame(sink).await.expect("a data frame");
+            state.buffered.extend_from_slice(&payload);
+        }
+    }
+
+    /// The test-side B3.2 loop: read ndx, decode announced segments, stop
+    /// at the first item ndx or at NDX_FLIST_EOF.
+    async fn drive_segments(
+        d: &mut AerorsyncDriver<MockRemoteShellTransport>,
+        mut state: TreeListState,
+        limits: TreeListLimits,
+        sink: &mut CollectingSink,
+    ) -> (Vec<DirSegment>, Option<i32>, bool) {
+        let mut segments = Vec::new();
+        let mut first_item = None;
+        let mut saw_eof = false;
+        loop {
+            let ndx = read_next_ndx(d, &mut state, sink).await;
+            match classify_tree_ndx(ndx) {
+                TreeNdx::Segment { .. } => {
+                    let seg = d
+                        .receive_tree_segment(ndx, &mut state, limits, sink)
+                        .await
+                        .expect("segment decodes");
+                    segments.push(seg);
+                }
+                TreeNdx::Item(n) => {
+                    first_item = Some(n);
+                    break;
+                }
+                TreeNdx::FlistEof => {
+                    saw_eof = true;
+                    break;
+                }
+                other => panic!("unexpected ndx case {other:?}"),
+            }
+        }
+        (segments, first_item, saw_eof)
+    }
+
+    /// 1. p9-dl-inc: every segment of the capture, with ndx_start, dir_ndx,
+    /// the A4 gaps, per-segment counts and the resolved wire names, all
+    /// from `capture/decode_rsync_wire.py`, not from the code under test.
+    #[tokio::test]
+    async fn b3_1_p9_dl_inc_list_matches_the_capture() {
+        let mut d = driver_for_capture("p9-dl-inc", 7).await;
+        let mut sink = CollectingSink::default();
+        let limits = TreeListLimits::default();
+        let start = d
+            .receive_initial_tree_list(limits, &mut sink)
+            .await
+            .expect("the initial list decodes");
+        assert_eq!(start.initial.entries.len(), 1);
+        assert_eq!(start.initial.ndx_start, 1);
+        assert_eq!(start.initial.dir_ndx, None);
+        let (extra, first_item, saw_eof) =
+            drive_segments(&mut d, start.state, limits, &mut sink).await;
+        let mut segments = vec![start.initial];
+        segments.extend(extra);
+        let starts: Vec<i32> = segments.iter().map(|s| s.ndx_start).collect();
+        assert_eq!(starts, vec![1, 3, 8, 11, 14, 16]);
+        let dirs: Vec<Option<i32>> = segments.iter().map(|s| s.dir_ndx).collect();
+        assert_eq!(
+            dirs,
+            vec![None, Some(0), Some(1), Some(2), Some(4), Some(3)]
+        );
+        let gaps: Vec<i32> = segments.iter().map(|s| s.gap_ndx).collect();
+        assert_eq!(
+            gaps,
+            vec![0, 2, 7, 10, 13, 15],
+            "A4: ndx_start - 1 is the numbering gap"
+        );
+        let counts: Vec<usize> = segments.iter().map(|s| s.entries.len()).collect();
+        assert_eq!(counts, vec![1, 4, 2, 2, 1, 0]);
+        // wire ndx stay contiguous inside each segment
+        for seg in &segments {
+            for (i, e) in seg.entries.iter().enumerate() {
+                assert_eq!(e.ndx, seg.ndx_start + i as i32);
+            }
+        }
+        let names: Vec<&[u8]> = segments
+            .iter()
+            .flat_map(|s| s.entries.iter().map(|e| e.entry.path.as_slice()))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                &b"r"[..],
+                b"r/top.txt",
+                b"r/d1",
+                b"r/d3",
+                b"r/d2",
+                b"r/d1/f1",
+                b"r/d1/f2",
+                b"r/d2/sub",
+                b"r/d2/f3",
+                b"r/d2/sub/f4",
+            ]
+        );
+        assert!(saw_eof, "p9-dl-inc ends the list with NDX_FLIST_EOF");
+        assert_eq!(first_item, None);
+    }
+
+    /// 2. p9-dl-noinc: one list starting at ndx 0, then the uid/gid id
+    /// lists with the CF_ID0_NAMES name of id 0.
+    #[tokio::test]
+    async fn b3_1_p9_dl_noinc_single_list_and_id_lists() {
+        let mut d = driver_for_capture("p9-dl-noinc", 5).await;
+        let mut sink = CollectingSink::default();
+        let start = d
+            .receive_initial_tree_list(TreeListLimits::default(), &mut sink)
+            .await
+            .expect("the single list decodes");
+        assert_eq!(start.initial.ndx_start, 0);
+        assert_eq!(start.initial.entries.len(), 10);
+        assert_eq!(start.uid_names.id0_name.as_deref(), Some("root"));
+        assert_eq!(start.gid_names.id0_name.as_deref(), Some("root"));
+        let (extra, first_item, saw_eof) =
+            drive_segments(&mut d, start.state, TreeListLimits::default(), &mut sink).await;
+        assert!(
+            extra.is_empty(),
+            "no segment follows a non-incremental list"
+        );
+        assert!(
+            first_item.is_some(),
+            "the first item ndx follows the id lists"
+        );
+        assert!(!saw_eof);
+    }
+
+    /// 3. p8-dl: 50.000 entries (2.546.687 bytes) in ONE segment, received
+    /// without any whole-list byte ceiling.
+    #[tokio::test]
+    async fn b3_1_p8_dl_fifty_thousand_entries_one_segment() {
+        let mut d = driver_for_capture("p8-dl", 65_536).await;
+        let mut sink = CollectingSink::default();
+        let limits = TreeListLimits::default();
+        assert!(
+            DEFAULT_MAX_TREE_ENTRIES > 50_001,
+            "the default ceiling must stay above the p8-dl gate (50.001 entries)"
+        );
+        let start = d
+            .receive_initial_tree_list(limits, &mut sink)
+            .await
+            .expect("the initial list decodes");
+        assert_eq!(start.initial.entries.len(), 1);
+        let (extra, _, _) = drive_segments(&mut d, start.state, limits, &mut sink).await;
+        assert_eq!(extra.len(), 1);
+        assert_eq!(extra[0].entries.len(), 50_000);
+        assert_eq!(extra[0].ndx_start, 3);
+        assert_eq!(extra[0].dir_ndx, Some(0));
+    }
+
+    /// 4. p9big-dl-inc: the initial list plus the 18 lookahead segments
+    /// arrive before the first item; the loop stops at its ndx.
+    #[tokio::test]
+    async fn b3_1_p9big_dl_inc_segments_before_the_first_item() {
+        let mut d = driver_for_capture("p9big-dl-inc", 4_096).await;
+        let mut sink = CollectingSink::default();
+        let limits = TreeListLimits {
+            max_entries: 100_000,
+            ..Default::default()
+        };
+        let start = d
+            .receive_initial_tree_list(limits, &mut sink)
+            .await
+            .expect("the initial list decodes");
+        let mut state = start.state;
+        let mut dirs: Vec<i32> = Vec::new();
+        let mut segments: Vec<DirSegment> = Vec::new();
+        let first_item = loop {
+            let ndx = read_next_ndx(&mut d, &mut state, &mut sink).await;
+            match classify_tree_ndx(ndx) {
+                TreeNdx::Segment { dir_ndx } => {
+                    let seg = d
+                        .receive_tree_segment(ndx, &mut state, limits, &mut sink)
+                        .await
+                        .expect("a lookahead segment decodes");
+                    dirs.push(seg.dir_ndx.expect("announced segment"));
+                    segments.push(seg);
+                }
+                TreeNdx::Item(n) => break Some(n),
+                TreeNdx::FlistEof => break None,
+                other => panic!("unexpected ndx case {other:?}"),
+            }
+        };
+        // decoder (decode_rsync_wire.py su b0c0/p9big-dl-inc, estratto NAS
+        // 3112/3113): a 0x254c arriva ndx 2 (>= 0) dopo 18 segmenti extra
+        // (dir_ndx 0..=17); il marker dir 18 (-119) e' a 0x2550, DOPO il
+        // primo item. Quindi: initial + 18 extra = 19 segmenti, item 2.
+        println!("segment dir_ndx sequence: {dirs:?}");
+        assert_eq!(dirs, (0..=17).collect::<Vec<i32>>());
+        assert_eq!(
+            dirs.len() + 1,
+            19,
+            "the initial list plus 18 lookahead segments"
+        );
+        assert_eq!(
+            first_item,
+            Some(2),
+            "the first ndx >= 0 after the lookahead (decoder riga 0x254c)"
+        );
+        // NAS 3113: il primo item e' proprio il buco del primo segmento
+        // extra (ndx_start 3, gap 2): il sender usa il buco come item
+        // ndx della directory del segmento.
+        assert_eq!(segments[0].ndx_start, 3);
+        assert_eq!(first_item, Some(segments[0].gap_ndx));
+    }
+
+    /// Fix 1 witness: the same non-incremental list decodes identically
+    /// however the stream is chopped into mux frames.
+    #[tokio::test]
+    async fn b3_1_id_lists_decode_at_every_chunk_boundary() {
+        for chunk in [1usize, 2, 3, 5, 7, 13, 64] {
+            let mut d = driver_for_capture("p9-dl-noinc", chunk).await;
+            let mut sink = CollectingSink::default();
+            let start = d
+                .receive_initial_tree_list(TreeListLimits::default(), &mut sink)
+                .await
+                .unwrap_or_else(|e| panic!("chunk {chunk}: {e}"));
+            assert_eq!(start.initial.entries.len(), 10, "chunk {chunk}");
+            assert_eq!(
+                start.uid_names.id0_name.as_deref(),
+                Some("root"),
+                "chunk {chunk}"
+            );
+            assert_eq!(
+                start.gid_names.id0_name.as_deref(),
+                Some("root"),
+                "chunk {chunk}"
+            );
+        }
+    }
+
+    /// 5a. The session entry ceiling is a typed, final error (InvalidFrame,
+    /// never a retry): p8-dl carries 50.001 entries against the default
+    /// ceiling of 50.000, and the big segment trips it.
+    #[tokio::test]
+    async fn b3_1_max_entries_trips_as_a_typed_error() {
+        let mut d = driver_for_capture("p8-dl", 65_536).await;
+        let mut sink = CollectingSink::default();
+        let limits = TreeListLimits {
+            max_entries: 1_000,
+            ..Default::default()
+        };
+        let start = d
+            .receive_initial_tree_list(limits, &mut sink)
+            .await
+            .expect("the small initial list is under the ceiling");
+        let mut state = start.state;
+        let ndx = read_next_ndx(&mut d, &mut state, &mut sink).await;
+        assert!(matches!(classify_tree_ndx(ndx), TreeNdx::Segment { .. }));
+        let err = d
+            .receive_tree_segment(ndx, &mut state, limits, &mut sink)
+            .await
+            .expect_err("the 50.000-entry segment exceeds the explicit 1.000 ceiling");
+        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
+        assert!(
+            err.detail.contains("session limit exceeded: 1000"),
+            "unexpected detail: {}",
+            err.detail
+        );
+    }
+
+    /// 5b. A single entry above max_entry_bytes fails in the decoder.
+    #[tokio::test]
+    async fn b3_1_entry_over_max_entry_bytes_fails_in_the_decoder() {
+        let mut d = driver_for_capture("p9-dl-inc", 7).await;
+        let mut sink = CollectingSink::default();
+        let limits = TreeListLimits {
+            max_entry_bytes: 8,
+            ..Default::default()
+        };
+        let err = d
+            .receive_initial_tree_list(limits, &mut sink)
+            .await
+            .expect_err("the first capture entry is far above 8 bytes");
+        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
+        assert!(
+            err.detail.contains("above the per-entry limit 8"),
+            "unexpected detail: {}",
+            err.detail
+        );
+    }
+
+    /// 5c. An ACL/xattr back-reference past the table end, arriving in a
+    /// segment AFTER the first, fails with ReferenceOutOfRange: the session
+    /// tables really live across segments.
+    #[tokio::test]
+    async fn b3_1_reference_out_of_range_in_a_later_segment() {
+        let (mut o, _) = options_from_capture("p9-dl-inc");
+        o.preserve_xattrs = true;
+        let mut e1 = sample_entry("a");
+        e1.xattrs = Some(XattrWireEntry::Literal(vec![XattrPair {
+            name: "user.a".to_string(),
+            datum: XattrDatum::Inline(b"v".to_vec()),
+        }]));
+        let mut e2 = sample_entry("b");
+        e2.xattrs = Some(XattrWireEntry::Reference(9));
+        let mut codec = FileListCodecState::new();
+        let mut payload = encode_file_list_entry(&e1, &o, &mut codec);
+        payload.extend_from_slice(&encode_file_list_terminator(&o, 0));
+        payload.extend_from_slice(&encode_ndx(NDX_FLIST_OFFSET, &mut NdxState::new()));
+        payload.extend_from_slice(&encode_file_list_entry(&e2, &o, &mut codec));
+        payload.extend_from_slice(&encode_file_list_terminator(&o, 0));
+        let mut d = hand_driver(mux_frame(&payload), 0x80 | 1, true).await;
+        let mut sink = CollectingSink::default();
+        let limits = TreeListLimits::default();
+        let start = d
+            .receive_initial_tree_list(limits, &mut sink)
+            .await
+            .expect("the first segment decodes and interns xattr set 0");
+        assert_eq!(start.initial.entries.len(), 1);
+        let mut state = start.state;
+        let ndx = read_next_ndx(&mut d, &mut state, &mut sink).await;
+        assert!(matches!(classify_tree_ndx(ndx), TreeNdx::Segment { .. }));
+        let err = d
+            .receive_tree_segment(ndx, &mut state, limits, &mut sink)
+            .await
+            .expect_err("reference 9 is past the one-element xattr table");
+        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
+        assert!(
+            err.detail.contains("out of range"),
+            "unexpected detail: {}",
+            err.detail
+        );
+    }
+
+    /// 6. Neutralita': the single-file frozen path is untouched: the same
+    /// capture the B1 oracles pin still decodes to the same entries
+    /// through the tree receiver, byte-identical names included.
+    #[tokio::test]
+    async fn b3_1_single_file_capture_still_decodes_through_the_tree_path() {
+        let mut d = driver_for_capture("p9-dl-noinc", 3).await;
+        let mut sink = CollectingSink::default();
+        let start = d
+            .receive_initial_tree_list(TreeListLimits::default(), &mut sink)
+            .await
+            .expect("decodes");
+        let app = sender_app_stream("p9-dl-noinc");
+        let (opts, _) = options_from_capture("p9-dl-noinc");
+        let reference = decode_list(&app, 0, &opts, &mut FileListCodecState::new());
+        let got: Vec<&[u8]> = start
+            .initial
+            .entries
+            .iter()
+            .map(|e| e.entry.path.as_slice())
+            .collect();
+        let want: Vec<&[u8]> = reference
+            .entries
+            .iter()
+            .map(|e| e.path.as_slice())
+            .collect();
+        assert_eq!(got, want);
+        assert_eq!(start.initial.entries.len(), reference.entries.len());
+    }
+}

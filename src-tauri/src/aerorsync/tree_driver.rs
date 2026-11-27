@@ -19,8 +19,10 @@
 //! Two numberings exist on the wire: the wire ndx, kept on every
 //! [`TreeEntry`] because B4 needs it for hardlinks, and the transfer
 //! order of the sorted `dir_flist`. The gap `ndx_start - 1` at every
-//! segment boundary is not a file: it is the numbering hole the parent
-//! directory leaves (A4), skipped and never an item.
+//! segment boundary is the numbering hole the parent directory leaves
+//! (A4). Measured on p9big-dl-inc (NAS 3113): the sender uses that hole as
+//! the item ndx of the segment's directory (iflags IS_NEW|LOCAL_CHANGE, no
+//! data); B3.2 serves it, B3.1 only records it.
 
 // SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -47,9 +49,10 @@ const CF_INC_RECURSE: i32 = 1;
 /// for id 0 after the zero terminator.
 const CF_ID0_NAMES: i32 = 1 << 8;
 
-/// Default session ceiling on tree-list entries, matching the session
-/// table caps of `session_state.rs` (50_000).
-pub const DEFAULT_MAX_TREE_ENTRIES: usize = 50_000;
+/// Default session ceiling on tree-list entries. Provisional 1.000.000:
+/// it must stay above the B0 gate p8-dl (50.001 session entries), and B3.4
+/// measures the RSS per entry and fixes the definitive value.
+pub const DEFAULT_MAX_TREE_ENTRIES: usize = 1_000_000;
 
 /// Caller-supplied ceilings for tree-list reception. Both are per-entry /
 /// per-session bounds, never a bound on the whole list buffer:
@@ -95,7 +98,8 @@ pub struct TreeEntry {
 /// `ndx_start`. `dir_ndx` is the `dir_flist` index the segment marker
 /// carried (`NDX_FLIST_OFFSET - marker`), `None` for the initial list.
 /// `gap_ndx` (= `ndx_start - 1`) is the numbering hole the parent
-/// directory leaves (A4): skipped, never an item.
+/// directory leaves (A4). The sender uses it as the item ndx of the
+/// segment's directory (attributes only, no data); B3.2 serves it.
 #[derive(Debug, Clone)]
 pub struct DirSegment {
     /// Wire ndx of the segment's first entry.
@@ -103,7 +107,8 @@ pub struct DirSegment {
     /// `dir_flist` index announced by the segment marker; `None` for the
     /// initial list, which no marker announces.
     pub dir_ndx: Option<i32>,
-    /// `ndx_start - 1`: the numbering gap, not the parent's ndx (A4).
+    /// `ndx_start - 1`: the numbering gap, used by the sender as the item
+    /// ndx of the segment's directory (no data); B3.2 serves it.
     pub gap_ndx: i32,
     /// The segment's entries in wire order, wire ndx kept on each.
     pub entries: Vec<TreeEntry>,
@@ -373,7 +378,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let opts = self.build_flist_options(self.negotiated_file_checksum_len()?);
         let ndx_start = state.next_ndx;
         // A4: the gap ndx_start - 1 is the numbering hole the parent
-        // directory leaves; it is skipped, never an item.
+        // directory leaves; the sender reuses it as the segment directory's
+        // item ndx (attributes only), so it is recorded, not skipped here.
         let gap_ndx = ndx_start - 1;
         let mut decoder = FileListStreamDecoder::new(
             opts,
@@ -461,7 +467,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         state.buffered.drain(..consumed);
                         return Ok(list);
                     }
+                    // Same incompleteness rule as the entry decoder: a
+                    // declared name length that overshoots the buffer is
+                    // recoverable by pulling another frame.
                     Err(RealWireError::TruncatedBuffer { .. }) => {}
+                    Err(RealWireError::InvalidNameLen {
+                        declared,
+                        available,
+                    }) if available < declared => {}
                     Err(other) => return Err(map_realwire_error(other, context)),
                 }
             }
