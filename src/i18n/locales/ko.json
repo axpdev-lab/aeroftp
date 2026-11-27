@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count}개의 전송이 복원되었습니다. 재개하면 필요 시 저장된 서버에 연결한 뒤 다시 실행합니다. 버리면 제거됩니다.",
             "resumeRestoredAll": "모두 재개",
             "discardRestored": "삭제",
-            "resumeConnectConfirm": "\"{name}\"에 연결하고 {count}개의 전송을 재개할까요?",
             "connectAndResume": "연결 및 재개",
             "resumeNeedsConnection": "먼저 서버에 연결한 다음 이 전송을 재개하세요.",
             "resumeNoProfile": "이 전송에는 저장된 서버 프로필이 없습니다. 수동으로 연결한 다음 재개하세요.",
@@ -771,7 +770,9 @@
             "failedCount": "{count}개 실패",
             "queuedForAnotherServer": "시작되지 않음: 이 전송은 다른 서버 또는 계정용으로 대기열에 있었습니다. 해당 탭으로 돌아간 다음 다시 시도하세요.",
             "queuedOverlayChanged": "시작되지 않음: 이 전송이 대기열에 추가될 때 사용된 암호화 오버레이가 잠겨 있거나 더 이상 이 폴더를 포함하지 않습니다. 해당 서버에서 잠금을 해제한 후 다시 시도하세요.",
-            "pasteFromAnotherServer": "붙여넣지 않음: 이 파일들은 현재 활성 상태가 아닌 서버, 계정 또는 암호화 오버레이에서 잘라내거나 복사되었습니다. 해당 탭으로 돌아간 다음 다시 붙여넣으세요."
+            "pasteFromAnotherServer": "붙여넣지 않음: 이 파일들은 현재 활성 상태가 아닌 서버, 계정 또는 암호화 오버레이에서 잘라내거나 복사되었습니다. 해당 탭으로 돌아간 다음 다시 붙여넣으세요.",
+            "resumeConnectConfirm_one": "\"{name}\"에 연결하고 {count}개 전송을 다시 시작하시겠습니까?",
+            "resumeConnectConfirm_many": "\"{name}\"에 연결하고 {count}개 전송을 다시 시작하시겠습니까?"
         },
         "settings": {
             "title": "설정",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} ({percent}% 증가)",
             "extract_details": "{input} → {output} (압축 해제됨)",
             "download_details": "({size}, {seconds}초)",
-            "transfer_details": "({time} 동안 {size})"
+            "transfer_details": "({time} 동안 {size})",
+            "download_error_reason": "{filename} 다운로드 실패: {reason}",
+            "upload_error_reason": "{filename} 업로드 실패: {reason}"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",

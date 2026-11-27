@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Transferuri restaurate: {count}. Reluarea se conectează la serverul salvat dacă e necesar, apoi le reexecută. Renunțarea le elimină.",
             "resumeRestoredAll": "Reluați tot",
             "discardRestored": "Renunțați",
-            "resumeConnectConfirm": "Conectați-vă la „{name}” și reluați transferurile ({count})?",
             "connectAndResume": "Conectare și reluare",
             "resumeNeedsConnection": "Conectați-vă mai întâi la un server, apoi reluați acest transfer.",
             "resumeNoProfile": "Acest transfer nu are un profil de server salvat. Conectați-vă manual, apoi reluați.",
@@ -771,7 +770,9 @@
             "failedCount": "Eșuate: {count}",
             "queuedForAnotherServer": "Nu a început: acest transfer era în coadă pentru alt server sau cont. Reveniți la fila lui, apoi încercați din nou.",
             "queuedOverlayChanged": "Nepornit: overlay-ul criptat sub care a fost pus în coadă acest transfer este blocat sau nu mai acoperă acest folder. Deblochează-l pe acel server, apoi încearcă din nou.",
-            "pasteFromAnotherServer": "Nu a fost lipit: aceste fișiere au fost decupate sau copiate pe un server, cont sau strat criptat care nu este activ acum. Reveniți la fila lui, apoi lipiți din nou."
+            "pasteFromAnotherServer": "Nu a fost lipit: aceste fișiere au fost decupate sau copiate pe un server, cont sau strat criptat care nu este activ acum. Reveniți la fila lui, apoi lipiți din nou.",
+            "resumeConnectConfirm_one": "Conectează-te la \"{name}\" și reia {count} transfer?",
+            "resumeConnectConfirm_many": "Conectează-te la \"{name}\" și reia {count} transferuri?"
         },
         "settings": {
             "title": "Setări",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (crescut cu {percent}%)",
             "extract_details": "{input} → {output} (extins)",
             "download_details": "({size} în {seconds} s)",
-            "transfer_details": "({size} în {time})"
+            "transfer_details": "({size} în {time})",
+            "download_error_reason": "Descărcarea {filename} a eșuat: {reason}",
+            "upload_error_reason": "Încărcarea {filename} a eșuat: {reason}"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",

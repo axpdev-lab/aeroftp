@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Atkurta perdavimų: {count}. Tęsimas prireikus prisijungia prie išsaugoto serverio, tada juos paleidžia iš naujo. Atmesti juos pašalina.",
             "resumeRestoredAll": "Tęsti visus",
             "discardRestored": "Atsisakyti",
-            "resumeConnectConfirm": "Prisijungti prie „{name}“ ir tęsti perdavimus ({count})?",
             "connectAndResume": "Prisijungti ir tęsti",
             "resumeNeedsConnection": "Pirmiausia prisijunkite prie serverio, tada tęskite šį perdavimą.",
             "resumeNoProfile": "Šis perdavimas neturi išsaugoto serverio profilio. Prisijunkite rankiniu būdu, tada tęskite.",
@@ -771,7 +770,9 @@
             "failedCount": "Nepavyko: {count}",
             "queuedForAnotherServer": "Nepradėta: šis perkėlimas buvo įtrauktas į eilę kitam serveriui ar paskyrai. Grįžkite į jo skirtuką ir bandykite dar kartą.",
             "queuedOverlayChanged": "Nepradėta: užšifruotas overlay, pagal kurį šis perdavimas buvo įtrauktas į eilę, yra užrakintas arba nebedengia šio aplanko. Atrakinkite jį tame serveryje ir bandykite dar kartą.",
-            "pasteFromAnotherServer": "Neįklijuota: šie failai buvo iškirpti arba nukopijuoti serveryje, paskyroje ar šifruotame sluoksnyje, kuris dabar neaktyvus. Grįžkite į jo skirtuką ir įklijuokite dar kartą."
+            "pasteFromAnotherServer": "Neįklijuota: šie failai buvo iškirpti arba nukopijuoti serveryje, paskyroje ar šifruotame sluoksnyje, kuris dabar neaktyvus. Grįžkite į jo skirtuką ir įklijuokite dar kartą.",
+            "resumeConnectConfirm_one": "Prisijungti prie „{name}\" ir tęsti {count} perkėlimą?",
+            "resumeConnectConfirm_many": "Prisijungti prie „{name}\" ir tęsti {count} perkėlimų?"
         },
         "settings": {
             "title": "Nustatymai",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (padidėjo {percent}%)",
             "extract_details": "{input} → {output} (išskleista)",
             "download_details": "({size} per {seconds} s)",
-            "transfer_details": "({size} per {time})"
+            "transfer_details": "({size} per {time})",
+            "download_error_reason": "Nepavyko atsisiųsti {filename}: {reason}",
+            "upload_error_reason": "Nepavyko įkelti {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",

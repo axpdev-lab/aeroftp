@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} siirto(a) palautettiin. Jatka yhdistää tarvittaessa tallennettuun palvelimeen ja suorittaa ne sitten uudelleen. Hylkää poistaa ne.",
             "resumeRestoredAll": "Jatka kaikkia",
             "discardRestored": "Hylkää",
-            "resumeConnectConfirm": "Yhdistetäänkö palvelimeen \"{name}\" ja jatketaan {count} siirtoa?",
             "connectAndResume": "Yhdistä ja jatka",
             "resumeNeedsConnection": "Yhdistä ensin palvelimeen ja jatka sitten tätä siirtoa.",
             "resumeNoProfile": "Tällä siirrolla ei ole tallennettua palvelinprofiilia. Yhdistä manuaalisesti ja jatka sitten.",
@@ -771,7 +770,9 @@
             "failedCount": "Epäonnistui: {count}",
             "queuedForAnotherServer": "Ei käynnistetty: tämä siirto oli jonossa toiselle palvelimelle tai tilille. Vaihda takaisin sen välilehteen ja yritä uudelleen.",
             "queuedOverlayChanged": "Ei käynnistynyt: salattu overlay, jonka alla tämä siirto jonotettiin, on lukittu tai ei enää kata tätä kansiota. Avaa se kyseisellä palvelimella ja yritä uudelleen.",
-            "pasteFromAnotherServer": "Ei liimattu: nämä tiedostot leikattiin tai kopioitiin palvelimella, tilillä tai salatulla kerroksella, joka ei ole nyt aktiivinen. Vaihda takaisin sen välilehteen ja liimaa uudelleen."
+            "pasteFromAnotherServer": "Ei liimattu: nämä tiedostot leikattiin tai kopioitiin palvelimella, tilillä tai salatulla kerroksella, joka ei ole nyt aktiivinen. Vaihda takaisin sen välilehteen ja liimaa uudelleen.",
+            "resumeConnectConfirm_one": "Yhdistä kohteeseen \"{name}\" ja jatka {count} siirtoa?",
+            "resumeConnectConfirm_many": "Yhdistä kohteeseen \"{name}\" ja jatka {count} siirtoa?"
         },
         "settings": {
             "title": "Asetukset",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (kasvoi {percent}%)",
             "extract_details": "{input} → {output} (purettu)",
             "download_details": "({size}, {seconds} s)",
-            "transfer_details": "({size} ajassa {time})"
+            "transfer_details": "({size} ajassa {time})",
+            "download_error_reason": "Tiedoston {filename} lataus epäonnistui: {reason}",
+            "upload_error_reason": "Tiedoston {filename} lähetys epäonnistui: {reason}"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",

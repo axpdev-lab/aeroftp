@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} Übertragung(en) wurden wiederhergestellt. Fortsetzen verbindet bei Bedarf mit dem gespeicherten Server und führt sie dann erneut aus. Verwerfen entfernt sie.",
             "resumeRestoredAll": "Alle fortsetzen",
             "discardRestored": "Verwerfen",
-            "resumeConnectConfirm": "Mit „{name}“ verbinden und {count} Übertragung(en) fortsetzen?",
             "connectAndResume": "Verbinden & fortsetzen",
             "resumeNeedsConnection": "Verbinden Sie sich zuerst mit einem Server, und setzen Sie diese Übertragung dann fort.",
             "resumeNoProfile": "Diese Übertragung hat kein gespeichertes Serverprofil. Manuell verbinden, dann fortsetzen.",
@@ -771,7 +770,9 @@
             "failedCount": "Fehlgeschlagen: {count}",
             "queuedForAnotherServer": "Nicht gestartet: Diese Übertragung war für einen anderen Server oder ein anderes Konto eingereiht. Wechseln Sie zurück zu dessen Tab und versuchen Sie es erneut.",
             "queuedOverlayChanged": "Nicht gestartet: Das verschlüsselte Overlay, unter dem diese Übertragung eingereiht wurde, ist gesperrt oder deckt diesen Ordner nicht mehr ab. Entsperre es auf diesem Server und versuche es dann erneut.",
-            "pasteFromAnotherServer": "Nicht eingefügt: Diese Dateien wurden auf einem Server, Konto oder verschlüsselten Overlay ausgeschnitten oder kopiert, das jetzt nicht aktiv ist. Wechseln Sie zurück zu dessen Tab und fügen Sie sie erneut ein."
+            "pasteFromAnotherServer": "Nicht eingefügt: Diese Dateien wurden auf einem Server, Konto oder verschlüsselten Overlay ausgeschnitten oder kopiert, das jetzt nicht aktiv ist. Wechseln Sie zurück zu dessen Tab und fügen Sie sie erneut ein.",
+            "resumeConnectConfirm_one": "Mit \"{name}\" verbinden und {count} Übertragung fortsetzen?",
+            "resumeConnectConfirm_many": "Mit \"{name}\" verbinden und {count} Übertragungen fortsetzen?"
         },
         "settings": {
             "title": "Einstellungen",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} ({percent}% größer)",
             "extract_details": "{input} → {output} (entpackt)",
             "download_details": "({size} in {seconds} s)",
-            "transfer_details": "({size} in {time})"
+            "transfer_details": "({size} in {time})",
+            "download_error_reason": "Download von {filename} fehlgeschlagen: {reason}",
+            "upload_error_reason": "Upload von {filename} fehlgeschlagen: {reason}"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",

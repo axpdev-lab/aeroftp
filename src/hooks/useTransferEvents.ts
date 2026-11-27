@@ -23,6 +23,9 @@ export const TRANSFER_BATCH_FINISHED_EVENT = 'aeroftp-transfer-batch-finished';
 interface NotifyMethods {
   success: (title: string, message?: string) => string | null;
   error: (title: string, message?: string) => string | null;
+  /** Toast + Debug panel only, no Activity Log line (for failures whose log
+   * line was already written, so the log keeps one entry per failure). */
+  errorToastOnly: (title: string, message?: string) => string | null;
   info: (title: string, message?: string) => string | null;
   warning: (title: string, message?: string) => string | null;
 }
@@ -65,6 +68,9 @@ interface UseTransferEventsOptions {
   humanLog: ReturnType<typeof useHumanizedLog>;
   transferQueue: ReturnType<typeof useTransferQueue>;
   notify: NotifyMethods;
+  /** Toast without the Activity Log mirror: for failures whose log line was
+   * already written, so the log keeps one entry per failure. */
+  toastErrorOnly?: (title: string, message?: string) => void;
   setActiveTransfer: (transfer: TransferProgress | null) => void;
   loadRemoteFiles: (overrideProtocol?: string) => unknown;
   /** When the last remote listing started (ms since epoch): a finished upload's
@@ -123,6 +129,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const completionHolds = useRef(new Set<string>());
   const transferIdToLogId = useRef<Map<string, string>>(new Map());
   const pendingFileLogIds = useRef<Map<string, string>>(new Map());
+  // Real target path per pending file (set by the caller that knows it, e.g.
+  // the journal descriptor on a resume): wins over the current-folder guess.
+  const pendingFileTargetPaths = useRef<Map<string, string>>(new Map());
   const pendingDeleteLogIds = useRef<Map<string, string>>(new Map());
   const transferIdToDisplayPath = useRef<Map<string, string>>(new Map());
   const detailedDeleteCompletedIds = useRef<Set<string>>(new Set());
@@ -515,8 +524,15 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // Clean up completed set and reset speed tracking for this new transfer
         completedTransferIds.current.delete(data.transfer_id);
         lastFileSpeedRef.current = 0;
-        const displayName = resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
+        // The real target the caller registered wins over a path rebuilt from
+        // the current folder, which is wrong for a resume/retry started while
+        // the panel shows another folder.
+        const knownTarget = data.filename ? pendingFileTargetPaths.current.get(data.filename) : undefined;
+        const displayName = (data.path && data.path.trim().length > 0)
+          ? data.path
+          : knownTarget ?? resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         transferIdToDisplayPath.current.set(data.transfer_id, displayName);
+        if (data.filename) pendingFileTargetPaths.current.delete(data.filename);
         let logId = '';
         // Check if we have a pending manual log for this file (deduplication)
         if (pendingFileLogIds.current.has(data.filename)) {
@@ -698,20 +714,25 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         emitToastState();
       } else if (data.event_type === 'file_error') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const displayName = data.path || data.filename;
+        const displayName = data.path || (data.filename ? pendingFileTargetPaths.current.get(data.filename) : undefined) || data.filename;
         const errorKey = data.direction === 'download' ? 'activity.download_error' : 'activity.upload_error';
         // Close the file's own "Downloading..." entry, as file_complete does:
         // logging a second line and leaving the first one running kept the
         // Activity Log's "ACTIVE" badge lit forever after any failed file.
+        const failReason = data.message ? (localizeRestrictedCharError(data.message, t) ?? data.message) : '';
+        const logKey = failReason ? `${errorKey}_reason` : errorKey;
+        const logParams: Record<string, string | number> = failReason
+          ? { filename: displayName, location: loc, reason: failReason }
+          : { filename: displayName, location: loc };
         const trackedLog = findTrackedEntry(pendingFileLogIds.current, data.transfer_id, data.path, data.filename);
         if (trackedLog) {
           activityLog.updateEntry(trackedLog.value, {
             status: 'error',
-            message: t(errorKey, { filename: displayName, location: loc }),
+            message: t(logKey, logParams),
           });
           pendingFileLogIds.current.delete(trackedLog.key);
         } else {
-          humanLog.logRaw(errorKey, 'ERROR', { filename: displayName, location: loc }, 'error');
+          humanLog.logRaw(logKey, 'ERROR', logParams, 'error');
         }
 
         const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
@@ -963,7 +984,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         const displayName = transferIdToDisplayPath.current.get(data.transfer_id)
           || resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         const errorKey = data.direction === 'upload' ? 'activity.upload_error' : 'activity.download_error';
-        const formattedMessage = t(errorKey, { filename: displayName, location: loc });
+        const eventReason = data.message ? (localizeRestrictedCharError(data.message, t) ?? data.message) : '';
+        const formattedMessage = eventReason
+          ? t(`${errorKey}_reason`, { filename: displayName, location: loc, reason: eventReason })
+          : t(errorKey, { filename: displayName, location: loc });
 
         const logId = transferIdToLogId.current.get(data.transfer_id);
         if (logId) {
@@ -993,7 +1017,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         if (typeof data.message === 'string' && data.message.includes(READ_ONLY_ERROR_PREFIX)) {
           notify.error(t('aeroShare.toast.readOnlyTitle'), t('aeroShare.toast.readOnlyBody'));
         } else {
-          notify.error(t('transfer.failed'), data.message);
+          // The failure line was already written to the Activity Log above;
+          // toast only, so the log keeps exactly one error entry per file.
+          optRef.current.toastErrorOnly?.(t('transfer.failed'), data.message);
         }
       } else if (data.event_type === 'cancelled') {
         window.dispatchEvent(new CustomEvent(TRANSFER_BATCH_FINISHED_EVENT, { detail: data }));
@@ -1174,5 +1200,5 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
     return () => { ids.forEach(id => completionHolds.current.delete(id)); };
   }, []);
 
-  return { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows, holdFileCompletions, singleFileTransferIds, completedTransferIds, transferIdToQueueId };
+  return { pendingFileLogIds, pendingFileTargetPaths, pendingDeleteLogIds, registerFileBatchRows, holdFileCompletions, singleFileTransferIds, completedTransferIds, transferIdToQueueId };
 }

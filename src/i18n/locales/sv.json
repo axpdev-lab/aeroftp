@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} överföring(ar) återställdes. Återuppta ansluter till den sparade servern vid behov och kör dem sedan igen. Kasta tar bort dem.",
             "resumeRestoredAll": "Återuppta alla",
             "discardRestored": "Kasta",
-            "resumeConnectConfirm": "Anslut till \"{name}\" och återuppta {count} överföring(ar)?",
             "connectAndResume": "Anslut och återuppta",
             "resumeNeedsConnection": "Anslut till en server först och återuppta sedan den här överföringen.",
             "resumeNoProfile": "Den här överföringen har ingen sparad serverprofil. Anslut manuellt och återuppta sedan.",
@@ -771,7 +770,9 @@
             "failedCount": "Misslyckade: {count}",
             "queuedForAnotherServer": "Inte startad: den här överföringen stod i kö för en annan server eller ett annat konto. Växla tillbaka till dess flik och försök igen.",
             "queuedOverlayChanged": "Inte startad: det krypterade overlayet som den här överföringen köades under är låst eller täcker inte längre den här mappen. Lås upp det på den servern och försök igen.",
-            "pasteFromAnotherServer": "Inte inklistrad: de här filerna klipptes ut eller kopierades på en server, ett konto eller ett krypterat överlägg som inte är aktivt nu. Växla tillbaka till dess flik och klistra in igen."
+            "pasteFromAnotherServer": "Inte inklistrad: de här filerna klipptes ut eller kopierades på en server, ett konto eller ett krypterat överlägg som inte är aktivt nu. Växla tillbaka till dess flik och klistra in igen.",
+            "resumeConnectConfirm_one": "Anslut till \"{name}\" och återuppta {count} överföring?",
+            "resumeConnectConfirm_many": "Anslut till \"{name}\" och återuppta {count} överföringar?"
         },
         "settings": {
             "title": "Inställningar",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (växte {percent} %)",
             "extract_details": "{input} → {output} (uppackad)",
             "download_details": "({size} på {seconds} s)",
-            "transfer_details": "({size} på {time})"
+            "transfer_details": "({size} på {time})",
+            "download_error_reason": "Nedladdning av {filename} misslyckades: {reason}",
+            "upload_error_reason": "Uppladdning av {filename} misslyckades: {reason}"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",

@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Đã khôi phục {count} quá trình truyền. Tiếp tục sẽ kết nối tới máy chủ đã lưu nếu cần, rồi chạy lại chúng. Hủy bỏ sẽ xóa chúng.",
             "resumeRestoredAll": "Tiếp tục tất cả",
             "discardRestored": "Hủy bỏ",
-            "resumeConnectConfirm": "Kết nối tới \"{name}\" và tiếp tục {count} quá trình truyền?",
             "connectAndResume": "Kết nối & Tiếp tục",
             "resumeNeedsConnection": "Hãy kết nối tới máy chủ trước, rồi tiếp tục quá trình truyền này.",
             "resumeNoProfile": "Quá trình truyền này không có hồ sơ máy chủ đã lưu. Hãy kết nối thủ công, rồi tiếp tục.",
@@ -771,7 +770,9 @@
             "failedCount": "Thất bại: {count}",
             "queuedForAnotherServer": "Chưa bắt đầu: lượt truyền này đã được xếp hàng cho máy chủ hoặc tài khoản khác. Hãy quay lại tab của nó, rồi thử lại.",
             "queuedOverlayChanged": "Chưa bắt đầu: overlay được mã hóa mà lượt truyền này được xếp hàng đợi bên dưới đang bị khóa hoặc không còn bao phủ thư mục này. Hãy mở khóa nó trên máy chủ đó, rồi thử lại.",
-            "pasteFromAnotherServer": "Chưa dán: các tệp này đã được cắt hoặc sao chép trên máy chủ, tài khoản hoặc lớp phủ mã hóa hiện không hoạt động. Hãy quay lại tab của nó, rồi dán lại."
+            "pasteFromAnotherServer": "Chưa dán: các tệp này đã được cắt hoặc sao chép trên máy chủ, tài khoản hoặc lớp phủ mã hóa hiện không hoạt động. Hãy quay lại tab của nó, rồi dán lại.",
+            "resumeConnectConfirm_one": "Kết nối tới \"{name}\" và tiếp tục {count} lần truyền?",
+            "resumeConnectConfirm_many": "Kết nối tới \"{name}\" và tiếp tục {count} lần truyền?"
         },
         "settings": {
             "title": "Cài đặt",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (tăng {percent}%)",
             "extract_details": "{input} → {output} (đã giải nén)",
             "download_details": "({size} trong {seconds} giây)",
-            "transfer_details": "({size} trong {time})"
+            "transfer_details": "({size} trong {time})",
+            "download_error_reason": "Tải xuống {filename} thất bại: {reason}",
+            "upload_error_reason": "Tải lên {filename} thất bại: {reason}"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",

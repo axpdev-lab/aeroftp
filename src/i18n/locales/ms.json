@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} pemindahan dipulihkan. Sambung semula menyambung ke pelayan tersimpan jika perlu, kemudian menjalankannya semula. Buang mengalih keluarnya.",
             "resumeRestoredAll": "Sambung semua",
             "discardRestored": "Buang",
-            "resumeConnectConfirm": "Sambung ke \"{name}\" dan sambung semula {count} pemindahan?",
             "connectAndResume": "Sambung & Sambung semula",
             "resumeNeedsConnection": "Sambung ke pelayan dahulu, kemudian sambung semula pemindahan ini.",
             "resumeNoProfile": "Pemindahan ini tiada profil pelayan tersimpan. Sambung secara manual, kemudian sambung semula.",
@@ -771,7 +770,9 @@
             "failedCount": "Gagal: {count}",
             "queuedForAnotherServer": "Tidak dimulakan: pemindahan ini diberi baris gilir untuk pelayan atau akaun lain. Kembali ke tabnya, kemudian cuba lagi.",
             "queuedOverlayChanged": "Belum dimulakan: overlay disulitkan yang menjadi asas pemindahan ini dibaris gilir telah dikunci atau tidak lagi meliputi folder ini. Buka kuncinya pada pelayan itu, kemudian cuba lagi.",
-            "pasteFromAnotherServer": "Tidak ditampal: fail ini dipotong atau disalin pada pelayan, akaun atau tindanan disulitkan yang tidak aktif sekarang. Kembali ke tabnya, kemudian tampal semula."
+            "pasteFromAnotherServer": "Tidak ditampal: fail ini dipotong atau disalin pada pelayan, akaun atau tindanan disulitkan yang tidak aktif sekarang. Kembali ke tabnya, kemudian tampal semula.",
+            "resumeConnectConfirm_one": "Sambung ke \"{name}\" dan sambung semula {count} pemindahan?",
+            "resumeConnectConfirm_many": "Sambung ke \"{name}\" dan sambung semula {count} pemindahan?"
         },
         "settings": {
             "title": "Tetapan",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (bertambah {percent}%)",
             "extract_details": "{input} → {output} (diekstrak)",
             "download_details": "({size} dalam {seconds} saat)",
-            "transfer_details": "({size} dalam {time})"
+            "transfer_details": "({size} dalam {time})",
+            "download_error_reason": "Gagal memuat turun {filename}: {reason}",
+            "upload_error_reason": "Gagal memuat naik {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",

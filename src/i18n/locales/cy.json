@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Adferwyd {count} trosglwyddiad(au). Ailgychwyn yn cysylltu â'r gweinydd wedi'i gadw os oes angen, yna'n eu hail-redeg. Gwaredu yn eu gollwng.",
             "resumeRestoredAll": "Ailddechrau popeth",
             "discardRestored": "Taflu",
-            "resumeConnectConfirm": "Cysylltu â \"{name}\" ac ailgychwyn {count} trosglwyddiad(au)?",
             "connectAndResume": "Cysylltu ac Ailgychwyn",
             "resumeNeedsConnection": "Cysylltwch â gweinydd yn gyntaf, yna ailgychwynnwch y trosglwyddiad hwn.",
             "resumeNoProfile": "Nid oes proffil gweinydd wedi'i gadw gan y trosglwyddiad hwn. Cysylltwch â llaw, yna ailgychwynnwch.",
@@ -771,7 +770,9 @@
             "failedCount": "Wedi methu: {count}",
             "queuedForAnotherServer": "Heb ddechrau: roedd y trosglwyddiad hwn wedi'i roi mewn ciw ar gyfer gweinydd neu gyfrif arall. Ewch yn ôl i'w dab, yna ceisiwch eto.",
             "queuedOverlayChanged": "Heb ddechrau: mae'r troshaen wedi'i amgryptio y cafodd y trosglwyddiad hwn ei ciwio oddi tano wedi'i gloi neu nid yw'n cwmpasu'r ffolder hon mwyach. Datgloi ef ar y gweinydd hwnnw, yna ceisiwch eto.",
-            "pasteFromAnotherServer": "Heb ludo: cafodd y ffeiliau hyn eu torri neu eu copïo ar weinydd, cyfrif neu droshaen amgryptiedig nad yw'n weithredol nawr. Ewch yn ôl i'w dab, yna gludwch eto."
+            "pasteFromAnotherServer": "Heb ludo: cafodd y ffeiliau hyn eu torri neu eu copïo ar weinydd, cyfrif neu droshaen amgryptiedig nad yw'n weithredol nawr. Ewch yn ôl i'w dab, yna gludwch eto.",
+            "resumeConnectConfirm_one": "Cysylltu â \"{name}\" ac ailgychwyn {count} trosglwyddiad?",
+            "resumeConnectConfirm_many": "Cysylltu â \"{name}\" ac ailgychwyn {count} trosglwyddiadau?"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (tyfodd {percent}%)",
             "extract_details": "{input} → {output} (wedi ehangu)",
             "download_details": "({size} mewn {seconds}e)",
-            "transfer_details": "({size} mewn {time})"
+            "transfer_details": "({size} mewn {time})",
+            "download_error_reason": "Methodd lawrlwytho {filename}: {reason}",
+            "upload_error_reason": "Methodd uwchlwytho {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",

@@ -231,6 +231,18 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     expect(f.notify.error).toHaveBeenCalledTimes(1);
   });
 
+  it('a failed single-file upload with toast notifications off shows no toast and logs exactly one error line', async () => {
+    const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: breaker(), fail: () => 'No such file or directory', toastNotifications: false });
+    const ok = await f.uploadFile(`${LOCAL}/up.txt`, 'up.txt', false, 10, true);
+    expect(ok).toBe(false);
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(f.toastError).not.toHaveBeenCalled();
+    expect(f.notify.errorToastOnly).toHaveBeenCalledTimes(1);
+    const errorUpdates = f.humanLog.updateEntry.mock.calls.filter(([, u]) => (u as { status?: string })?.status === 'error');
+    expect(errorUpdates).toHaveLength(1);
+    expect(f.humanLog.logRaw).not.toHaveBeenCalled();
+  });
+
   it('Retry from the queue fails the row again when the file fails again', async () => {
     const f = await upload({ fail: () => 'No such file or directory' });
     const [retry] = [...f.retryCallbacksRef.current.values()];
@@ -238,7 +250,10 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     await retry();
     expect(attempts(f, UPLOAD)).toBe(2);
     expect(f.row('q0')).toMatchObject({ status: 'error', error: 'No such file or directory' });
-    expect(f.notify.error).toHaveBeenCalledTimes(2);
+    // Initial failure toasts via the batch picker (notify.error), the retry
+    // via the row callback (notify.errorToastOnly): one toast per failure either way.
+    expect(f.notify.error).toHaveBeenCalledTimes(1);
+    expect(f.notify.errorToastOnly).toHaveBeenCalledTimes(1);
   });
 
   it('Retry from the queue completes the row when the file lands', async () => {
@@ -287,7 +302,7 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     f.transferQueue.retryItem('q0');
     await retry();
     expect(f.row('q0')).toMatchObject({ status: 'error', error: 'No such file or directory' });
-    expect(f.notify.error).toHaveBeenCalledTimes(1);
+    expect(f.notify.errorToastOnly).toHaveBeenCalledTimes(1);
   });
 
   it('Retry All Failed after a stopped batch retries the failed rows', async () => {
@@ -677,7 +692,7 @@ describe('every transfer that completes a queue row passes its error on', () => 
     const catches = retryCatches(app);
     expect(catches).toHaveLength(4);
     expect(catches.filter(text => !text.includes('batchCancelledRef.current && isCancelledTransferError(String(error))'))).toEqual([]);
-    expect(catches.filter(text => !/transferQueue\.failTransfer\(id, String\(error\)\);\s*notify\.error\(/.test(text))).toEqual([]);
+    expect(catches.filter(text => !/transferQueue\.failTransfer\(id, String\(error\)\);[\s\S]*errorToastOnly\(/.test(text))).toEqual([]);
   });
 
   // The cases run the drop's two loops; the dialog's is read here.

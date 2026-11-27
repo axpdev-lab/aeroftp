@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Atjaunotas pārsūtīšanas: {count}. Turpināšana vajadzības gadījumā savienojas ar saglabāto serveri un pēc tam tās atkārtoti izpilda. Atmest tās noņem.",
             "resumeRestoredAll": "Atsākt visus",
             "discardRestored": "Atmest",
-            "resumeConnectConfirm": "Savienoties ar \"{name}\" un turpināt pārsūtīšanas ({count})?",
             "connectAndResume": "Savienot un turpināt",
             "resumeNeedsConnection": "Vispirms savienojieties ar serveri un pēc tam turpiniet šo pārsūtīšanu.",
             "resumeNoProfile": "Šai pārsūtīšanai nav saglabāta servera profila. Savienojieties manuāli un pēc tam turpiniet.",
@@ -771,7 +770,9 @@
             "failedCount": "Neizdevās: {count}",
             "queuedForAnotherServer": "Nav sākts: šī pārsūtīšana bija rindā citam serverim vai kontam. Atgriezieties tā cilnē un mēģiniet vēlreiz.",
             "queuedOverlayChanged": "Nav sākts: šifrētais overlay, ar kuru šī pārsūtīšana tika ievietota rindā, ir bloķēts vai vairs neaptver šo mapi. Atbloķējiet to attiecīgajā serverī un mēģiniet vēlreiz.",
-            "pasteFromAnotherServer": "Nav ielīmēts: šie faili tika izgriezti vai kopēti serverī, kontā vai šifrētā slānī, kas pašlaik nav aktīvs. Atgriezieties tā cilnē un ielīmējiet vēlreiz."
+            "pasteFromAnotherServer": "Nav ielīmēts: šie faili tika izgriezti vai kopēti serverī, kontā vai šifrētā slānī, kas pašlaik nav aktīvs. Atgriezieties tā cilnē un ielīmējiet vēlreiz.",
+            "resumeConnectConfirm_one": "Izveidot savienojumu ar \"{name}\" un atsākt {count} pārsūtīšanu?",
+            "resumeConnectConfirm_many": "Izveidot savienojumu ar \"{name}\" un atsākt {count} pārsūtīšanas?"
         },
         "settings": {
             "title": "Iestatījumi",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (pieauga par {percent}%)",
             "extract_details": "{input} → {output} (izvērsts)",
             "download_details": "({size} {seconds} s laikā)",
-            "transfer_details": "({size} {time} laikā)"
+            "transfer_details": "({size} {time} laikā)",
+            "download_error_reason": "Neizdevās lejupielādēt {filename}: {reason}",
+            "upload_error_reason": "Neizdevās augšupielādēt {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",

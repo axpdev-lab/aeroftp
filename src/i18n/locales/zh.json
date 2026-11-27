@@ -703,7 +703,6 @@
             "restoredQueueDescription": "已恢复 {count} 项传输。恢复会在需要时连接已保存的服务器，然后重新执行。丢弃会移除它们。",
             "resumeRestoredAll": "全部继续",
             "discardRestored": "丢弃",
-            "resumeConnectConfirm": "连接到“{name}”并恢复 {count} 项传输？",
             "connectAndResume": "连接并恢复",
             "resumeNeedsConnection": "请先连接到服务器，再恢复此传输。",
             "resumeNoProfile": "此传输没有已保存的服务器配置。请手动连接后再恢复。",
@@ -771,7 +770,9 @@
             "failedCount": "{count} 个失败",
             "queuedForAnotherServer": "未开始：此传输是为另一个服务器或账户排队的。请切回其标签页，然后重试。",
             "queuedOverlayChanged": "未开始：此传输排队时所用的加密覆盖层已锁定，或不再覆盖此文件夹。请在该服务器上解锁，然后重试。",
-            "pasteFromAnotherServer": "未粘贴：这些文件是在当前未激活的服务器、账户或加密叠加层上剪切或复制的。请切回其标签页，然后再次粘贴。"
+            "pasteFromAnotherServer": "未粘贴：这些文件是在当前未激活的服务器、账户或加密叠加层上剪切或复制的。请切回其标签页，然后再次粘贴。",
+            "resumeConnectConfirm_one": "连接到“{name}”并恢复 {count} 个传输？",
+            "resumeConnectConfirm_many": "连接到“{name}”并恢复 {count} 个传输？"
         },
         "settings": {
             "title": "设置",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output}（增大 {percent}%）",
             "extract_details": "{input} → {output}（已解压）",
             "download_details": "（{size}，用时 {seconds} 秒）",
-            "transfer_details": "({size}，用时 {time})"
+            "transfer_details": "({size}，用时 {time})",
+            "download_error_reason": "下载 {filename} 失败：{reason}",
+            "upload_error_reason": "上传 {filename} 失败：{reason}"
         },
         "protocol": {
             "selectProtocol": "选择协议...",

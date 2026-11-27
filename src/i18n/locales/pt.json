@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} transferência(s) foram restauradas. Retomar conecta-se ao servidor salvo se necessário e, em seguida, reexecuta-as. Descartar remove-as.",
             "resumeRestoredAll": "Retomar tudo",
             "discardRestored": "Descartar",
-            "resumeConnectConfirm": "Conectar a \"{name}\" e retomar {count} transferência(s)?",
             "connectAndResume": "Conectar e retomar",
             "resumeNeedsConnection": "Conecte-se primeiro a um servidor e depois retome esta transferência.",
             "resumeNoProfile": "Esta transferência não tem um perfil de servidor salvo. Conecte-se manualmente e depois retome.",
@@ -771,7 +770,9 @@
             "failedCount": "{count} com falha",
             "queuedForAnotherServer": "Não iniciado: esta transferência estava na fila para outro servidor ou conta. Volte ao separador dele e tente novamente.",
             "queuedOverlayChanged": "Não iniciada: o overlay cifrado sob o qual esta transferência foi colocada na fila está bloqueado ou já não abrange esta pasta. Desbloqueie-o nesse servidor e tente novamente.",
-            "pasteFromAnotherServer": "Não colado: estes ficheiros foram cortados ou copiados num servidor, conta ou sobreposição cifrada que não está ativa agora. Volte ao separador dele e cole novamente."
+            "pasteFromAnotherServer": "Não colado: estes ficheiros foram cortados ou copiados num servidor, conta ou sobreposição cifrada que não está ativa agora. Volte ao separador dele e cole novamente.",
+            "resumeConnectConfirm_one": "Ligar a \"{name}\" e retomar {count} transferência?",
+            "resumeConnectConfirm_many": "Ligar a \"{name}\" e retomar {count} transferências?"
         },
         "settings": {
             "title": "Configurações",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (cresceu {percent}%)",
             "extract_details": "{input} → {output} (expandido)",
             "download_details": "({size} em {seconds} s)",
-            "transfer_details": "({size} em {time})"
+            "transfer_details": "({size} em {time})",
+            "download_error_reason": "Falha ao transferir {filename}: {reason}",
+            "upload_error_reason": "Falha ao enviar {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",
