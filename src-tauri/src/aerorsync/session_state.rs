@@ -501,6 +501,56 @@ mod tests {
         )]
     }
 
+    /// Interning returns the FIRST equal entry, not the last (B3M11).
+    /// Duplicates can only exist on the RECEIVING side: resolve_entry
+    /// appends every literal in wire order, so two entries carrying the
+    /// same ACL A land at indices 0 and 1 (same for xattr set X). Then
+    /// intern_acl(A) must reference 0, not 1; a last-equal mutation goes
+    /// red here (a send-side A, B, A sequence cannot: intern only appends
+    /// when find_equal finds nothing, so the sender table never holds
+    /// duplicates).
+    #[test]
+    fn intern_returns_the_first_equal_entry() {
+        use crate::aerorsync::real_wire::{FileListAcls, FileListEntry};
+        let mut tables = SessionTables::new();
+        let entry_with = |acl: AclWireEntry, x: XattrWireEntry| FileListEntry {
+            flags: 0,
+            path: b"f".to_vec(),
+            size: 0,
+            mtime: 0,
+            mtime_nsec: None,
+            mode: 0o100_644,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: Vec::new(),
+            symlink_target: None,
+            rdev: None,
+            xattrs: Some(x),
+            acls: Some(FileListAcls {
+                access: acl,
+                default: None,
+            }),
+        };
+        let acl_a = || AclWireEntry::Literal(acl_with(1));
+        let xset_x = || XattrWireEntry::Literal(xattr_set_with(7));
+        tables
+            .resolve_entry(&entry_with(acl_a(), xset_x()))
+            .expect("first literal lands at index 0");
+        tables
+            .resolve_entry(&entry_with(acl_a(), xset_x()))
+            .expect("the duplicate literal lands at index 1");
+        assert_eq!(
+            tables.intern_acl(AclTable::Access, acl_with(1)).unwrap(),
+            AclWireEntry::Reference(0)
+        );
+        assert_eq!(
+            tables.intern_xattrs(xattr_set_with(7)).unwrap(),
+            XattrWireEntry::Reference(0)
+        );
+    }
+
     /// The hash index must keep equality comparisons under 2*n on n
     /// distinct internings; a linear scan needs about n^2/2 and goes red.
     #[test]
