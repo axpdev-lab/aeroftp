@@ -76,6 +76,31 @@ fn partial_rename_message(
     }
 }
 
+/// The error of a folder copy that stopped on `failed_key`, which says what
+/// is where: the source is never touched, and the copies already made stay
+/// under the destination, which a retry then finds occupied.
+fn partial_folder_copy_message(
+    copied: usize,
+    total: usize,
+    from: &str,
+    to: &str,
+    failed_key: &str,
+    cause: &dyn std::fmt::Display,
+) -> String {
+    if copied == 0 {
+        format!(
+            "copy of the folder {from} ({total} objects) to {to} failed on {failed_key} before \
+             any object was copied; {from} is unchanged: {cause}"
+        )
+    } else {
+        format!(
+            "copy of the folder {from} to {to} copied {copied} of {total} objects before \
+             {failed_key} failed; {from} is unchanged, the {copied} copies stay under {to}, \
+             and a retry is refused until {to} is removed: {cause}"
+        )
+    }
+}
+
 /// URL-encode an S3 key path segment-by-segment, preserving `/` as the
 /// path separator. AWS SigV4 and any compliant S3 server expect the wire
 /// URL to contain percent-encoded keys (spaces -> `%20`, emojis -> UTF-8
@@ -2717,6 +2742,85 @@ impl S3Provider {
             source_mtime,
         )
         .await
+    }
+
+    /// Server-side copy of a folder, which on S3 is the keys under `from/`:
+    /// each key, its marker included, is copied to the same relative path
+    /// under `to/`, and the source is left as it is. `Ok(false)` when no key
+    /// is under the prefix, so the caller keeps its own NotFound.
+    ///
+    /// Refused before anything is written: a destination inside the source
+    /// (the copies would land in the folder being copied), and a destination
+    /// that already holds a key or a folder, since copying into it would
+    /// merge the two folders. A key the server refuses to copy for a
+    /// capability reason (a multipart copy a gateway does not implement) goes
+    /// through the download and upload the single-file copy falls back to.
+    async fn copy_folder_keys(&mut self, from: &str, to: &str) -> Result<bool, ProviderError> {
+        let from_trimmed = from.trim_matches('/');
+        let to_trimmed = to.trim_matches('/');
+        if from_trimmed.is_empty() {
+            return Ok(false);
+        }
+        let prefix = format!("{from_trimmed}/");
+        let keys = crate::sync_core::keys_under_prefix(
+            &prefix,
+            self.list_keys_with_prefix(&prefix).await?,
+            "copy",
+        )?;
+        if keys.is_empty() {
+            return Ok(false);
+        }
+        if to_trimmed.is_empty() || to_trimmed == from_trimmed || to_trimmed.starts_with(&prefix) {
+            return Err(ProviderError::InvalidPath(format!(
+                "cannot copy the folder {from} into itself ({to})"
+            )));
+        }
+        if self.key_or_folder_exists(to_trimmed).await? {
+            return Err(ProviderError::AlreadyExists(format!(
+                "/{to_trimmed} already exists, and on S3 copying a folder into it would merge \
+                 the two: nothing was copied"
+            )));
+        }
+
+        let to_prefix = format!("{to_trimmed}/");
+        for (copied, key) in keys.iter().enumerate() {
+            let source = format!("/{key}");
+            let target = format!("/{to_prefix}{}", &key[prefix.len()..]);
+            let step = match self
+                .server_side_copy_recorded(&source, &target, false)
+                .await
+            {
+                Err(error)
+                    if !key.ends_with('/')
+                        && crate::copy_fallback::should_attempt_copy_fallback(&error) =>
+                {
+                    crate::copy_fallback::copy_via_download_upload(self, &source, &target).await
+                }
+                other => other,
+            };
+            if let Err(error) = step {
+                let message =
+                    partial_folder_copy_message(copied, keys.len(), from, to, key, &error);
+                // The copy pipeline answers a capability error with a
+                // download and upload of the source, which for a folder
+                // would only fail again as "not found" and lose this message.
+                let error = ProviderError::Other(message.clone());
+                return Err(
+                    if crate::copy_fallback::should_attempt_copy_fallback(&error) {
+                        ProviderError::Unknown(message)
+                    } else {
+                        error
+                    },
+                );
+            }
+        }
+        info!(
+            "Copied folder {} to {} ({} objects, server-side)",
+            from,
+            to,
+            keys.len()
+        );
+        Ok(true)
     }
 
     /// `record_validation` is true for the directory-rename loop, whose
@@ -8090,7 +8194,31 @@ impl StorageProvider for S3Provider {
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        self.server_side_copy_recorded(from, to, false).await
+        // A trailing slash names a folder. Copied as one key it was only the
+        // marker: an empty folder, reported as a success. (The rename loop
+        // copies its marker through `server_side_copy_recorded`, not here.)
+        if from.len() > 1 && from.ends_with('/') {
+            return if self.copy_folder_keys(from, to).await? {
+                Ok(())
+            } else {
+                Err(ProviderError::NotFound(from.to_string()))
+            };
+        }
+        match self.server_side_copy_recorded(from, to, false).await {
+            // No object has this key. A folder has none either: it is the
+            // keys under `from/`, so the GUI's Copy of a folder ended here as
+            // "Path not found" (#1633). Copy them, or keep the NotFound when
+            // nothing is there. An object and a folder of the same name can
+            // both exist; the object is what the key names, so it wins.
+            Err(ProviderError::NotFound(missing)) => {
+                if self.copy_folder_keys(from, to).await? {
+                    Ok(())
+                } else {
+                    Err(ProviderError::NotFound(missing))
+                }
+            }
+            other => other,
+        }
     }
 
     // Shaped-graph multipart trait wiring.
@@ -14629,6 +14757,402 @@ mod tests {
         let log = log.lock().unwrap().clone();
         assert!(puts(&log).contains(&"PUT /test-bucket/dst/"), "{log:?}");
         assert!(!log.iter().any(|r| r.starts_with("DELETE")), "{log:?}");
+    }
+
+    /// An in-memory bucket for the folder copy of #1633: HEAD answers 404 for
+    /// a key it does not hold (a folder has no key), ListObjectsV2 filters by
+    /// prefix, CopyObject copies the stored bytes, and a GET returns them.
+    /// `refuse_copy` maps a source key to the status and body its CopyObject
+    /// answers instead.
+    struct FolderBucket {
+        objects: std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>>,
+        log: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    async fn folder_bucket(
+        objects: &[(&str, &[u8])],
+        refuse_copy: &[(&str, u16, &str)],
+    ) -> (S3Provider, FolderBucket) {
+        use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<std::collections::BTreeMap<String, Vec<u8>>>> = Arc::new(Mutex::new(
+            objects
+                .iter()
+                .map(|(key, body)| (key.to_string(), body.to_vec()))
+                .collect(),
+        ));
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let refuse: Arc<Vec<(String, u16, String)>> = Arc::new(
+            refuse_copy
+                .iter()
+                .map(|(key, status, body)| (key.to_string(), *status, body.to_string()))
+                .collect(),
+        );
+        let (served, seen) = (Arc::clone(&store), Arc::clone(&log));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (store, seen, refuse) =
+                    (Arc::clone(&served), Arc::clone(&seen), Arc::clone(&refuse));
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let key = percent_encoding::percent_decode_str(
+                        url.path().trim_start_matches("/test-bucket/"),
+                    )
+                    .decode_utf8_lossy()
+                    .into_owned();
+                    let prefix = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "prefix")
+                        .map(|(_, v)| v.to_string());
+                    let copy_source = req
+                        .headers()
+                        .get("x-amz-copy-source")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| {
+                            percent_encoding::percent_decode_str(
+                                v.trim_start_matches('/').trim_start_matches("test-bucket/"),
+                            )
+                            .decode_utf8_lossy()
+                            .into_owned()
+                        });
+                    let body = axum::body::to_bytes(req.into_body(), usize::MAX)
+                        .await
+                        .unwrap_or_default();
+                    let reply = |status: u16, body: Vec<u8>| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .body(axum::body::Body::from(body))
+                            .unwrap()
+                    };
+                    let entry = match (&method[..], &prefix, &copy_source) {
+                        ("GET", Some(prefix), _) => format!("LIST {prefix}"),
+                        ("PUT", _, Some(source)) => format!("COPY {source} -> {key}"),
+                        _ => format!("{method} {key}"),
+                    };
+                    seen.lock().unwrap().push(entry);
+                    let mut objects = store.lock().unwrap();
+                    match (&method[..], prefix, copy_source) {
+                        ("GET", Some(prefix), _) => {
+                            let contents: String = objects
+                                .keys()
+                                .filter(|k| k.starts_with(&prefix))
+                                .map(|k| format!("<Contents><Key>{k}</Key></Contents>"))
+                                .collect();
+                            reply(
+                                200,
+                                format!(
+                                    "<ListBucketResult><IsTruncated>false</IsTruncated>\
+                                     {contents}</ListBucketResult>"
+                                )
+                                .into_bytes(),
+                            )
+                        }
+                        ("HEAD", _, _) => match objects.get(&key) {
+                            Some(bytes) => axum::response::Response::builder()
+                                .status(200)
+                                .header("content-length", bytes.len().to_string())
+                                .header("etag", "\"tag\"")
+                                .body(axum::body::Body::empty())
+                                .unwrap(),
+                            None => reply(404, Vec::new()),
+                        },
+                        ("GET", None, _) => match objects.get(&key) {
+                            Some(bytes) => reply(200, bytes.clone()),
+                            None => reply(404, Vec::new()),
+                        },
+                        ("PUT", _, Some(source)) => {
+                            if let Some((_, status, body)) =
+                                refuse.iter().find(|(refused, _, _)| *refused == source)
+                            {
+                                return reply(*status, body.clone().into_bytes());
+                            }
+                            match objects.get(&source).cloned() {
+                                Some(bytes) => {
+                                    objects.insert(key, bytes);
+                                    reply(
+                                        200,
+                                        b"<CopyObjectResult><ETag>\"tag\"</ETag></CopyObjectResult>"
+                                            .to_vec(),
+                                    )
+                                }
+                                None => {
+                                    reply(404, b"<Error><Code>NoSuchKey</Code></Error>".to_vec())
+                                }
+                            }
+                        }
+                        ("PUT", _, None) => {
+                            objects.insert(key, body.to_vec());
+                            reply(200, Vec::new())
+                        }
+                        ("DELETE", _, _) => {
+                            objects.remove(&key);
+                            reply(204, Vec::new())
+                        }
+                        _ => reply(405, Vec::new()),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (
+            provider,
+            FolderBucket {
+                objects: store,
+                log,
+            },
+        )
+    }
+
+    impl FolderBucket {
+        fn keys(&self) -> Vec<String> {
+            self.objects.lock().unwrap().keys().cloned().collect()
+        }
+        fn get(&self, key: &str) -> Option<Vec<u8>> {
+            self.objects.lock().unwrap().get(key).cloned()
+        }
+        fn log(&self) -> Vec<String> {
+            self.log.lock().unwrap().clone()
+        }
+    }
+
+    const SOURCE_FOLDER: &[(&str, &[u8])] = &[
+        ("docs/", b""),
+        ("docs/a.txt", b"alpha"),
+        ("docs/sub/b.txt", b"beta"),
+        // Shares the string prefix `docs` but is not inside the folder.
+        ("docsx/c.txt", b"gamma"),
+        ("dest/keep.txt", b"keep"),
+    ];
+
+    /// #1633: a folder is the keys under its prefix. The copy writes every
+    /// one, marker and nested keys included, at the same relative path, and
+    /// leaves the source and the sibling `docsx/` alone.
+    #[tokio::test]
+    async fn server_copy_of_a_folder_copies_every_key_and_keeps_the_source() {
+        let (mut provider, bucket) = folder_bucket(SOURCE_FOLDER, &[]).await;
+        provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect("folder copy");
+        assert_eq!(
+            bucket.keys(),
+            [
+                "dest/docs/",
+                "dest/docs/a.txt",
+                "dest/docs/sub/b.txt",
+                "dest/keep.txt",
+                "docs/",
+                "docs/a.txt",
+                "docs/sub/b.txt",
+                "docsx/c.txt",
+            ],
+            "{:?}",
+            bucket.log()
+        );
+        assert_eq!(
+            bucket.get("dest/docs/sub/b.txt").as_deref(),
+            Some(&b"beta"[..])
+        );
+        assert!(
+            !bucket.log().iter().any(|r| r.starts_with("DELETE")),
+            "{:?}",
+            bucket.log()
+        );
+    }
+
+    /// A trailing slash names the same folder. The marker is a key of its
+    /// own, so a one-key copy of `docs/` wrote only an empty folder and
+    /// reported success.
+    #[tokio::test]
+    async fn server_copy_of_a_folder_accepts_trailing_slashes() {
+        let (mut provider, bucket) = folder_bucket(SOURCE_FOLDER, &[]).await;
+        provider
+            .server_copy("/docs/", "/dest/docs/")
+            .await
+            .expect("folder copy");
+        assert!(
+            bucket.get("dest/docs/a.txt").is_some(),
+            "{:?}",
+            bucket.log()
+        );
+        assert!(
+            bucket.get("dest/docs/sub/b.txt").is_some(),
+            "{:?}",
+            bucket.log()
+        );
+    }
+
+    /// A file copy keeps its single CopyObject and pays no listing for the
+    /// folder support.
+    #[tokio::test]
+    async fn server_copy_of_a_file_lists_nothing() {
+        let (mut provider, bucket) = folder_bucket(SOURCE_FOLDER, &[]).await;
+        provider
+            .server_copy("/docs/a.txt", "/dest/a.txt")
+            .await
+            .expect("file copy");
+        assert_eq!(bucket.get("dest/a.txt").as_deref(), Some(&b"alpha"[..]));
+        let log = bucket.log();
+        assert!(!log.iter().any(|r| r.starts_with("LIST")), "{log:?}");
+        assert_eq!(
+            log.iter().filter(|r| r.starts_with("COPY")).count(),
+            1,
+            "{log:?}"
+        );
+    }
+
+    /// Nothing at the path, as an object or as a prefix: still NotFound.
+    #[tokio::test]
+    async fn server_copy_of_a_missing_path_is_still_not_found() {
+        let (mut provider, bucket) = folder_bucket(SOURCE_FOLDER, &[]).await;
+        let err = provider
+            .server_copy("/nothing", "/dest/nothing")
+            .await
+            .expect_err("missing source");
+        assert!(matches!(err, ProviderError::NotFound(_)), "{err:?}");
+        assert!(
+            !bucket.log().iter().any(|r| r.starts_with("COPY")),
+            "{:?}",
+            bucket.log()
+        );
+    }
+
+    /// Into itself, or onto an existing folder or object: refused before any
+    /// copy, so nothing is merged or left half-written.
+    #[tokio::test]
+    async fn server_copy_of_a_folder_refuses_itself_and_an_occupied_destination() {
+        for (to, expect_invalid) in [
+            ("/docs/inner", true),
+            ("/docs", true),
+            ("/dest", false),
+            ("/dest/keep.txt", false),
+        ] {
+            let (mut provider, bucket) = folder_bucket(SOURCE_FOLDER, &[]).await;
+            let err = provider
+                .server_copy("/docs", to)
+                .await
+                .expect_err("refused destination");
+            if expect_invalid {
+                assert!(
+                    matches!(err, ProviderError::InvalidPath(_)),
+                    "{to}: {err:?}"
+                );
+            } else {
+                assert!(
+                    matches!(err, ProviderError::AlreadyExists(_)),
+                    "{to}: {err:?}"
+                );
+            }
+            assert!(
+                !bucket
+                    .log()
+                    .iter()
+                    .any(|r| r.starts_with("COPY") || r.starts_with("PUT")),
+                "{to}: {:?}",
+                bucket.log()
+            );
+            assert_eq!(bucket.keys().len(), SOURCE_FOLDER.len(), "{to}");
+        }
+    }
+
+    /// A key the server will not copy for a capability reason goes through a
+    /// download and an upload, as a single-file copy does; the rest stay
+    /// server-side.
+    #[tokio::test]
+    async fn server_copy_of_a_folder_falls_back_per_key_on_a_capability_refusal() {
+        let (mut provider, bucket) = folder_bucket(
+            SOURCE_FOLDER,
+            &[(
+                "docs/sub/b.txt",
+                501,
+                "<Error><Code>NotImplemented</Code><Message>server-side copy not supported</Message></Error>",
+            )],
+        )
+        .await;
+        provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect("folder copy with one fallback");
+        assert_eq!(
+            bucket.get("dest/docs/sub/b.txt").as_deref(),
+            Some(&b"beta"[..])
+        );
+        let log = bucket.log();
+        assert!(log.contains(&"GET docs/sub/b.txt".to_string()), "{log:?}");
+        assert!(
+            log.contains(&"PUT dest/docs/sub/b.txt".to_string()),
+            "{log:?}"
+        );
+        assert!(
+            log.contains(&"COPY docs/a.txt -> dest/docs/a.txt".to_string()),
+            "{log:?}"
+        );
+    }
+
+    /// A key that fails for any other reason ends the copy with a message
+    /// that says what was copied, and the error is not one the copy pipeline
+    /// answers with a download of the folder path.
+    #[tokio::test]
+    async fn a_failed_folder_copy_says_what_was_copied() {
+        let (mut provider, bucket) = folder_bucket(
+            SOURCE_FOLDER,
+            &[(
+                "docs/sub/b.txt",
+                500,
+                "<Error><Code>InternalError</Code></Error>",
+            )],
+        )
+        .await;
+        let err = provider
+            .server_copy("/docs", "/dest/docs")
+            .await
+            .expect_err("a key failed");
+        let text = err.to_string();
+        assert!(text.contains("copied 2 of 3 objects"), "{text}");
+        assert!(text.contains("/docs is unchanged"), "{text}");
+        assert!(
+            !crate::copy_fallback::should_attempt_copy_fallback(&err),
+            "{err:?}"
+        );
+        assert!(bucket.get("docs/sub/b.txt").is_some());
+        assert!(bucket.get("dest/docs/sub/b.txt").is_none());
+    }
+
+    /// The GUI path: `provider_server_copy` runs the copy DAG, which calls
+    /// `server_side_copy`. A folder completes server-side, with no fallback.
+    #[tokio::test]
+    async fn the_copy_dag_copies_an_s3_folder_server_side() {
+        let (provider, bucket) = folder_bucket(SOURCE_FOLDER, &[]).await;
+        let handle =
+            crate::transfer_dag_single_file::CopyProviderHandle::Required(std::sync::Arc::new(
+                tokio::sync::Mutex::new(Box::new(provider) as Box<dyn StorageProvider>),
+            ));
+        let outcome = crate::transfer_dag_single_file::execute_copy_dag(
+            handle,
+            "/docs".to_string(),
+            "/dest/docs".to_string(),
+            std::sync::Arc::new(crate::transfer_dag::NoopDagObserver),
+        )
+        .await
+        .expect("copy DAG");
+        assert!(
+            matches!(
+                outcome.decision,
+                crate::transfer_dag_single_file::CopyDecision::ServerSide
+            ),
+            "{:?}",
+            outcome.decision
+        );
+        assert!(
+            bucket.get("dest/docs/sub/b.txt").is_some(),
+            "{:?}",
+            bucket.log()
+        );
     }
 
     /// A copy (not a rename) through the fallback writes the destination
