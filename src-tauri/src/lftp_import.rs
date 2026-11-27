@@ -118,6 +118,12 @@ fn map_scheme(scheme: &str) -> Option<(&'static str, u32)> {
     }
 }
 
+/// Whether the decoded `host` of a bookmark is a host name or an IPv6
+/// address: [`lftp_host`] accepts it, the way the export writes one back.
+fn host_reads_back(host: &str) -> bool {
+    lftp_host(host).is_ok()
+}
+
 /// Parse a single lftp bookmark URL into a mapped profile.
 ///
 /// Grammar: `proto://[user[:password]@]host[:port][/path]`. The userinfo and
@@ -134,6 +140,8 @@ fn parse_bookmark_url(url: &str) -> Option<MappedProfile> {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, ""),
     };
+    // lftp drops one `:` that ends the authority (`host:/path`).
+    let authority = authority.strip_suffix(':').unwrap_or(authority);
 
     let (userinfo, hostport) = match authority.rfind('@') {
         Some(i) => (Some(&authority[..i]), &authority[i + 1..]),
@@ -155,7 +163,10 @@ fn parse_bookmark_url(url: &str) -> Option<MappedProfile> {
         None => (String::new(), None),
     };
 
-    // host[:port] -- IPv6 literals (`[::1]:port`) are kept verbatim in host.
+    // host[:port] as lftp's `ParsedURL` reads it: a bracketed IPv6 literal
+    // (`[::1]:port`) keeps its brackets here; unbracketed, a single `:` starts
+    // the port and two or more make the whole of it the host (`::1`). lftp
+    // percent-decodes the host, so a zone written `%25` is read as `%`.
     let (host, port) = if let Some(stripped) = hostport.strip_prefix('[') {
         // bracketed IPv6
         match stripped.split_once(']') {
@@ -164,21 +175,37 @@ fn parse_bookmark_url(url: &str) -> Option<MappedProfile> {
                     .strip_prefix(':')
                     .and_then(|p| p.parse::<u32>().ok())
                     .unwrap_or(default_port);
-                (format!("[{}]", h6), port)
+                (format!("[{}]", url_decode(h6)), port)
             }
-            None => (hostport.to_string(), default_port),
+            None => (url_decode(hostport), default_port),
         }
+    } else if hostport.matches(':').count() > 1 {
+        // An IPv6 address is stored in brackets, as the bracketed form is.
+        let host = url_decode(hostport);
+        let host = if crate::bridge_shared::is_ipv6_host_literal(&host) {
+            format!("[{host}]")
+        } else {
+            host
+        };
+        (host, default_port)
     } else {
-        match hostport.rsplit_once(':') {
+        match hostport.split_once(':') {
             Some((h, p)) => {
                 let port = p.parse::<u32>().unwrap_or(default_port);
-                (h.to_string(), port)
+                (url_decode(h), port)
             }
-            None => (hostport.to_string(), default_port),
+            None => (url_decode(hostport), default_port),
         }
     };
 
     if host.is_empty() {
+        return None;
+    }
+    // lftp decodes the host before it resolves it, so `%40` is an `@` there:
+    // a host that, decoded, holds a character that ends a URL's host is no
+    // host name, and the WebDAV connection, which rebuilds a URL from it,
+    // would read `good.example%40evil.example` as a user on `evil.example`.
+    if !host_reads_back(&host) {
         return None;
     }
     // A cleartext WebDAV server keeps its scheme in `host` (the WebDAV
@@ -452,16 +479,40 @@ fn lftp_bookmark_name(name: &str) -> String {
 pub const LFTP_ENCODED_SLASH_ENDPOINT: &str =
     "WebDAV endpoint path contains an encoded slash (%2F) that an lftp bookmark cannot keep";
 
-/// A bookmark URL's host, written as it is: one word on its line.
-fn lftp_host(host: &str) -> Result<(), String> {
-    crate::bridge_shared::export_line_value("host", host)?;
-    if host.contains(char::is_whitespace) {
-        return Err(
-            "its host holds a space, which would end the bookmark's URL early; correct the profile and export again"
-                .into(),
-        );
-    }
-    Ok(())
+/// A bookmark URL's host as lftp reads it back: one word on its line, with
+/// no character that ends lftp's host early (it splits the user at the last
+/// `@` and the port at a `:`, see [`crate::bridge_shared::url_authority_host`]).
+/// An IPv6 address goes in brackets; lftp percent-decodes the host, so a zone's
+/// `%` is written `%25`.
+///
+/// lftp opens a bookmark by running `open -B <url>` through its own command
+/// parser (`cmd_open` in src/commands.cc appends the value unquoted), so a
+/// host name is also held to the characters of a host name: ASCII or
+/// non-ASCII letters and digits, `-`, `.` and `_`, not starting with `-`.
+/// A `;` would end the `open` and run what follows (`!cmd` in the shell).
+fn lftp_host(host: &str) -> Result<String, String> {
+    Ok(match crate::bridge_shared::url_authority_host(host)? {
+        crate::bridge_shared::UrlAuthorityHost::Name(name) => {
+            if let Some(c) = name
+                .chars()
+                .find(|c| !(c.is_alphanumeric() || matches!(c, '-' | '.' | '_')))
+            {
+                return Err(format!(
+                    "its host holds {c:?}, which lftp reads as command syntax when it opens the bookmark, so the exported entry could run a command; correct the profile and export again"
+                ));
+            }
+            if name.starts_with('-') {
+                return Err(
+                    "its host holds a leading '-', which no host name starts with; correct the profile and export again"
+                        .into(),
+                );
+            }
+            name
+        }
+        crate::bridge_shared::UrlAuthorityHost::Ipv6(addr) => {
+            format!("[{}]", addr.replace('%', "%25"))
+        }
+    })
 }
 
 pub fn export_lftp(
@@ -530,20 +581,23 @@ pub fn export_lftp(
         // The host is the one part of the URL written as it is (the user,
         // the secret and the folder are percent-encoded, a WebDAV endpoint
         // is rebuilt from a parsed URL). A line break in it would add
-        // bookmarks of its own, and a space would end the URL early.
+        // bookmarks of its own, a space would end the URL early, and an `@`
+        // or a `/` would make lftp open another server.
         // The name keeps no control character either: the bookmark name
         // turns whitespace into `_`, and nothing else.
-        let unwritable =
-            crate::bridge_shared::export_line_value("name", &server.name).and_then(|()| {
-                match endpoint {
-                    None => lftp_host(&server.host),
-                    Some(_) => Ok(()),
-                }
-            });
-        if let Err(reason) = unwritable {
-            outcome.skip(&server.name, reason);
-            continue;
-        }
+        let host = crate::bridge_shared::export_line_value("name", &server.name).and_then(|()| {
+            match endpoint {
+                None => lftp_host(&server.host).map(Some),
+                Some(_) => Ok(None),
+            }
+        });
+        let host = match host {
+            Ok(host) => host,
+            Err(reason) => {
+                outcome.skip(&server.name, reason);
+                continue;
+            }
+        };
         let safe_name = names.claim(&safe_name);
 
         let mut url = String::from(scheme);
@@ -577,7 +631,7 @@ pub fn export_lftp(
                 url.push_str(&url_encode_path(path.trim_start_matches('/')));
             }
         } else {
-            url.push_str(&server.host);
+            url.push_str(host.as_deref().unwrap_or_default());
 
             // Only emit a port when it differs from the scheme default so the
             // bookmark stays clean and round-trips to the same parsed port.
@@ -1145,5 +1199,125 @@ mystery gopher://old.example.com/0/
             "{:?}",
             outcome.skipped
         );
+    }
+
+    /// lftp's `ParsedURL` splits the user at the last `@` before the first
+    /// `/` and the port at a `:`: a raw host `good.example@evil.example`
+    /// made lftp open `evil.example` as the user `good.example`. A host with
+    /// any character that ends lftp's host is refused; an IPv6 address goes
+    /// in brackets (a zone's `%` as `%25`, which lftp decodes), and the
+    /// importer, which reads a bookmark as lftp does, gets each one back.
+    #[test]
+    fn a_bookmark_names_the_server_the_profile_names() {
+        let export = |host: &str, port: u32| {
+            let server: LftpExportServer = serde_json::from_value(serde_json::json!({
+                "id": "id-s", "name": "s", "host": host,
+                "port": port, "username": "u", "protocol": "sftp"
+            }))
+            .unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("bookmarks");
+            let outcome = export_lftp(&[server], &HashMap::new(), &path).unwrap();
+            (outcome, std::fs::read_to_string(&path).unwrap_or_default())
+        };
+        let (outcome, _) = export("", 22);
+        assert!(
+            outcome.skipped[0].reason.starts_with("its host is empty"),
+            "{:?}",
+            outcome.skipped
+        );
+        // What lftp, and the importer, read from the host written raw.
+        let raw = parse_bookmark_url("sftp://u@good.example@evil.example/srv").unwrap();
+        assert_eq!(raw.host, "evil.example");
+        for host in [
+            "good.example@evil.example",
+            "evil.example/x",
+            "h.example:2222",
+            "h.example?x",
+            "h.example#x",
+            "[evil]h",
+            "h%2eexample",
+            "h\\evil.example",
+            "h.example;!id>p",
+            "h.example&evil",
+            "h.example|evil",
+            "h.example$(evil)",
+            "h.example`evil`",
+            "h.example'evil",
+            "h.example\"evil",
+            "h.example>evil",
+            "-oevil.example",
+        ] {
+            let (outcome, body) = export(host, 22);
+            assert_eq!(outcome.exported, 0, "{host}: {body}");
+            assert!(
+                outcome.skipped[0].reason.starts_with("its host holds"),
+                "{host}: {:?}",
+                outcome.skipped
+            );
+            assert!(!body.contains("evil"), "{body}");
+        }
+        for (host, port, written, read_host) in [
+            ("::1", 2222, "sftp://u@[::1]:2222\n", "[::1]"),
+            (
+                "[2001:db8::1]",
+                22,
+                "sftp://u@[2001:db8::1]\n",
+                "[2001:db8::1]",
+            ),
+            (
+                "fe80::1%eth0",
+                22,
+                "sftp://u@[fe80::1%25eth0]\n",
+                "[fe80::1%eth0]",
+            ),
+            (
+                "nas.example.com",
+                2222,
+                "sftp://u@nas.example.com:2222\n",
+                "nas.example.com",
+            ),
+        ] {
+            let (outcome, body) = export(host, port);
+            assert_eq!(outcome.exported, 1, "{host}: {:?}", outcome.skipped);
+            assert!(body.ends_with(&format!("s {written}")), "{body}");
+            let back = parse_bookmark_url(written.trim_end()).unwrap();
+            assert_eq!(
+                (back.host.as_str(), back.port),
+                (read_host, port),
+                "{written}"
+            );
+        }
+        // Unbracketed, two or more `:` make the whole authority lftp's host,
+        // and lftp percent-decodes it.
+        for (url, host, port) in [
+            ("sftp://u@::1/srv", "[::1]", 22),
+            ("sftp://u@::1:/srv", "[::1]", 22),
+            ("sftp://u@[::1]:2222:/srv", "[::1]", 2222),
+            ("sftp://u@nas.example.com:/srv", "nas.example.com", 22),
+        ] {
+            let back = parse_bookmark_url(url).unwrap();
+            assert_eq!((back.host.as_str(), back.port), (host, port), "{url}");
+        }
+        let (outcome, body) = export("b\u{fc}ro_1.example", 22);
+        assert_eq!(outcome.exported, 1, "{:?}", outcome.skipped);
+        assert!(body.contains("sftp://u@b\u{fc}ro_1.example"), "{body}");
+        let back = parse_bookmark_url("sftp://u@nas%2Eexample.com:2222/srv").unwrap();
+        // A host that, decoded, is not a host name makes no profile: the
+        // WebDAV connection would read it as a user on another server.
+        for url in [
+            "https://u:pw@good.example%40evil.example/dav",
+            "sftp://u@good.example%40evil.example/srv",
+            "ftp://u@evil.example%2Fx/",
+            "sftp://u@h.example%3A2222/srv",
+            "sftp://u@[evil]h/srv",
+            "sftp://u@[not-ipv6]/srv",
+            "sftp://u@[%20::1]/srv",
+            "sftp://u@h.example;!id>p/srv",
+            "sftp://u@h.example%3B!id/srv",
+        ] {
+            assert!(parse_bookmark_url(url).is_none(), "{url}");
+        }
+        assert_eq!((back.host.as_str(), back.port), ("nas.example.com", 2222));
     }
 }
