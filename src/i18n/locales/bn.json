@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "মানটি সঠিক নয়",
             "puterUsernameIsEmail": "এটি একটি ইমেইল ঠিকানা: Puter আপনার Puter ব্যবহারকারীর নাম চায় (Settings > Account > Username)",
-            "resetEndpointToDefault": "ডিফল্টে রিসেট করুন"
+            "resetEndpointToDefault": "ডিফল্টে রিসেট করুন",
+            "fieldExpectsEmail": "আপনার অ্যাকাউন্টের ইমেইল ঠিকানা দিন",
+            "fieldNotEmail": "এখানে আপনার ব্যবহারকারী নাম দিন, ইমেইল নয়",
+            "fieldAwsAccessKeyId": "AWS access key ID AKIA বা ASIA দিয়ে শুরু হয় এবং 20 অক্ষরের হয়",
+            "fieldR2AccountId": "Cloudflare account ID 32 হেক্সাডেসিমেল অক্ষর"
         },
         "browser": {
             "remote": "রিমোট",

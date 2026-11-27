@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Šī vērtība neizskatās pareiza šim laukam",
             "puterUsernameIsEmail": "Šī ir e-pasta adrese: Puter nepieciešams jūsu Puter lietotājvārds (Settings > Account > Username)",
-            "resetEndpointToDefault": "Atiestatīt uz noklusējumu"
+            "resetEndpointToDefault": "Atiestatīt uz noklusējumu",
+            "fieldExpectsEmail": "Šajā laukā tiek gaidīta konta e-pasta adrese",
+            "fieldNotEmail": "Šeit ievadiet lietotājvārdu, ne e-pastu",
+            "fieldAwsAccessKeyId": "AWS piekļuves atslēgas ID sākas ar AKIA vai ASIA un ir 20 rakstzīmes",
+            "fieldR2AccountId": "Cloudflare konta ID ir 32 heksadecimālas rakstzīmes"
         },
         "browser": {
             "remote": "Attālināts",

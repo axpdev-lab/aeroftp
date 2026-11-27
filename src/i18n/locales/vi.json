@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Giá trị này không có vẻ đúng với trường này",
             "puterUsernameIsEmail": "Đây là một địa chỉ email: Puter cần tên người dùng Puter của bạn (Settings > Account > Username)",
-            "resetEndpointToDefault": "Đặt lại về mặc định"
+            "resetEndpointToDefault": "Đặt lại về mặc định",
+            "fieldExpectsEmail": "Trường này yêu cầu địa chỉ email của tài khoản của bạn",
+            "fieldNotEmail": "Nhập tên người dùng của bạn ở đây, không phải email",
+            "fieldAwsAccessKeyId": "AWS access key ID bắt đầu bằng AKIA hoặc ASIA và dài 20 ký tự",
+            "fieldR2AccountId": "ID tài khoản Cloudflare gồm 32 ký tự thập lục phân"
         },
         "browser": {
             "remote": "Từ xa",

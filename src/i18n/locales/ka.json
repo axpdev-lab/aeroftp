@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "ეს არის არასწორი ისტვის ველის",
             "puterUsernameIsEmail": "ეს არის ელფოსტის მისამართი: Puter სირდირა შეი Puter მომხმარებლის სახელი (Settings > Account > Username)",
-            "resetEndpointToDefault": "შესეება სტანდართი"
+            "resetEndpointToDefault": "შესეება სტანდართი",
+            "fieldExpectsEmail": "ეს ელფოსტის მისამართი",
+            "fieldNotEmail": "სახელი, not ელფოსტის",
+            "fieldAwsAccessKeyId": "AWS access key ID AKIA/ASIA, 20",
+            "fieldR2AccountId": "Cloudflare account ID 32"
         },
         "browser": {
             "remote": "დისტანციური",

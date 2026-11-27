@@ -73,3 +73,41 @@ describe('registry pattern guard', () => {
         expect(withPattern.length).toBeGreaterThan(0);
     });
 });
+
+describe('approved username/key shape patterns (MPUT01 R2 Part B)', () => {
+    const rows: Array<{ provider: string; fieldKey: string; accept: string; reject: string }> = [
+        { provider: 'koofr', fieldKey: 'username', accept: 'user@koofr.net', reject: 'plainname' },
+        { provider: 'mega', fieldKey: 'username', accept: 'user@example.com', reject: 'plainname' },
+        { provider: '4shared-webdav', fieldKey: 'username', accept: 'user@example.com', reject: 'plainname' },
+        { provider: 'opendrive-webdav', fieldKey: 'username', accept: 'user@example.com', reject: 'plainname' },
+        { provider: 'blomp', fieldKey: 'username', accept: 'user@blomp.com', reject: 'plainname' },
+        { provider: 'infinicloud', fieldKey: 'username', accept: 'user@example.com', reject: 'plainname' },
+        { provider: 'cloudme', fieldKey: 'username', accept: 'plainname', reject: 'user@example.com' },
+        { provider: 'amazon-s3', fieldKey: 'username', accept: 'AKIAIOSFODNN7EXAMPLE', reject: 'AKIAIOSFODNN7EXAMPL' },
+        { provider: 'cloudflare-r2', fieldKey: 'accountId', accept: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4', reject: 'a1b2c3d4' },
+    ];
+    for (const row of rows) {
+        it(`${row.provider}.${row.fieldKey} accepts the documented shape and rejects the wrong one`, () => {
+            const provider = PROVIDERS.find(p => p.id === row.provider);
+            const field = provider?.fields?.find(f => f.key === row.fieldKey);
+            expect(field?.pattern, `${row.provider}.${row.fieldKey} must carry a pattern`).toBeTruthy();
+            expect(fieldPatternIssue(field, row.accept)).toBeNull();
+            expect(fieldPatternIssue(field, row.reject)).not.toBeNull();
+        });
+    }
+    it('the email rows share one message key and the shapes their own', () => {
+        const keyOf = (id: string, key: string) => PROVIDERS.find(p => p.id === id)?.fields?.find(f => f.key === key)?.patternMessageKey;
+        for (const id of ['koofr', 'mega', '4shared-webdav', 'opendrive-webdav', 'blomp', 'infinicloud']) {
+            expect(keyOf(id, 'username')).toBe('connection.fieldExpectsEmail');
+        }
+        expect(keyOf('cloudme', 'username')).toBe('connection.fieldNotEmail');
+        expect(keyOf('amazon-s3', 'username')).toBe('connection.fieldAwsAccessKeyId');
+        expect(keyOf('cloudflare-r2', 'accountId')).toBe('connection.fieldR2AccountId');
+    });
+    it('all email rows share the very same pattern string', () => {
+        const pats = ['koofr', 'mega', '4shared-webdav', 'opendrive-webdav', 'blomp', 'infinicloud']
+            .map(id => PROVIDERS.find(p => p.id === id)?.fields?.find(f => f.key === 'username')?.pattern);
+        expect(new Set(pats).size).toBe(1);
+        expect(pats[0]).toMatch(/@/);
+    });
+});

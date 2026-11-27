@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Balio hau ez da zuzena eremu honetarako",
             "puterUsernameIsEmail": "Hau e-posta helbide bat da: Puter-ek zure Puter erabiltzaile-izena behar du (Settings > Account > Username)",
-            "resetEndpointToDefault": "Berrezarri balio lehenetsia"
+            "resetEndpointToDefault": "Berrezarri balio lehenetsia",
+            "fieldExpectsEmail": "Eremu honek zure kontuko e-posta helbidea espero du",
+            "fieldNotEmail": "Erabili hemen zure erabiltzaile-izena, ez e-posta",
+            "fieldAwsAccessKeyId": "AWS access key ID bat AKIA edo ASIA-rekin hasten da eta 20 karaktere ditu",
+            "fieldR2AccountId": "Cloudflare kontuko IDak 32 karaktere hamaseitarrak ditu"
         },
         "browser": {
             "remote": "Urrunekoa",

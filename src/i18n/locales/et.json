@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "See väärtus ei tundu selle välja jaoks õige",
             "puterUsernameIsEmail": "See on e-posti aadress: Puter vajab sinu Puteri kasutajanime (Settings > Account > Username)",
-            "resetEndpointToDefault": "Lähtesta vaikimisi"
+            "resetEndpointToDefault": "Lähtesta vaikimisi",
+            "fieldExpectsEmail": "See väli ootab sinu konto e-posti aadressi",
+            "fieldNotEmail": "Kasuta siin oma kasutajanime, mitte e-posti",
+            "fieldAwsAccessKeyId": "AWS access key ID algab AKIA või ASIA ja on 20 tähemärki pikk",
+            "fieldR2AccountId": "Cloudflare'i konto ID on 32 kuueteistkümnendmärki"
         },
         "browser": {
             "remote": "Kaugserver",

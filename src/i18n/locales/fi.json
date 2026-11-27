@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Tämä arvo ei näytä oikealta tälle kentälle",
             "puterUsernameIsEmail": "Tämä on sähköpostiosoite: Puter tarvitsee Puter-käyttäjänimesi (Settings > Account > Username)",
-            "resetEndpointToDefault": "Palauta oletus"
+            "resetEndpointToDefault": "Palauta oletus",
+            "fieldExpectsEmail": "Tämä kenttä odottaa tilisi sähköpostiosoitetta",
+            "fieldNotEmail": "Käytä tässä käyttäjänimeäsi, älä sähköpostia",
+            "fieldAwsAccessKeyId": "AWS access key ID alkaa AKIA:lla tai ASIA:lla ja on 20 merkkiä pitkä",
+            "fieldR2AccountId": "Cloudflare-tilin ID on 32 heksadesimaalimerkkiä"
         },
         "browser": {
             "remote": "Etä",

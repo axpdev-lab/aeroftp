@@ -551,7 +551,11 @@
                 "copyKeptTitle": "Cartella iniziale mantenuta",
                 "copyKept": "La cartella iniziale {path} non ha un equivalente in modalità {mode} ed è stata mantenuta così com'è."
             },
-            "resetEndpointToDefault": "Ripristina predefinito"
+            "resetEndpointToDefault": "Ripristina predefinito",
+            "fieldExpectsEmail": "Questo campo richiede l'indirizzo email del tuo account",
+            "fieldNotEmail": "Usa qui il tuo nome utente, non l'indirizzo email",
+            "fieldAwsAccessKeyId": "Un access key ID AWS inizia con AKIA o ASIA e ha 20 caratteri",
+            "fieldR2AccountId": "L'ID account Cloudflare ha 32 caratteri esadecimali"
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",

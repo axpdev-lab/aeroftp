@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Deze waarde ziet er niet goed uit voor dit veld",
             "puterUsernameIsEmail": "Dit is een e-mailadres: Puter heeft je Puter-gebruikersnaam nodig (Settings > Account > Username)",
-            "resetEndpointToDefault": "Standaard herstellen"
+            "resetEndpointToDefault": "Standaard herstellen",
+            "fieldExpectsEmail": "Dit veld verwacht het e-mailadres van je account",
+            "fieldNotEmail": "Gebruik hier je gebruikersnaam, niet je e-mailadres",
+            "fieldAwsAccessKeyId": "Een AWS access key ID begint met AKIA of ASIA en heeft 20 tekens",
+            "fieldR2AccountId": "Het Cloudflare-account-ID heeft 32 hexadecimale tekens"
         },
         "browser": {
             "remote": "Extern",

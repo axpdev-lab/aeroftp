@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Nid yw'r gwerth hwn yn edrych yn iawn ar gyfer y maes hwn",
             "puterUsernameIsEmail": "Dyma gyfeiriad e-bost: Mae Puter angen dy enw defnyddiwr Puter (Settings > Account > Username)",
-            "resetEndpointToDefault": "Ailosod i'r rhagosodiad"
+            "resetEndpointToDefault": "Ailosod i'r rhagosodiad",
+            "fieldExpectsEmail": "Mae'r maes hwn yn disgwyl cyfeiriad e-bost eich cyfrif",
+            "fieldNotEmail": "Defnyddiwch eich enw defnyddiwr yma, nid cyfeiriad e-bost",
+            "fieldAwsAccessKeyId": "Mae AWS access key ID yn dechrau gyda AKIA neu ASIA ac mae ganddo 20 nod",
+            "fieldR2AccountId": "Mae ID cyfrif Cloudflare yn 32 nod hecsadegol"
         },
         "browser": {
             "remote": "Pell",

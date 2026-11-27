@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Nilai ini tidak kelihatan betul untuk medan ini",
             "puterUsernameIsEmail": "Ini adalah alamat e-mel: Puter memerlukan nama pengguna Puter anda (Settings > Account > Username)",
-            "resetEndpointToDefault": "Set semula ke lalai"
+            "resetEndpointToDefault": "Set semula ke lalai",
+            "fieldExpectsEmail": "Medan ini menjangkakan alamat e-mel akaun anda",
+            "fieldNotEmail": "Gunakan nama pengguna anda di sini, bukan e-mel",
+            "fieldAwsAccessKeyId": "AWS access key ID bermula dengan AKIA atau ASIA dan 20 aksara",
+            "fieldR2AccountId": "ID akaun Cloudflare mempunyai 32 aksara heksadesimal"
         },
         "browser": {
             "remote": "Jauh",

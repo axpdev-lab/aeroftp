@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Þetta gildi lítur ekki rétt út fyrir þetta reit",
             "puterUsernameIsEmail": "Þetta er netfang: Puter þarf Puter notandanafnið þitt (Settings > Account > Username)",
-            "resetEndpointToDefault": "Endurstilla í Sjálfgefið"
+            "resetEndpointToDefault": "Endurstilla í Sjálfgefið",
+            "fieldExpectsEmail": "Þessi reitur væntir netfangsins á reikningnum þínum",
+            "fieldNotEmail": "Notaðu notandanafnið þitt hér, ekki netfang",
+            "fieldAwsAccessKeyId": "AWS access key ID byrjar á AKIA eða ASIA og er 20 stafir",
+            "fieldR2AccountId": "Cloudflare reikningsauðkennið er 32 sextándastafir"
         },
         "browser": {
             "remote": "Fjartengdur",

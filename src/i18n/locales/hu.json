@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Ez az érték nem tűnik helyesnek ehhez a mezőhöz",
             "puterUsernameIsEmail": "Ez egy e-mail cím: a Puterhez a Puter felhasználóneved kell (Settings > Account > Username)",
-            "resetEndpointToDefault": "Alapértelmezett visszaállítása"
+            "resetEndpointToDefault": "Alapértelmezett visszaállítása",
+            "fieldExpectsEmail": "Ez a mező a fiókod e-mail címét várja",
+            "fieldNotEmail": "Ide a felhasználónevedet írd, ne az e-mail címet",
+            "fieldAwsAccessKeyId": "Az AWS access key ID AKIA vagy ASIA prefixszel kezdődik és 20 karakter hosszú",
+            "fieldR2AccountId": "A Cloudflare fiókazonosító 32 hexadecimális karakter"
         },
         "browser": {
             "remote": "Távoli",

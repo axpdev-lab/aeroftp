@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Táto hodnota nevyzerá pre toto pole správne",
             "puterUsernameIsEmail": "Toto je e-mailová adresa: Puter potrebuje vaše používateľské meno v Puteri (Settings > Account > Username)",
-            "resetEndpointToDefault": "Obnoviť predvolené"
+            "resetEndpointToDefault": "Obnoviť predvolené",
+            "fieldExpectsEmail": "Toto pole očakáva e-mailovú adresu vášho účtu",
+            "fieldNotEmail": "Sem zadajte používateľské meno, nie e-mail",
+            "fieldAwsAccessKeyId": "AWS access key ID začína AKIA alebo ASIA a má 20 znakov",
+            "fieldR2AccountId": "ID účtu Cloudflare má 32 hexadecimálnych znakov"
         },
         "browser": {
             "remote": "Vzdialený",

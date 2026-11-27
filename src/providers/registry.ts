@@ -463,7 +463,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#FF9900',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.accessKeyId, helpText: 'IAM Console → Users → Security Credentials → Access Keys' },
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'IAM Console → Users → Security Credentials → Access Keys', pattern: '^(AKIA|ASIA)[A-Z0-9]{16}$', patternMessageKey: 'connection.fieldAwsAccessKeyId' },
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'Shown only once at key creation' },
             { ...COMMON_FIELDS.bucket, placeholder: 'my-bucket', helpText: 'S3 Console → Buckets → Bucket name' },
             {
@@ -671,6 +671,8 @@ export const PROVIDERS: ProviderConfig[] = [
                 required: true,
                 placeholder: 'a1b2c3d4e5f6...',
                 helpText: 'Cloudflare Dashboard → R2 → Overview → Account ID',
+                pattern: '^[0-9a-f]{32}$',
+                patternMessageKey: 'connection.fieldR2AccountId',
                 group: 'server',
             },
             {
@@ -1471,7 +1473,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#008BF6',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com', pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessageKey: 'connection.fieldExpectsEmail' },
             { ...COMMON_FIELDS.password, label: 'Password', helpText: 'Your regular 4shared login password' },
         ],
         features: { shareLink: false, sync: true },
@@ -1493,7 +1495,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#00AEEF',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.username, placeholder: 'Your CloudMe username' },
+            { ...COMMON_FIELDS.username, placeholder: 'Your CloudMe username', pattern: '^[^@\\s]+$', patternMessageKey: 'connection.fieldNotEmail' },
             { ...COMMON_FIELDS.password },
         ],
         features: {
@@ -1641,7 +1643,7 @@ export const PROVIDERS: ProviderConfig[] = [
         stable: true,
         contactVerified: true,
         fields: [
-            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com', pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessageKey: 'connection.fieldExpectsEmail' },
             {
                 ...COMMON_FIELDS.password,
                 label: 'App Password',
@@ -1729,7 +1731,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#0099CC',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com', pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessageKey: 'connection.fieldExpectsEmail' },
             { ...COMMON_FIELDS.password, label: 'Password', helpText: 'Your regular OpenDrive login password' },
         ],
         features: { shareLink: false, sync: true },
@@ -1833,6 +1835,8 @@ export const PROVIDERS: ProviderConfig[] = [
                 ...COMMON_FIELDS.username,
                 label: 'User ID (Email)',
                 placeholder: 'email@example.com',
+                pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$',
+                patternMessageKey: 'connection.fieldExpectsEmail',
             },
             {
                 ...COMMON_FIELDS.password,
@@ -2128,6 +2132,8 @@ export const PROVIDERS: ProviderConfig[] = [
                 type: 'email',
                 required: true,
                 placeholder: 'your@blomp.com',
+                pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$',
+                patternMessageKey: 'connection.fieldExpectsEmail',
                 group: 'credentials',
             },
             {
@@ -2165,6 +2171,8 @@ export const PROVIDERS: ProviderConfig[] = [
                 type: 'email',
                 required: true,
                 placeholder: 'email@example.com',
+                pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$',
+                patternMessageKey: 'connection.fieldExpectsEmail',
                 group: 'credentials',
             },
             {

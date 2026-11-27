@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "មិនត្រឹមត្រូវ",
             "puterUsernameIsEmail": "អាសយដ្ឋានអ៊ីមែល: Puter ឈ្មោះអ្នកប្រើ (Settings > Account > Username)",
-            "resetEndpointToDefault": "កំណត់ឡើងវិញទៅលំនាំដើម"
+            "resetEndpointToDefault": "កំណត់ឡើងវិញទៅលំនាំដើម",
+            "fieldExpectsEmail": "វាលនេះរំពឹងថាអ៊ីមែលគណនីរបស់អ្នក",
+            "fieldNotEmail": "ប្រើឈ្មោះអ្នកប្រើប្រាស់របស់អ្នកនៅទីនេះ មិនមែនអ៊ីមែលទេ",
+            "fieldAwsAccessKeyId": "AWS access key ID ចាប់ផ្តើមដោយ AKIA ឬ ASIA និងមាន 20 តួអក្សរ",
+            "fieldR2AccountId": "លេខសម្គាល់គណនី Cloudflare មាន 32 តួអ heksadesimal heksadesimal"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",

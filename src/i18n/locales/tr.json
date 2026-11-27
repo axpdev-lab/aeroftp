@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Bu değer bu alan için doğru görünmüyor",
             "puterUsernameIsEmail": "Bu bir e-posta adresi: Puter, Puter kullanıcı adınızı ister (Settings > Account > Username)",
-            "resetEndpointToDefault": "Varsayılana sıfırla"
+            "resetEndpointToDefault": "Varsayılana sıfırla",
+            "fieldExpectsEmail": "Bu alan hesabınızın e-posta adresini bekler",
+            "fieldNotEmail": "Buraya e-posta değil, kullanıcı adınızı yazın",
+            "fieldAwsAccessKeyId": "Bir AWS access key ID AKIA veya ASIA ile başlar ve 20 karakterdir",
+            "fieldR2AccountId": "Cloudflare hesap kimliği 32 onaltılık karakterdir"
         },
         "browser": {
             "remote": "Uzak",

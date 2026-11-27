@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "此值对于此字段看起来不正确",
             "puterUsernameIsEmail": "这是一个电子邮件地址：Puter 需要您的 Puter 用户名 (Settings > Account > Username)",
-            "resetEndpointToDefault": "重置为默认"
+            "resetEndpointToDefault": "重置为默认",
+            "fieldExpectsEmail": "此字段需要您账户的电子邮件地址",
+            "fieldNotEmail": "请在此输入用户名，而不是电子邮件地址",
+            "fieldAwsAccessKeyId": "AWS access key ID 以 AKIA 或 ASIA 开头，共 20 个字符",
+            "fieldR2AccountId": "Cloudflare 账户 ID 为 32 个十六进制字符"
         },
         "browser": {
             "remote": "远程",

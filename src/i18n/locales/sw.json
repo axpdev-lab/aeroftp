@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Thamani hii haionekani sawa kwa uwanja huu",
             "puterUsernameIsEmail": "Hii ni anwani ya barua pepe: Puter inahitaji jina lako la mtumiaji wa Puter (Settings > Account > Username)",
-            "resetEndpointToDefault": "Rudisha kwa chaguo-msingi"
+            "resetEndpointToDefault": "Rudisha kwa chaguo-msingi",
+            "fieldExpectsEmail": "Sehemu hii inatarajia barua pepe ya akaunti yako",
+            "fieldNotEmail": "Tumia jina la mtumiaji hapa, si barua pepe",
+            "fieldAwsAccessKeyId": "AWS access key ID huanza na AKIA au ASIA na ina herufi 20",
+            "fieldR2AccountId": "Kitambulisho cha akaunti ya Cloudflare kina herufi 32 za hexadesimal"
         },
         "browser": {
             "remote": "Mbali",

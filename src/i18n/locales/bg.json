@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Тази стойност не изглежда правилна за това поле",
             "puterUsernameIsEmail": "Това е имейл адрес: Puter изисква вашето потребителско име в Puter (Settings > Account > Username)",
-            "resetEndpointToDefault": "Нулиране по подразбиране"
+            "resetEndpointToDefault": "Нулиране по подразбиране",
+            "fieldExpectsEmail": "Това поле очаква имейл адреса на вашия акаунт",
+            "fieldNotEmail": "Използвайте потребителското си име тук, не имейл адрес",
+            "fieldAwsAccessKeyId": "AWS access key ID започва с AKIA или ASIA и има 20 символа",
+            "fieldR2AccountId": "Account ID на Cloudflare е 32 шестнадесетични символа"
         },
         "browser": {
             "remote": "Отдалечен",

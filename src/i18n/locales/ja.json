@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "この値はこのフィールドに対して正しくないようです",
             "puterUsernameIsEmail": "これはメールアドレスです：Puter にはあなたの Puter ユーザー名が必要です (Settings > Account > Username)",
-            "resetEndpointToDefault": "デフォルトにリセット"
+            "resetEndpointToDefault": "デフォルトにリセット",
+            "fieldExpectsEmail": "このフィールドにはアカウントのメールアドレスを入力してください",
+            "fieldNotEmail": "ここにはメールアドレスではなくユーザー名を入力してください",
+            "fieldAwsAccessKeyId": "AWS アクセスキー ID は AKIA または ASIA で始まり 20 文字です",
+            "fieldR2AccountId": "Cloudflare アカウント ID は 32 桁の16進数です"
         },
         "browser": {
             "remote": "リモート",

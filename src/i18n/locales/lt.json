@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Ši reikšmė neatrodo teisinga šiam laukui",
             "puterUsernameIsEmail": "Tai el. pašto adresas: Puter reikia jūsų Puter vartotojo vardo (Settings > Account > Username)",
-            "resetEndpointToDefault": "Atkurti numatytąją"
+            "resetEndpointToDefault": "Atkurti numatytąją",
+            "fieldExpectsEmail": "Šiame laukelyje tikimasi paskyros el. pašto adreso",
+            "fieldNotEmail": "Čia įveskite vartotojo vardą, ne el. paštą",
+            "fieldAwsAccessKeyId": "AWS prieigos rakto ID prasideda AKIA arba ASIA ir turi 20 simbolių",
+            "fieldR2AccountId": "Cloudflare paskyros ID turi 32 šešioliktainius simbolius"
         },
         "browser": {
             "remote": "Nuotolinis",

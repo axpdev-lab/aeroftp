@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Hindi mukhang tama ang value na ito para sa field na ito",
             "puterUsernameIsEmail": "Isa itong email address: Kailangan ng Puter ang iyong Puter username (Settings > Account > Username)",
-            "resetEndpointToDefault": "I-reset sa default"
+            "resetEndpointToDefault": "I-reset sa default",
+            "fieldExpectsEmail": "Inaasahan ng field na ito ang email ng iyong account",
+            "fieldNotEmail": "Gamitin dito ang iyong username, hindi ang email",
+            "fieldAwsAccessKeyId": "Ang AWS access key ID ay nagsisimula sa AKIA o ASIA at may 20 character",
+            "fieldR2AccountId": "Ang Cloudflare account ID ay may 32 hexadecimal na character"
         },
         "browser": {
             "remote": "Remote",

@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Tato hodnota nevypadá pro toto pole správně",
             "puterUsernameIsEmail": "Toto je e-mailová adresa: Puter potřebuje tvé uživatelské jméno v Puteru (Settings > Account > Username)",
-            "resetEndpointToDefault": "Obnovit výchozí hodnotu"
+            "resetEndpointToDefault": "Obnovit výchozí hodnotu",
+            "fieldExpectsEmail": "Toto pole očekává e-mailovou adresu vašeho účtu",
+            "fieldNotEmail": "Sem zadejte uživatelské jméno, ne e-mail",
+            "fieldAwsAccessKeyId": "AWS access key ID začíná AKIA nebo ASIA a má 20 znaků",
+            "fieldR2AccountId": "ID účtu Cloudflare má 32 hexadecimálních znaků"
         },
         "browser": {
             "remote": "Vzdálený",

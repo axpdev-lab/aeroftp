@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "ค่านี้ดูไม่ถูกต้องสำหรับช่องนี้",
             "puterUsernameIsEmail": "นี่คือที่อยู่อีเมล: Puter ต้องการชื่อผู้ใช้ Puter ของคุณ (Settings > Account > Username)",
-            "resetEndpointToDefault": "รีเซ็ตเป็นค่าเริ่มต้น"
+            "resetEndpointToDefault": "รีเซ็ตเป็นค่าเริ่มต้น",
+            "fieldExpectsEmail": "ช่องนี้ต้องการอีเมลของบัญชีคุณ",
+            "fieldNotEmail": "ใส่ชื่อผู้ใช้ของคุณที่นี่ ไม่ใช่อีเมล",
+            "fieldAwsAccessKeyId": "AWS access key ID ขึ้นต้นด้วย AKIA หรือ ASIA และมี 20 ตัวอักษร",
+            "fieldR2AccountId": "รหัสบัญชี Cloudflare มี 32 ตัวอักษรฐานสิบหก"
         },
         "browser": {
             "remote": "ระยะไกล",

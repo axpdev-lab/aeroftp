@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Это значение выглядит неправильно для этого поля",
             "puterUsernameIsEmail": "Это адрес электронной почты: Puter требуется ваше имя пользователя Puter (Settings > Account > Username)",
-            "resetEndpointToDefault": "Сбросить по умолчанию"
+            "resetEndpointToDefault": "Сбросить по умолчанию",
+            "fieldExpectsEmail": "Это поле ожидает адрес электронной почты вашего аккаунта",
+            "fieldNotEmail": "Введите здесь имя пользователя, а не адрес почты",
+            "fieldAwsAccessKeyId": "AWS access key ID начинается с AKIA или ASIA и содержит 20 символов",
+            "fieldR2AccountId": "ID аккаунта Cloudflare состоит из 32 шестнадцатеричных символов"
         },
         "browser": {
             "remote": "Удалённый",

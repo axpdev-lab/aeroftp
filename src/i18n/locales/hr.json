@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Ova vrijednost ne izgleda ispravno za ovo polje",
             "puterUsernameIsEmail": "Ovo je e-mail adresa: Puter treba vaše Puter korisničko ime (Settings > Account > Username)",
-            "resetEndpointToDefault": "Vrati na zadano"
+            "resetEndpointToDefault": "Vrati na zadano",
+            "fieldExpectsEmail": "Ovo polje očekuje e-mail adresu vašeg računa",
+            "fieldNotEmail": "Ovdje unesite svoje korisničko ime, ne e-mail",
+            "fieldAwsAccessKeyId": "AWS access key ID počinje s AKIA ili ASIA i ima 20 znakova",
+            "fieldR2AccountId": "Cloudflare ID računa ima 32 heksadecimalna znaka"
         },
         "browser": {
             "remote": "Udaljeno",

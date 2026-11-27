@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Denne verdien ser ikke riktig ut for dette feltet",
             "puterUsernameIsEmail": "Dette er en e-postadresse: Puter trenger Puter-brukernavnet ditt (Settings > Account > Username)",
-            "resetEndpointToDefault": "Tilbakestill til standard"
+            "resetEndpointToDefault": "Tilbakestill til standard",
+            "fieldExpectsEmail": "Dette feltet forventer e-postadressen til kontoen din",
+            "fieldNotEmail": "Bruk brukernavnet ditt her, ikke e-post",
+            "fieldAwsAccessKeyId": "En AWS access key ID starter med AKIA eller ASIA og har 20 tegn",
+            "fieldR2AccountId": "Cloudflare-konto-IDen har 32 heksadesimale tegn"
         },
         "browser": {
             "remote": "Ekstern",

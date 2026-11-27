@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Оваа вредност не изгледа правилно за ова поле",
             "puterUsernameIsEmail": "Ова е е-поштенска адреса: Puter му треба вашето Puter корисничко име (Settings > Account > Username)",
-            "resetEndpointToDefault": "Врати на стандардно"
+            "resetEndpointToDefault": "Врати на стандардно",
+            "fieldExpectsEmail": "Ова поле очекува е-пошта на вашата сметка",
+            "fieldNotEmail": "Тука ставете корисничко име, не е-пошта",
+            "fieldAwsAccessKeyId": "AWS access key ID почнува со AKIA или ASIA и има 20 знаци",
+            "fieldR2AccountId": "Cloudflare ID на сметка има 32 хексадецимални знаци"
         },
         "browser": {
             "remote": "Далечински",

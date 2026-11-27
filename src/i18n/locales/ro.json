@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Această valoare nu pare corectă pentru acest câmp",
             "puterUsernameIsEmail": "Aceasta este o adresă de e-mail: Puter are nevoie de numele tău de utilizator Puter (Settings > Account > Username)",
-            "resetEndpointToDefault": "Resetează la valorile implicite"
+            "resetEndpointToDefault": "Resetează la valorile implicite",
+            "fieldExpectsEmail": "Acest câmp așteaptă adresa de e-mail a contului tău",
+            "fieldNotEmail": "Folosește aici numele de utilizator, nu e-mailul",
+            "fieldAwsAccessKeyId": "Un access key ID AWS începe cu AKIA sau ASIA și are 20 de caractere",
+            "fieldR2AccountId": "ID-ul contului Cloudflare are 32 de caractere hexazecimale"
         },
         "browser": {
             "remote": "La distanță",

@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "սա արպեքը արեւ Անվավեր համար դաշմը",
             "puterUsernameIsEmail": "սա արեւ Էլ. փոստի հասցե: Puter պեթ դզեր Puter Օգտանուն (Settings > Account > Username)",
-            "resetEndpointToDefault": "Վերականգնել parcel"
+            "resetEndpointToDefault": "Վերականգնել parcel",
+            "fieldExpectsEmail": "սա Էլ. փոստի հասցե",
+            "fieldNotEmail": "Օգտանուն, not Էլ. փոստի",
+            "fieldAwsAccessKeyId": "AWS access key ID AKIA/ASIA, 20",
+            "fieldR2AccountId": "Cloudflare account ID 32"
         },
         "browser": {
             "remote": "Հեռավոր",

@@ -401,7 +401,11 @@
             },
             "fieldPatternInvalid": "Nilai ini tidak terlihat benar untuk kolom ini",
             "puterUsernameIsEmail": "Ini adalah alamat email: Puter memerlukan nama pengguna Puter Anda (Settings > Account > Username)",
-            "resetEndpointToDefault": "Setel ulang ke default"
+            "resetEndpointToDefault": "Setel ulang ke default",
+            "fieldExpectsEmail": "Kolom ini mengharapkan alamat email akun Anda",
+            "fieldNotEmail": "Gunakan nama pengguna Anda di sini, bukan email",
+            "fieldAwsAccessKeyId": "AWS access key ID dimulai dengan AKIA atau ASIA dan 20 karakter",
+            "fieldR2AccountId": "ID akun Cloudflare terdiri dari 32 karakter heksadesimal"
         },
         "browser": {
             "remote": "Jarak Jauh",
