@@ -1892,7 +1892,7 @@ impl StorageProvider for PCloudProvider {
             match self.stat(to).await {
                 Ok(_) => {
                     return Err(ProviderError::AlreadyExists(format!(
-                        "{to} already exists: copying a folder into it would merge the two, nothing was copied"
+                        "{to}: copying a folder into it would merge the two, nothing was copied"
                     )))
                 }
                 Err(ProviderError::NotFound(_)) => {}
