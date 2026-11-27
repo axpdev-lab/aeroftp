@@ -77,7 +77,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         createProfileCredentialJournal,
         useCallback: (fn: unknown) => fn, servers, setServers: vi.fn(), onServersChange: vi.fn(),
         setRenamingId: vi.fn(), deleteTarget: original, setDeleteTarget: vi.fn(), setGroups: vi.fn(),
-        copyProfileVaultSecrets: vi.fn(async () => ({})), deleteProfileVaultSecrets: vi.fn(async () => undefined),
+        copyProfileVaultSecrets: vi.fn(async () => ({})), deleteProfileVaultSecrets: vi.fn(async () => ({ removed: [], failed: [], protonSessionEndsAtUnlockOf: null })),
         pruneServerFromGroups: vi.fn(async () => undefined),
         visibleListRef: { current: servers }, dragServerIdRef: { current: 'old' },
         setDragIdx: vi.fn(), setOverIdx: vi.fn(), DRAG_SENTINEL_TOP: -1, DRAG_SENTINEL_BOTTOM: -2, reorderVisibleInFull,
@@ -337,6 +337,52 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setDeleteTarget).not.toHaveBeenCalled();
     });
 
+    it('IntroHub purges the secrets of the account the profile list was read for', async () => {
+        const deleted = fixture('none');
+        const fn = await execute(hub, ['confirmDelete'], deleted.context);
+        await fn.confirmDelete();
+        await vi.waitFor(() => expect(deleted.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce());
+        expect(deleted.context.deleteProfileVaultSecrets).toHaveBeenCalledWith('old', 'ftp', 7);
+        // A copy whose list write failed after an account switch: its secrets
+        // are still removed, from the account they were copied in.
+        const copied = fixture('write');
+        let generation = 0;
+        copied.context.accountChangeGeneration = () => generation++;
+        const dup = await execute(hub, ['handleDuplicate'], copied.context);
+        await dup.handleDuplicate(copied.servers[0]);
+        expect(copied.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce();
+        expect(copied.context.deleteProfileVaultSecrets).toHaveBeenCalledWith(expect.stringMatching(/^srv_/), 'ftp', 7);
+    });
+
+    it('IntroHub purges for the account active at read time when the list came from the legacy store', async () => {
+        // A legacy-store read has no userId: the purge must still name the
+        // account that was active when the list was read, not whichever
+        // account is active when the purge runs after a switch.
+        const f = fixture('none');
+        f.context.readSavedServerProfilesForWrite = async () => ({
+            profiles: f.servers, activeUserId: 7, revision: 'legacy-store:[]',
+        });
+        const fn = await execute(hub, ['confirmDelete'], f.context);
+        await fn.confirmDelete();
+        await vi.waitFor(() => expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce());
+        expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledWith('old', 'ftp', 7);
+    });
+
+    it.each(['handleDuplicate', 'confirmDelete'] as const)('IntroHub %s refuses the secret cleanup while the owner is unknown', async name => {
+        // ownerUnknown with no userId: the active-account fallback could hit
+        // another account, so deleteProfileVaultSecrets must not run at all.
+        const f = fixture(name === 'handleDuplicate' ? 'write' : 'none');
+        f.context.readSavedServerProfilesForWrite = async () => ({
+            profiles: f.servers, userId: undefined, activeUserId: 3,
+            ownerUnknown: true, revision: 'r3',
+        });
+        const fn = await execute(hub, [name], f.context);
+        if (name === 'handleDuplicate') await fn[name](f.servers[0]);
+        else await fn[name]();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(f.context.deleteProfileVaultSecrets, name).not.toHaveBeenCalled();
+    });
+
     it('closes the primary editor after a successful persisted save', async () => {
         const f = fixture('none');
         const fn = await execute(connection, ['saveToServers', 'handleConnectAndSave'], f.context);
@@ -398,6 +444,21 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setServers).not.toHaveBeenCalled();
         expect(f.context.copyProfileVaultSecrets).not.toHaveBeenCalled();
         expect(f.events.some(e => e.detail?.type === 'error')).toBe(true);
+    });
+
+    it('IntroHub copies and cleans the duplicate secrets on the account the list was read under', async () => {
+        // A legacy-store read can carry the active account without a userId:
+        // the copy must bind to it, and a failed save must purge the copy on
+        // that same account, not on whichever account became active after.
+        const f = fixture('write');
+        f.context.readSavedServerProfilesForWrite = async () => ({
+            profiles: f.servers, activeUserId: 7, revision: 'legacy-store:[]',
+        });
+        const fn = await execute(hub, ['handleDuplicate'], f.context);
+        await fn.handleDuplicate(f.servers[0]);
+        expect(f.context.copyProfileVaultSecrets).toHaveBeenCalledWith('old', expect.stringMatching(/^srv_/), 'ftp', 7);
+        const copiedId = f.context.copyProfileVaultSecrets.mock.calls[0][1];
+        expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledWith(copiedId, 'ftp', 7);
     });
 
     it('IntroHub stores no duplicate when its secrets cannot be copied, and shows why', async () => {
@@ -547,6 +608,34 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.onFormSaved).not.toHaveBeenCalled();
     });
 
+    it.each([['Target', 1], [null, 0]] as const)('IntroHub confirmDelete says when a locked account closes the Proton session later (%s)', async (account, toasts) => {
+        const f = fixture('none');
+        f.context.deleteProfileVaultSecrets = vi.fn(async () => ({ removed: [], failed: [], protonSessionEndsAtUnlockOf: account }));
+        const fn = await execute(hub, ['confirmDelete'], f.context);
+        await fn.confirmDelete();
+        await vi.waitFor(() => expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce());
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const said = f.events.filter(e => e.detail?.title === 'introHub.protonSessionEndsAtUnlock');
+        expect(said).toHaveLength(toasts);
+        expect(f.context.logger.warn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['a key the purge could not remove', async () => ({ removed: [], failed: ['jottacloud_refresh_target'], protonSessionEndsAtUnlockOf: null }), 1],
+        ['a purge that failed', async () => { throw new Error('STORE_NOT_READY'); }, 1],
+        ['a complete purge', async () => ({ removed: ['server_target'], failed: [], protonSessionEndsAtUnlockOf: null }), 0],
+    ] as const)('IntroHub confirmDelete says when the deleted profile leaves secrets behind (%s)', async (_case, purge, toasts) => {
+        const f = fixture('none');
+        f.context.deleteProfileVaultSecrets = vi.fn(purge);
+        const fn = await execute(hub, ['confirmDelete'], f.context);
+        await fn.confirmDelete();
+        await vi.waitFor(() => expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce());
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const said = f.events.filter(e => e.detail?.title === 'introHub.profileSecretsNotRemoved');
+        expect(said).toHaveLength(toasts);
+        expect(f.context.logger.warn).toHaveBeenCalledTimes(toasts);
+    });
+
     it('keeps the delete callback bound to the current translator', () => {
         const deleteCallback = declaration(hub, 'confirmDelete');
         expect(deleteCallback).toMatch(/\}, \[[^\]]*\bt\b[^\]]*\]\);/);
@@ -619,7 +708,8 @@ describe('the saved-profile list shown after a write', () => {
     });
 
     it('Settings never shows the list it sent once the write has stored it', () => {
-        // Its one list write is the keystore restore, which shows what that stored.
+        // Its one list write is the keystore restore, which shows what that stored:
+        // the saved list read back bound to its account, never the list sent.
         expect(settingsSource).not.toMatch(/await storeSavedServerProfiles\(/);
         expect(settingsSource).toContain('const restored = await reloadRestoredServerProfilesWithAccount();');
         expect(settingsSource).toContain('setServers(restored.profiles);');

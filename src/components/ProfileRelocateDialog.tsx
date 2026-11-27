@@ -155,6 +155,22 @@ export const ProfileRelocateDialog: React.FC<ProfileRelocateDialogProps> = ({
             onClose();
         } catch (err) {
             const raw = String(err);
+            // The Move committed: the profile is saved in the target and gone
+            // from this account; only removing its Proton session here failed.
+            if (raw.startsWith('RELOCATION_COMMITTED')) {
+                toastEvent(
+                    'warning',
+                    t('savedServers.moveToUser'),
+                    t('savedServers.relocateMovedCleanupFailed', {
+                        name: profile.name,
+                        user: target.name,
+                    }),
+                    true,
+                );
+                onDone({ moved: true, alreadyPresent: false });
+                onClose();
+                return;
+            }
             const friendly = raw.includes('WRONG_PASSPHRASE')
                 ? t('savedServers.relocateWrongPassword', { user: target.name })
                 : t('savedServers.relocateError', { error: raw });

@@ -1404,7 +1404,7 @@ export function MyServersPanel({
     const handleDuplicate = useCallback(async (server: ServerProfile) => {
         try {
             const accountBefore = accountChangeGeneration();
-            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, activeUserId, ownerUnknown, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             // From the list just read: the card clicked may be the previous account's.
             const source = currentServers.find(s => s.id === server.id);
             if (!source) return;
@@ -1420,7 +1420,15 @@ export function MyServersPanel({
                 hasStoredAeroCryptPassword: false,
                 hasStoredAeroCryptSalt: false,
             };
-            const copiedSecrets = await copyProfileVaultSecrets(source.id, newId, source.protocol, profilesUserId);
+            // The copy must land in the account the list was read under, not
+            // whichever account is active when the copy runs. With the owner
+            // unknown there is no account to bind it to, so the copy is
+            // refused like the purge of an unsaved copy below.
+            const copyAccount = profilesUserId ?? activeUserId;
+            if (ownerUnknown && copyAccount === undefined) {
+                throw new Error('account-unknown');
+            }
+            const copiedSecrets = await copyProfileVaultSecrets(source.id, newId, source.protocol, copyAccount);
             dup.hasStoredCredential = copiedSecrets.server;
             dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
             dup.hasStoredSessionToken = copiedSecrets.aws_session_token;
@@ -1434,12 +1442,19 @@ export function MyServersPanel({
             try {
                 stored = await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision);
             } catch (err) {
-                // The copy was not listed, so its secrets have no profile. The delete
-                // acts on the active account: after a switch it could miss them or hit
-                // another's, so they stay, unused under an id nothing refers to.
-                if (accountChangeGeneration() === accountBefore) {
-                    await deleteProfileVaultSecrets(newId, source.protocol).catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
-                }
+                // The copy was not listed, so its secrets have no profile: they are
+                // removed from the account they were copied in, even after a switch.
+                // With the owner unknown the active-account fallback could hit
+                // another account, so the cleanup is refused instead.
+                const cleanup = ownerUnknown && profilesUserId === undefined
+                    ? Promise.resolve({ failed: ['account-unknown'] as string[] }).then(({ failed }) => {
+                        if (failed.length > 0) logger.warn('Secrets of the unsaved copy could not be removed', failed);
+                    })
+                    : deleteProfileVaultSecrets(newId, source.protocol, profilesUserId ?? activeUserId)
+                        .then(({ failed }) => {
+                            if (failed.length > 0) logger.warn('Secrets of the unsaved copy could not be removed', failed);
+                        });
+                await cleanup.catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
                 throw err;
             }
             // A switch meanwhile brings its own re-read: this list is the previous account's.
@@ -1554,10 +1569,40 @@ export function MyServersPanel({
     const confirmDelete = useCallback(async () => {
         try {
             if (!deleteTarget) return;
-            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, activeUserId, ownerUnknown, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const updated = currentServers.filter(s => s.id !== deleteTarget.id);
             setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
-            deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
+            // The profile is gone either way; secrets the purge could not
+            // remove stay in the vault under its id, and the user is told.
+            const secretsLeft = (detail: unknown) => {
+                logger.warn('Secrets of the deleted profile could not be removed', detail);
+                window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                    detail: {
+                        type: 'warning',
+                        title: t('introHub.profileSecretsNotRemoved'),
+                        important: true,
+                    },
+                }));
+            };
+            // With the owner unknown the active-account fallback could purge
+            // another account's secrets, so the purge is refused and the
+            // residue is reported like any other purge failure.
+            const purge = ownerUnknown && profilesUserId === undefined
+                ? Promise.reject(new Error('account-unknown'))
+                : deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol, profilesUserId ?? activeUserId);
+            purge
+                .then(({ failed, protonSessionEndsAtUnlockOf: account }) => {
+                    if (failed.length > 0) secretsLeft(failed);
+                    if (!account) return;
+                    window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                        detail: {
+                            type: 'info',
+                            title: t('introHub.protonSessionEndsAtUnlock'),
+                            important: true,
+                        },
+                    }));
+                })
+                .catch(secretsLeft);
             // Drop the deleted profile from any group it belonged to (#320).
             pruneServerFromGroups(deleteTarget.id).catch(() => {});
             setGroups(prev => prev.map(g => (

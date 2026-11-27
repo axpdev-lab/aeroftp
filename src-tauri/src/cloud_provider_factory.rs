@@ -2060,7 +2060,8 @@ mod tests {
     /// stack is composed: the session is not wrapped in the second account's
     /// overlay, and the inner remote sees no write (no marker restored with
     /// the other account's config). The legacy-only capture reads the legacy
-    /// owner's list, not the active one, the same way.
+    /// owner's partition list the same way, not the shared vault's blob, which
+    /// the partitions keep equal to the active account's list.
     #[test]
     fn the_overlay_stack_reads_the_captured_accounts_profile_across_a_switch() {
         use crate::credential_store::CredentialStore;
@@ -2110,8 +2111,15 @@ mod tests {
         )
         .expect("the second account's overlay password");
 
-        // V1: the legacy owner's own list (the shared vault's blob) holds the
-        // profile crypt-bound, its password in the shared vault.
+        // V1: the shared vault's blob as the partitions keep it, equal to the
+        // active account's list (`mirror_active_profiles_to_legacy_blob`):
+        // after the switch below that is the second account's crypt-bound
+        // profile, with an overlay password in the shared vault. The legacy
+        // owner is the first account, whose own list is the plain profile.
+        assert_eq!(
+            partitions::nonprofile_secret_owner_unpersisted(&conn).expect("legacy owner"),
+            Some(first.id)
+        );
         store
             .store(
                 "config_server_profiles",
@@ -2122,13 +2130,13 @@ mod tests {
                 }])
                 .to_string(),
             )
-            .expect("the legacy owner's profiles");
+            .expect("the active account's mirror");
         store
             .store(
                 "aerocrypt_overlay_pw_shared-profile",
                 "legacy-overlay-password",
             )
-            .expect("the legacy owner's overlay password");
+            .expect("an overlay password in the shared vault");
         let account = partitions::gui_account_snapshot().expect("capture account");
         assert_eq!(account.user, Some(first.id));
         partitions::set_active_user(&conn, second.id).expect("switch before the stack");
@@ -2163,15 +2171,17 @@ mod tests {
         assert_eq!(error, None, "the captured account's plain profile composes");
         assert_eq!(wrapped, Some(false), "not the other account's overlay");
         assert!(written.is_empty(), "{written:?}");
-        // V1: the legacy-only capture reads the legacy owner's crypt-bound
-        // profile and its vault secret, with the second account active: the
-        // wrap succeeds (the reserved id is the legacy scope, not a user).
+        // V1: the legacy-only capture reads the legacy owner's own list, the
+        // first account's plain profile, with the second account active: it
+        // does not follow the blob, the active account's mirror, into the
+        // second account's overlay.
         let (error, wrapped, written) = compose(partitions::LEGACY_ONLY_ACCOUNT);
+        assert_eq!(error, None, "the legacy owner's plain profile composes");
         assert_eq!(
-            error, None,
-            "the legacy owner's crypt-bound profile composes"
+            wrapped,
+            Some(false),
+            "the legacy owner's own list, not the active account's mirror"
         );
-        assert_eq!(wrapped, Some(true), "its own overlay");
         assert!(written.is_empty(), "{written:?}");
         // Control: the second account's own capture takes its overlay.
         let (error, wrapped, _) = compose(second.id);
@@ -2181,7 +2191,9 @@ mod tests {
         // lands in the legacy vault, never in a partition.
         let scope =
             crate::profile_auth::AuthScope::for_captured(&store, partitions::LEGACY_ONLY_ACCOUNT);
-        assert_eq!(scope.user_id, None);
+        // The reserved id is retained for the resolvers that understand it;
+        // the partition writers filter it back to the vault path.
+        assert_eq!(scope.user_id, Some(partitions::LEGACY_ONLY_ACCOUNT));
         crate::crypt_overlay_provider::persist_public_overlay_config_for_unlock(
             Some(&scope),
             "shared-profile",
@@ -2209,6 +2221,226 @@ mod tests {
                 "no partition receives the legacy metadata"
             );
         }
+    }
+
+    /// V1, the positive half: a legacy-only capture of the legacy owner's
+    /// crypt-bound profile wraps, with another account active, and takes the
+    /// secret the legacy owner keeps. For a profile only the owner holds that
+    /// is the vault copy the migration left; for a profile another account
+    /// holds too it is the owner's own row, never the vault copy that the
+    /// other account's later save wrote over it.
+    #[test]
+    fn a_legacy_only_overlay_wraps_with_the_legacy_owners_own_secret() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "cloud_provider_factory::tests::a_legacy_only_overlay_wraps_with_the_legacy_owners_own_secret",
+        ) {
+            return;
+        }
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        std::env::remove_var("AEROFTP_CRYPT_OVERLAY_PASSWORD");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("overlay-legacy-test-pass")
+            .expect("bootstrap vault");
+        CredentialStore::unlock_with_master("overlay-legacy-test-pass", None)
+            .expect("unlock vault");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account");
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account");
+        assert_eq!(
+            partitions::nonprofile_secret_owner_unpersisted(&conn).expect("legacy owner"),
+            Some(first.id)
+        );
+        let bound = |id: &str| {
+            serde_json::json!({
+                "id": id, "name": id, "protocol": "ftp",
+                "server": "127.0.0.1", "port": 21, "username": "u",
+                "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt", "remoteScope": "/Vault"},
+            })
+        };
+        partitions::replace_server_profiles_for(
+            &mut conn,
+            &root_key,
+            first.id,
+            &[bound("migrated-profile"), bound("shared-profile")],
+        )
+        .expect("the legacy owner's bound profiles");
+        partitions::replace_server_profiles_for(
+            &mut conn,
+            &root_key,
+            second.id,
+            &[bound("shared-profile")],
+        )
+        .expect("the second account's copy of one of them");
+        // As the migration left it: the vault copy, and no row.
+        store
+            .store(
+                "aerocrypt_overlay_pw_migrated-profile",
+                "migrated-owner-password",
+            )
+            .expect("the migrated overlay password");
+        // The owner's save, then the second account's save of the same key:
+        // each writes the vault and its own row.
+        let shared = "aerocrypt_overlay_pw_shared-profile";
+        partitions::store_credential_dual_as(&store, Some(first.id), shared, "owner-password")
+            .expect("the owner's save");
+        partitions::store_credential_dual_as(&store, Some(second.id), shared, "second-password")
+            .expect("the second account's save");
+        assert_eq!(
+            store.get(shared).ok().as_deref(),
+            Some("second-password"),
+            "the vault holds the last save"
+        );
+        partitions::set_active_user(&conn, second.id).expect("switch before the stack");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        for (id, expected) in [
+            ("migrated-profile", "migrated-owner-password"),
+            ("shared-profile", "owner-password"),
+        ] {
+            crate::crypt_overlay_provider::overlay_test_seams::take_password();
+            let mut stack = runtime.block_on(
+                crate::crypt_overlay_provider::build_aerocloud_overlay_stack(
+                    Box::new(crate::providers::probe_fake::ProbeFake::new()),
+                    Some(id),
+                    id,
+                    &store,
+                    partitions::LEGACY_ONLY_ACCOUNT,
+                ),
+            );
+            let error = stack.as_ref().err().cloned();
+            let wrapped = stack.as_mut().ok().map(|stack| {
+                stack
+                    .as_any_mut()
+                    .is::<crate::crypt_overlay_provider::CryptOverlayProvider>()
+            });
+            assert_eq!(
+                error, None,
+                "{id}: the legacy owner's bound profile composes"
+            );
+            assert_eq!(wrapped, Some(true), "{id}: its own overlay");
+            assert_eq!(
+                crate::crypt_overlay_provider::overlay_test_seams::take_password(),
+                Some(Some(expected.to_string())),
+                "{id}: the legacy owner's own secret"
+            );
+        }
+    }
+
+    /// A connection that began with no account reads its secrets as the
+    /// legacy owner's: the owner's own row where it holds one, even when
+    /// another account saved the same key after it and so wrote the vault;
+    /// the vault only where no other account holds the key; and a refreshed
+    /// token it writes lands in the owner's row, which its readers prefer.
+    #[test]
+    fn a_legacy_only_read_takes_the_legacy_owners_own_secret() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "cloud_provider_factory::tests::a_legacy_only_read_takes_the_legacy_owners_own_secret",
+        ) {
+            return;
+        }
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("legacy-read-test-pass")
+            .expect("bootstrap vault");
+        CredentialStore::unlock_with_master("legacy-read-test-pass", None).expect("unlock vault");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account");
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account");
+        assert_eq!(
+            partitions::nonprofile_secret_owner_unpersisted(&conn).expect("legacy owner"),
+            Some(first.id)
+        );
+        let shared = "server_shared-profile";
+        partitions::store_credential_dual_as(&store, Some(first.id), shared, "owner-password")
+            .expect("the owner's save");
+        partitions::store_credential_dual_as(&store, Some(second.id), shared, "second-password")
+            .expect("the second account's save");
+        let second_only = "server_second-profile";
+        partitions::store_credential_dual_as(&store, Some(second.id), second_only, "second-only")
+            .expect("a key only the second account saved");
+        assert_eq!(store.get(shared).ok().as_deref(), Some("second-password"));
+        assert_eq!(store.get(second_only).ok().as_deref(), Some("second-only"));
+        let migrated = "server_migrated-profile";
+        store
+            .store(migrated, "migrated-owner-password")
+            .expect("a vault copy no account has a row of");
+        partitions::set_active_user(&conn, second.id).expect("the second account is active");
+
+        let legacy = partitions::LEGACY_ONLY_ACCOUNT;
+        let read = |key: &str| {
+            [
+                partitions::resolve_credential_for_user(&store, legacy, key),
+                partitions::resolve_credential_for_user_owner_aware(&store, legacy, key),
+            ]
+            .map(|read| read.expect("read").map(|secret| secret.to_string()))
+        };
+        assert_eq!(
+            read(shared),
+            [
+                Some("owner-password".to_string()),
+                Some("owner-password".to_string())
+            ]
+        );
+        assert_eq!(
+            read(second_only),
+            [None, None],
+            "the vault copy is the second account's"
+        );
+        assert_eq!(
+            read(migrated),
+            [
+                Some("migrated-owner-password".to_string()),
+                Some("migrated-owner-password".to_string())
+            ]
+        );
+
+        let token = "oauth_googledrive_legacy-profile";
+        partitions::store_credential_for_user(&store, first.id, token, "oauth", "first-token")
+            .expect("the owner's token row");
+        partitions::mirror_credential_for_user_typed(&store, legacy, token, "oauth", "refreshed")
+            .expect("the refreshed token's mirror");
+        assert_eq!(
+            partitions::get_user_credential_for(&conn, &root_key, first.id, token)
+                .expect("the owner's row")
+                .map(|secret| secret.to_string())
+                .as_deref(),
+            Some("refreshed"),
+            "the refresh reaches the row the owner's readers prefer"
+        );
+        assert_eq!(
+            partitions::get_user_credential_for(&conn, &root_key, second.id, token)
+                .expect("the second account's rows"),
+            None
+        );
     }
 
     /// Two accounts hold a direct-auth profile under one id, each with its

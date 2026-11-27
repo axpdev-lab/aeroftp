@@ -1439,7 +1439,10 @@
             "templateLogImported": "कॉन्फ़िगरेशन टेम्प्लेट आयात किया गया: {imported} आयात किए गए, {skipped} छोड़े गए, {invalid} अमान्य",
             "templateLogBlocks": "ब्लॉक: {blocks}",
             "templateDuplicateInTemplate": "टेम्प्लेट में डुप्लिकेट",
-            "templateSelectProfile": "{name} आयात करें"
+            "templateSelectProfile": "{name} आयात करें",
+            "exportAccountUnbound": "प्रोफ़ाइल सूची किसी खाते से बंधी नहीं है; कुछ भी निर्यात नहीं किया गया।",
+            "exportAccountChanged": "सक्रिय खाता बदल गया; कुछ भी निर्यात नहीं किया गया।",
+            "exportAccountChangedDuringSave": "सहेजने का संवाद खुले रहते सक्रिय खाता बदल गया; कुछ भी निर्यात नहीं किया गया।"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "\"{name}\" पहले से ही {user} में सहेजा गया है",
             "relocateError": "सर्वर स्थानांतरित नहीं किया जा सका: {error}",
             "relocateWrongPassword": "{user} के लिए गलत पासवर्ड।",
-            "relocateSecretsNotCopied": "\"{name}\" {user} तक पहुँच गया, लेकिन उसका सहेजा हुआ पासवर्ड या टोकन नहीं पहुँचा, इसलिए वहाँ उन्हें दोबारा माँगा जाएगा।"
+            "relocateSecretsNotCopied": "\"{name}\" {user} तक पहुँच गया, लेकिन उसका सहेजा हुआ पासवर्ड या टोकन नहीं पहुँचा, इसलिए वहाँ उन्हें दोबारा माँगा जाएगा।",
+            "relocateMovedCleanupFailed": "\"{name}\" को {user} के पास ले जाया गया, लेकिन इसका Proton Drive सत्र स्रोत खाते से हटाया नहीं जा सका।"
         },
         "cyberTools": {
             "title": "सुरक्षा उपकरण",
@@ -5923,7 +5927,9 @@
                 "months": "{count} माह"
             },
             "demoTabLabel": "डेमो: {protocol}",
-            "newTabLabel": "नया: {name}"
+            "newTabLabel": "नया: {name}",
+            "protonSessionEndsAtUnlock": "इस प्रोफ़ाइल का Proton सत्र अगली बार इस खाते के अनलॉक होने पर समाप्त हो जाता है, जब तक कि इस कंप्यूटर पर कोई अन्य खाता इसका उपयोग न करे।",
+            "profileSecretsNotRemoved": "प्रोफ़ाइल हटा दी गई, लेकिन उसके कुछ सहेजे गए क्रेडेंशियल वॉल्ट से मिटाए नहीं जा सके."
         },
         "gitlab": {
             "projectPath": "प्रोजेक्ट पथ",

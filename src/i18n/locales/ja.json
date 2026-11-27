@@ -1439,7 +1439,10 @@
             "templateLogImported": "構成テンプレートをインポートしました: {imported} 件インポート、{skipped} 件スキップ、{invalid} 件無効",
             "templateLogBlocks": "ブロック: {blocks}",
             "templateDuplicateInTemplate": "テンプレート内で重複",
-            "templateSelectProfile": "{name} をインポート"
+            "templateSelectProfile": "{name} をインポート",
+            "exportAccountUnbound": "プロファイル一覧はアカウントに関連付けられていません。何もエクスポートされませんでした。",
+            "exportAccountChanged": "アクティブなアカウントが変更されました。何もエクスポートされませんでした。",
+            "exportAccountChangedDuringSave": "保存ダイアログを開いてから、アクティブなアカウントが変更されました。何もエクスポートされませんでした。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4926,7 +4929,8 @@
             "relocateAlreadyPresent": "「{name}」はすでに {user} に保存されています",
             "relocateError": "サーバーを転送できませんでした: {error}",
             "relocateWrongPassword": "{user} のパスワードが違います。",
-            "relocateSecretsNotCopied": "「{name}」は {user} に反映されましたが、保存済みのパスワードまたはトークンは引き継がれなかったため、そちらで再度入力を求められます。"
+            "relocateSecretsNotCopied": "「{name}」は {user} に反映されましたが、保存済みのパスワードまたはトークンは引き継がれなかったため、そちらで再度入力を求められます。",
+            "relocateMovedCleanupFailed": "\"{name}\" を {user} に移動しましたが、移動元のアカウントから Proton Drive のセッションを削除できませんでした。"
         },
         "cyberTools": {
             "title": "セキュリティツール",
@@ -5923,7 +5927,9 @@
                 "months": "{count}か月"
             },
             "demoTabLabel": "デモ: {protocol}",
-            "newTabLabel": "新規: {name}"
+            "newTabLabel": "新規: {name}",
+            "protonSessionEndsAtUnlock": "このコンピューター上の別のアカウントが使用していない限り、このプロファイルの Proton セッションは、このアカウントの次回のロック解除時に終了します。",
+            "profileSecretsNotRemoved": "プロファイルは削除されましたが、保存されていた認証情報の一部をVaultから削除できませんでした。"
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",

@@ -1439,7 +1439,10 @@
             "templateLogImported": "Templat konfigurasi diimport: {imported} diimport, {skipped} dilangkau, {invalid} tidak sah",
             "templateLogBlocks": "Blok: {blocks}",
             "templateDuplicateInTemplate": "pendua dalam templat",
-            "templateSelectProfile": "Import {name}"
+            "templateSelectProfile": "Import {name}",
+            "exportAccountUnbound": "Senarai profil tidak terikat pada akaun; tiada apa yang dieksport.",
+            "exportAccountChanged": "Akaun aktif berubah; tiada apa yang dieksport.",
+            "exportAccountChangedDuringSave": "Akaun aktif berubah semasa dialog penyimpanan dibuka; tiada apa yang dieksport."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "\"{name}\" sudah disimpan dalam {user}",
             "relocateError": "Pelayan tidak dapat dipindahkan: {error}",
             "relocateWrongPassword": "Kata laluan salah untuk {user}.",
-            "relocateSecretsNotCopied": "\"{name}\" telah sampai ke {user}, tetapi kata laluan atau token yang disimpan tidak sampai, jadi ia akan memintanya semula di sana."
+            "relocateSecretsNotCopied": "\"{name}\" telah sampai ke {user}, tetapi kata laluan atau token yang disimpan tidak sampai, jadi ia akan memintanya semula di sana.",
+            "relocateMovedCleanupFailed": "\"{name}\" dialihkan kepada {user}, tetapi sesi Proton Drive-nya tidak dapat dialih keluar daripada akaun sumber."
         },
         "cyberTools": {
             "title": "Alatan Keselamatan",
@@ -5923,7 +5927,9 @@
                 "months": "{count} bln"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Baharu: {name}"
+            "newTabLabel": "Baharu: {name}",
+            "protonSessionEndsAtUnlock": "Sesi Proton profil ini tamat apabila akaun ini dibuka kunci seterusnya, melainkan akaun lain pada komputer ini menggunakannya.",
+            "profileSecretsNotRemoved": "Profil telah dialih keluar, tetapi sebahagian kelayakan tersimpannya tidak dapat dipadam daripada peti besi."
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

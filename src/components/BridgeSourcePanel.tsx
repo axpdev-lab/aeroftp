@@ -14,7 +14,7 @@ import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources';
 import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
-import { bridgeProfileKey, commitImportedServersForScan, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
+import { bridgeProfileKey, commitImportedServersForScan, createScanSettler, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
 import { securityRelaxations } from '../utils/profileSecurity';
@@ -30,6 +30,8 @@ interface BridgeImportResult {
     totalRemotes: number;
     /** The account the scan wrote its secrets into (`null`: the legacy store). */
     scanUserId?: number | null;
+    /** The scan that stored them, settled once the panel is done with it. */
+    scanId?: string;
 }
 
 interface BridgeExportResult {
@@ -99,16 +101,15 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     // import state
     const [detectedPath, setDetectedPath] = useState<string | null>(null);
     const [result, setResult] = useState<BridgeImportResult | null>(null);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    // The preview on screen was confirmed: its selection and its confirm are
+    // closed (see `confirmImport`), until a new scan replaces it.
+    const [committed, setCommitted] = useState(false);
     // The account the last scan wrote its secrets into; the commit is bound to
     // it. `undefined` means the scan could not read an owner (locked vault):
     // unknown, NOT a confirmed legacy (null), so a later unlock + rescan does
     // not trip a false account-changed refusal.
     const [scanUserId, setScanUserId] = useState<number | null | undefined>(undefined);
-    // Monotonic scan generation: only the LATEST scan may commit rows, its
-    // account id, an error or the loading flag. Two dropped files resolving in
-    // reverse order must leave the newer scan's result on screen.
-    const scanGenerationRef = useRef(0);
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [keptRelaxed, setKeptRelaxed] = useState<Set<string>>(() => new Set());
 
     // export state
@@ -147,6 +148,15 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         closeTimerRef.current = null;
     };
     useEffect(() => cancelDelayedClose, []);
+    // What a scan stored for profiles the panel never saves goes when the panel
+    // is done with the scan: confirmed, scanned again or closed. Opening the
+    // import side also settles what a window closed by a crash left.
+    const [scans] = useState(() => createScanSettler(scanId => invoke('settle_bridge_import', { scanId })));
+    useEffect(() => {
+        if (direction !== 'import') return;
+        void scans.open();
+        return () => { void scans.close(); };
+    }, [direction, scans]);
 
     // Pre-select exportable profiles (protocol supported by the target).
     const supported = meta?.supportedProtocols ?? [];
@@ -217,26 +227,29 @@ export const BridgeSourcePanel: React.FC<Props> = ({
 
     const runScan = async (filePath: string) => {
         if (!filePath) return;
-        const generation = ++scanGenerationRef.current;
+        // Taken before the first await: of two files dropped in a row, the
+        // one dropped last owns the preview, and the other scan is settled.
+        const request = scans.begin();
         setLoading(true);
         setError(null);
         setResult(null);
         setKeptRelaxed(new Set());
+        await scans.release();
+        let latest = true;
         try {
-            const r = await invoke<BridgeImportResult>('import_bridge_config', {
+            const r = await scans.latest(request, () => invoke<BridgeImportResult>('import_bridge_config', {
                 source: source.id, filePath,
-            });
-            // A newer scan started while this one was in flight: its rows,
-            // account id and error win, this one is dropped entirely.
-            if (generation !== scanGenerationRef.current) return;
+            }));
+            // Overtaken by a later scan, which owns the panel state now.
+            if (r === null) { latest = false; return; }
+            setCommitted(false);
             setResult(r);
             setScanUserId(r.scanUserId);
             setSelectedIds(new Set(r.servers.map(s => s.id)));
         } catch (e) {
-            if (generation !== scanGenerationRef.current) return;
             setError(String(e));
         } finally {
-            if (generation === scanGenerationRef.current) setLoading(false);
+            if (latest) setLoading(false);
         }
     };
 
@@ -285,7 +298,10 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                     .map(r => r.key);
                 return importedServerProfile(s, keep);
             });
-        if (selected.length === 0 || committingRef.current) return;
+        // A preview confirmed once is settled at once: what its scan wrote for
+        // the profiles left out is gone, so a second confirm of the same
+        // preview would save those profiles without their secrets.
+        if (selected.length === 0 || committingRef.current || scans.isCommitted()) return;
         // The commit is not idempotent: onImport appends to the persisted list
         // and existingServerKeys still holds the pre-import snapshot, so a
         // second click while the first is in flight writes the same profiles
@@ -293,8 +309,19 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         committingRef.current = true;
         setLoading(true);
         try {
-            const outcome = await commitImportedServersForScan(selected, existingServerKeys, scanUserId, onImport);
+            // Closing the panel meanwhile settles the scan only once the
+            // profiles are saved, so their secrets stay.
+            const outcome = await scans.confirming(
+                () => commitImportedServersForScan(selected, existingServerKeys, scanUserId, onImport),
+            );
             if (outcome.error) { setError(outcome.error); return; }
+            // A newer scan that landed during the save owns the preview now:
+            // this commit is not its, so nothing is marked, released or
+            // announced for it.
+            if (!scans.markCommitted()) return;
+            await scans.release();
+            if (!scans.isCommitted()) return;
+            setCommitted(true);
             const parts: string[] = [];
             if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));
             if (outcome.updated > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(outcome.updated)));
@@ -305,6 +332,10 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             committingRef.current = false;
             setLoading(false);
         }
+    };
+
+    const selectImport: React.Dispatch<React.SetStateAction<Set<string>>> = next => {
+        if (!committed) setSelectedIds(next);
     };
 
     const toggle = (id: string, set: React.Dispatch<React.SetStateAction<Set<string>>>) =>
@@ -426,7 +457,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                         selected={selectedIds}
                                         shownIds={importShownIds}
                                         filtering={importFilter.filtering}
-                                        onChange={setSelectedIds}
+                                        onChange={selectImport}
                                     />
                                 </div>
                                 <ServerChecklistSearch value={importFilter.query} onChange={importFilter.setQuery} />
@@ -439,8 +470,8 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                         return (
                                             <div key={s.id}
                                                 className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0 ${dup ? 'opacity-50' : ''}`}
-                                                onClick={() => toggle(s.id, setSelectedIds)}>
-                                                <Checkbox checked={selectedIds.has(s.id)} onChange={() => toggle(s.id, setSelectedIds)} />
+                                                onClick={() => toggle(s.id, selectImport)}>
+                                                <Checkbox checked={selectedIds.has(s.id)} disabled={committed} onChange={() => toggle(s.id, selectImport)} />
                                                 <div className="min-w-0 flex-1">
                                                     <div className="text-sm font-medium truncate flex items-center gap-1.5">
                                                         {s.name}
@@ -529,7 +560,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                     {result && result.servers.length > 0 && (
                         <button
                             onClick={confirmImport}
-                            disabled={loading || selectedIds.size === 0}
+                            disabled={loading || committed || selectedIds.size === 0}
                             className="flex-1 px-4 py-2 text-sm bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             <Upload size={16} />

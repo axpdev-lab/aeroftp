@@ -1439,7 +1439,10 @@
             "templateLogImported": "Կարգավորման ձևանմուշը ներմուծվել է՝ {imported} ներմուծված, {skipped} բաց թողնված, {invalid} անվավեր",
             "templateLogBlocks": "Բլոկներ՝ {blocks}",
             "templateDuplicateInTemplate": "կրկնօրինակ ձևանմուշում",
-            "templateSelectProfile": "Ներմուծել {name}"
+            "templateSelectProfile": "Ներմուծել {name}",
+            "exportAccountUnbound": "Պրոֆիլների ցանկը կապված չի հաշվի հետ; ոչինչ չի արտահանվեց։",
+            "exportAccountChanged": "Ակտիվ Հաշիվը փոխվել է; ոչինչ չի արտահանվեց։",
+            "exportAccountChangedDuringSave": "Ակտիվ Հաշիվը փոխվել է, այս երկխոսության պահպանման բացվելուց հետո; ոչինչ չի արտահանվեց։"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4955,7 +4958,8 @@
             "relocateAlreadyPresent": "«{name}»-ն արդեն պահված է {user}-ում",
             "relocateError": "Չհաջողվեց փոխանցել սերվերը՝ {error}",
             "relocateWrongPassword": "Սխալ գաղտնաբառ {user}-ի համար։",
-            "relocateSecretsNotCopied": "«{name}»-ը հասավ {user}-ին, բայց պահված գաղտնաբառը կամ թոկենը չհասավ, ուստի այնտեղ դրանք նորից կպահանջվեն։"
+            "relocateSecretsNotCopied": "«{name}»-ը հասավ {user}-ին, բայց պահված գաղտնաբառը կամ թոկենը չհասավ, ուստի այնտեղ դրանք նորից կպահանջվեն։",
+            "relocateMovedCleanupFailed": "\"{name}\"-ը տեղափոխվեց {user}-ի մոտ, բայց դրա Proton Drive սեսիան չհաջողվեց հեռացնել սկզբնական հաշվից։"
         },
         "cyberTools": {
             "title": "Անվտանգության գործիքներ",
@@ -5923,7 +5927,9 @@
                 "months": "{count} ամս"
             },
             "demoTabLabel": "Ցուցադրություն: {protocol}",
-            "newTabLabel": "Նոր: {name}"
+            "newTabLabel": "Նոր: {name}",
+            "protonSessionEndsAtUnlock": "Այս պրոֆիլի Proton նիստն ավարտվում է այս հաշվի հաջորդ ապակողպման ժամանակ, եթե այն չի օգտագործում այս համակարգչի մեկ այլ հաշիվ։",
+            "profileSecretsNotRemoved": "Պրոֆիլը հեռացվեց, սակայն նրա պահպանված որոշ մուտքային տվյալներ չհաջողվեց ջնջել պահոցից։"
         },
         "gitlab": {
             "projectPath": "Նախագծի ուղի",

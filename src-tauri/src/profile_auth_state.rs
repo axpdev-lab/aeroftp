@@ -153,7 +153,7 @@ fn auth_token_account(
     }
     if let Some(slug) = oauth_vault_slug_for_oauth_protocol(protocol) {
         if !profile_id.is_empty() {
-            let per_profile = format!("oauth_{}_{}", slug, profile_id);
+            let per_profile = crate::providers::oauth2::oauth_token_key(slug, profile_id);
             if accounts.contains(&per_profile) {
                 return Some(per_profile);
             }
@@ -210,12 +210,13 @@ pub fn oauth_vault_key_for_protocol(protocol: &str) -> Option<&'static str> {
 /// Derive a profile's auth readiness from local vault state only: never
 /// touches the network. Returns one of:
 ///   - `valid`          : credential present and (for OAuth) not expired, or
-///     none needed (`AuthSource::NoSecret`)
+///     none needed (`AuthSource::NoSecret`); a stored value that is not an
+///     OAuth record (a Jottacloud chain, a legacy shape) counts as present
 ///   - `expired`        : OAuth token past `expires_at` and no refresh token
 ///   - `needs_refresh`  : OAuth token past `expires_at` but refresh token present
 ///   - `no_credentials` : nothing stored; user has not signed in yet
-///   - `unknown`        : vault entry present but value couldn't be parsed
-///     (legacy/corrupt), or a session another program keeps
+///   - `unknown`        : the stored entry could not be read (a locked
+///     account, a decrypt error), or a session another program keeps
 ///     (`AuthSource::External`): treated as "agent should try anyway"
 ///
 /// `source` is [`profile_auth_source`] of the profile. `accounts` is a
@@ -243,9 +244,77 @@ pub fn derive_profile_auth_state_for_user(
             Err(_) => "unknown",
         };
     }
-    #[cfg(not(feature = "proton-native"))]
-    let _ = user_id;
+    // GitHub's own readiness, for the account asked about, not the active one.
+    if protocol.eq_ignore_ascii_case("github") {
+        return crate::profile_auth::saved_github_readiness(store, profile_id, None, user_id);
+    }
+    // An account's token is read where its connection reads it: its
+    // partition row first, the vault after it for the legacy owner alone
+    // (`resolve_credential_for_user_owner_aware`). Another account's never
+    // comes from the vault key of the same name, which is the owner's.
+    if source == AuthSource::Vault && oauth_vault_key_for_protocol(protocol).is_some() {
+        if let Some(user) = user_id {
+            return partition_token_state(store, user, profile_id, protocol);
+        }
+    }
     derive_profile_auth_state(store, accounts, profile_id, protocol, source)
+}
+
+/// The state of an account's own token, read from its partition under the
+/// keys [`auth_token_account`] tries, in the same order.
+fn partition_token_state(
+    store: &CredentialStore,
+    user_id: i64,
+    profile_id: &str,
+    protocol: &str,
+) -> &'static str {
+    let mut keys = Vec::new();
+    if protocol.eq_ignore_ascii_case("jottacloud") && !profile_id.is_empty() {
+        keys.push(format!("jottacloud_refresh_{}", profile_id));
+    }
+    if let Some(slug) = oauth_vault_slug_for_oauth_protocol(protocol) {
+        if !profile_id.is_empty() {
+            keys.push(crate::providers::oauth2::oauth_token_key(slug, profile_id));
+        }
+    }
+    keys.extend(oauth_vault_key_for_protocol(protocol).map(str::to_string));
+    for key in keys {
+        match crate::user_partitions::resolve_credential_for_user_owner_aware(store, user_id, &key)
+        {
+            Ok(Some(json)) => return stored_token_state(&key, &json),
+            Ok(None) => {}
+            Err(_) => return "unknown",
+        }
+    }
+    "no_credentials"
+}
+
+/// The state a stored token gives: an OAuth record by its expiry, a
+/// Jottacloud chain (no `expires_at`) by its presence.
+fn stored_token_state(key: &str, json: &str) -> &'static str {
+    if let Ok(tokens) = serde_json::from_str::<StoredTokens>(json) {
+        if tokens.is_expired() {
+            if tokens.refresh_token.is_some() {
+                return "needs_refresh";
+            }
+            return "expired";
+        }
+        return "valid";
+    }
+    // A 4shared credential is the non-JSON `token:secret` pair below: any
+    // JSON, `{}` and `null` included, is not one. The JSON branch stays for
+    // Jottacloud's chain.
+    let fourshared = key.contains("fourshared");
+    if !fourshared && serde_json::from_str::<serde_json::Value>(json).is_ok() {
+        return "valid";
+    }
+    // A non-JSON blob under an `oauth_*` key is a 4shared `token:secret`
+    // pair: valid only when both halves are present, as the provider's own
+    // parse requires before it connects.
+    match json.split_once(':') {
+        Some((token, secret)) if !token.is_empty() && !secret.is_empty() => "valid",
+        _ => "expired",
+    }
 }
 
 /// Derive readiness from a legacy vault-key snapshot. Callers with an
@@ -291,21 +360,7 @@ pub fn derive_profile_auth_state(
             return "no_credentials";
         };
         match store.get(&key) {
-            Ok(json) => {
-                if let Ok(tokens) = serde_json::from_str::<StoredTokens>(&json) {
-                    if tokens.is_expired() {
-                        if tokens.refresh_token.is_some() {
-                            return "needs_refresh";
-                        }
-                        return "expired";
-                    }
-                    return "valid";
-                }
-                // Jottacloud's `jottacloud_refresh` is a different shape
-                // (raw refresh token JSON, no expires_at). Presence ==
-                // valid until the next request proves otherwise.
-                "valid"
-            }
+            Ok(json) => stored_token_state(&key, &json),
             Err(_) => "unknown",
         }
     } else if has_server {
@@ -626,6 +681,37 @@ mod tests {
             crate::bridge_commands::rclone_oauth_client_cred_key("zohoworkdrive"),
             Some("zohoworkdrive"),
             "rclone's zoho backend must be offered for WorkDrive profiles"
+        );
+    }
+
+    /// A 4shared `token:secret` pair is valid only when both halves are
+    /// present, as the provider's own parse requires: an incomplete pair is
+    /// not reported as a working sign-in.
+    #[test]
+    fn a_fourshared_pair_is_valid_only_with_both_halves() {
+        assert_eq!(
+            stored_token_state("oauth_fourshared_p", "token-t:secret-t"),
+            "valid"
+        );
+        assert_eq!(
+            stored_token_state("oauth_fourshared_p", "token-t:"),
+            "expired"
+        );
+        assert_eq!(
+            stored_token_state("oauth_fourshared_p", ":secret-t"),
+            "expired"
+        );
+        assert_eq!(
+            stored_token_state("oauth_fourshared_p", "token-t"),
+            "expired"
+        );
+        assert_eq!(stored_token_state("oauth_fourshared_p", ""), "expired");
+        assert_eq!(stored_token_state("oauth_fourshared_p", "{}"), "expired");
+        assert_eq!(stored_token_state("oauth_fourshared_p", "null"), "expired");
+        // A Jottacloud chain is JSON and stays valid by its presence.
+        assert_eq!(
+            stored_token_state("jottacloud_refresh_p", r#"{"refresh_token":"r"}"#),
+            "valid"
         );
     }
 }

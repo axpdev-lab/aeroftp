@@ -1439,7 +1439,10 @@
             "templateLogImported": "Το πρότυπο διαμόρφωσης εισήχθη: {imported} εισήχθησαν, {skipped} παραλείφθηκαν, {invalid} μη έγκυρα",
             "templateLogBlocks": "Μπλοκ: {blocks}",
             "templateDuplicateInTemplate": "διπλότυπο στο πρότυπο",
-            "templateSelectProfile": "Εισαγωγή {name}"
+            "templateSelectProfile": "Εισαγωγή {name}",
+            "exportAccountUnbound": "Η λίστα προφίλ δεν είναι συνδεδεμένη με λογαριασμό· τίποτα δεν εξήχθη.",
+            "exportAccountChanged": "Ο ενεργός λογαριασμός άλλαξε· τίποτα δεν εξήχθη.",
+            "exportAccountChangedDuringSave": "Ο ενεργός λογαριασμός άλλαξε ενώ ήταν ανοιχτό το παράθυρο αποθήκευσης· τίποτα δεν εξήχθη."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "Το «{name}» είναι ήδη αποθηκευμένο στο {user}",
             "relocateError": "Δεν ήταν δυνατή η μεταφορά του διακομιστή: {error}",
             "relocateWrongPassword": "Λάθος κωδικός για {user}.",
-            "relocateSecretsNotCopied": "Το «{name}» έφτασε στο {user}, αλλά ο αποθηκευμένος κωδικός ή το token δεν έφτασαν, οπότε θα τα ζητήσει ξανά εκεί."
+            "relocateSecretsNotCopied": "Το «{name}» έφτασε στο {user}, αλλά ο αποθηκευμένος κωδικός ή το token δεν έφτασαν, οπότε θα τα ζητήσει ξανά εκεί.",
+            "relocateMovedCleanupFailed": "Το \"{name}\" μεταφέρθηκε στον χρήστη {user}, αλλά η συνεδρία του Proton Drive δεν ήταν δυνατό να αφαιρεθεί από τον λογαριασμό προέλευσης."
         },
         "cyberTools": {
             "title": "Εργαλεία Ασφαλείας",
@@ -5923,7 +5927,9 @@
                 "months": "{count} μήν"
             },
             "demoTabLabel": "Επίδειξη: {protocol}",
-            "newTabLabel": "Νέο: {name}"
+            "newTabLabel": "Νέο: {name}",
+            "protonSessionEndsAtUnlock": "Η συνεδρία Proton αυτού του προφίλ λήγει την επόμενη φορά που θα ξεκλειδωθεί αυτός ο λογαριασμός, εκτός αν τη χρησιμοποιεί άλλος λογαριασμός σε αυτόν τον υπολογιστή.",
+            "profileSecretsNotRemoved": "Το προφίλ αφαιρέθηκε, αλλά ορισμένα από τα αποθηκευμένα διαπιστευτήριά του δεν ήταν δυνατό να διαγραφούν από το χρηματοκιβώτιο."
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",

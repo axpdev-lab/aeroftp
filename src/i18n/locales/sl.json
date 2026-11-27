@@ -1439,7 +1439,10 @@
             "templateLogImported": "Predloga konfiguracije uvožena: {imported} uvoženih, {skipped} preskočenih, {invalid} neveljavnih",
             "templateLogBlocks": "Bloki: {blocks}",
             "templateDuplicateInTemplate": "dvojnik v predlogi",
-            "templateSelectProfile": "Uvozi {name}"
+            "templateSelectProfile": "Uvozi {name}",
+            "exportAccountUnbound": "Seznam profilov ni povezan z računom; nič ni bilo izvoženo.",
+            "exportAccountChanged": "Aktivni račun se je spremenil; nič ni bilo izvoženo.",
+            "exportAccountChangedDuringSave": "Aktivni račun se je spremenil, medtem ko je bilo pogovorno okno za shranjevanje odprto; nič ni bilo izvoženo."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "»{name}« je že shranjen v {user}",
             "relocateError": "Strežnika ni bilo mogoče prenesti: {error}",
             "relocateWrongPassword": "Napačno geslo za {user}.",
-            "relocateSecretsNotCopied": "»{name}« je prispel v {user}, vendar shranjeno geslo ali žeton nista, zato bo tam znova zahteval vnos."
+            "relocateSecretsNotCopied": "»{name}« je prispel v {user}, vendar shranjeno geslo ali žeton nista, zato bo tam znova zahteval vnos.",
+            "relocateMovedCleanupFailed": "\"{name}\" je bil premaknjen k uporabniku {user}, vendar seje Proton Drive ni bilo mogoče odstraniti iz izvornega računa."
         },
         "cyberTools": {
             "title": "Varnostna orodja",
@@ -5923,7 +5927,9 @@
                 "months": "{count} mes."
             },
             "demoTabLabel": "Predstavitev: {protocol}",
-            "newTabLabel": "Novo: {name}"
+            "newTabLabel": "Novo: {name}",
+            "protonSessionEndsAtUnlock": "Seja Proton tega profila se konča ob naslednjem odklepanju tega računa, razen če jo uporablja drug račun v tem računalniku.",
+            "profileSecretsNotRemoved": "Profil je bil odstranjen, vendar nekaterih njegovih shranjenih poverilnic ni bilo mogoče izbrisati iz trezorja."
         },
         "gitlab": {
             "projectPath": "Pot projekta",

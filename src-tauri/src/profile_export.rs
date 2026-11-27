@@ -316,6 +316,10 @@ pub const OPTIONS_SECRET_KEYS: &[&str] = &[
     "token",
     "refresh_token",
     "refreshToken",
+    // rclone-crypt password material: a copied or credential-free profile
+    // must not carry the secret that decrypts the remote (Copy User, #347).
+    "rcloneCryptPassword",
+    "rcloneCryptPassword2",
     // SECVAL-A lead 6 (candidate fix): the AeroShare DocTicket of a received
     // drive (namespace id + publisher node id + relay + direct addresses). A
     // holder can sync the iroh doc: plaintext file names, sizes, the

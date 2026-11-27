@@ -1439,7 +1439,10 @@
             "templateLogImported": "Kiolezo cha usanidi kimeletwa: {imported} vimeletwa, {skipped} vimerukwa, {invalid} si sahihi",
             "templateLogBlocks": "Vitalu: {blocks}",
             "templateDuplicateInTemplate": "nakala rudufu katika kiolezo",
-            "templateSelectProfile": "Leta {name}"
+            "templateSelectProfile": "Leta {name}",
+            "exportAccountUnbound": "Orodha ya wasifu haijafungwa na akaunti; hakuna kilichochukuliwa nje.",
+            "exportAccountChanged": "Akaunti hai ilibadilika; hakuna kilichochukuliwa nje.",
+            "exportAccountChangedDuringSave": "Akaunti hai ilibadilika wakati dirisha la kuhifadhi lilipokuwa wazi; hakuna kilichochukuliwa nje."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4965,8 @@
             "relocateAlreadyPresent": "\"{name}\" tayari imehifadhiwa katika {user}",
             "relocateError": "Seva haikuweza kuhamishwa: {error}",
             "relocateWrongPassword": "Nenosiri si sahihi kwa {user}.",
-            "relocateSecretsNotCopied": "\"{name}\" imefika kwa {user}, lakini nywila au tokeni zilizohifadhiwa hazikufika, kwa hivyo itaziomba tena huko."
+            "relocateSecretsNotCopied": "\"{name}\" imefika kwa {user}, lakini nywila au tokeni zilizohifadhiwa hazikufika, kwa hivyo itaziomba tena huko.",
+            "relocateMovedCleanupFailed": "\"{name}\" imehamishiwa kwa {user}, lakini kipindi chake cha Proton Drive hakikuweza kuondolewa kwenye akaunti ya chanzo."
         },
         "cyberTools": {
             "title": "Zana za Usalama",
@@ -5923,7 +5927,9 @@
                 "months": "miezi {count}"
             },
             "demoTabLabel": "Onyesho: {protocol}",
-            "newTabLabel": "Mpya: {name}"
+            "newTabLabel": "Mpya: {name}",
+            "protonSessionEndsAtUnlock": "Kipindi cha Proton cha wasifu huu kinaisha akaunti hii itakapofunguliwa tena, isipokuwa akaunti nyingine kwenye kompyuta hii inakitumia.",
+            "profileSecretsNotRemoved": "Wasifu uliondolewa, lakini baadhi ya vitambulisho vyake vilivyohifadhiwa havikuweza kufutwa kwenye hifadhi salama."
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",
