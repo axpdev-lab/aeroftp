@@ -812,7 +812,7 @@ impl PCloudProvider {
 
     /// `createfolder` (refuses an existing folder) returning the new
     /// `folderid`. `get_after_refusal`, like `mkdir`.
-    async fn create_folder_returning_id(&self, dir_path: &str) -> Result<u64, ProviderError> {
+    async fn create_folder_returning_id(&mut self, dir_path: &str) -> Result<u64, ProviderError> {
         let resolved = self.resolve_path(dir_path);
         let url = format!(
             "{}/createfolder?path={}",
@@ -827,12 +827,20 @@ impl PCloudProvider {
             .await
             .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
         Self::check_response(&resp)?;
-        resp.metadata.and_then(|m| m.folderid).ok_or_else(|| {
-            ProviderError::Other(format!(
-                "pCloud createfolder for '{}' returned no folderid",
-                resolved
-            ))
-        })
+        match resp.metadata.and_then(|m| m.folderid) {
+            Some(id) => Ok(id),
+            None => {
+                // createfolder succeeded but named no folderid: remove the
+                // empty folder it just made so a retry is not refused as
+                // AlreadyExists. deletefolder is not recursive, so it can
+                // only remove the empty folder this call created.
+                let _ = self.delete_folder_call("deletefolder", dir_path).await;
+                Err(ProviderError::Other(format!(
+                    "pCloud createfolder for '{}' returned no folderid; the empty folder it made was removed",
+                    resolved
+                )))
+            }
+        }
     }
 
     /// Look up the `folderid` of a directory by path, creating the directory
@@ -3104,6 +3112,31 @@ mod tests {
             "{outcome:?}"
         );
         assert_eq!(*calls.lock().unwrap(), ["/createfolder?path=/dest/src"]);
+    }
+
+    /// `createfolder` succeeded but named no folderid: the empty folder it
+    /// made is removed with a plain `deletefolder` (never recursive), so a
+    /// retry is not refused as AlreadyExists.
+    #[tokio::test]
+    async fn a_created_folder_without_an_id_is_removed_again() {
+        let (mut provider, calls) = provider_on_pcloud_tree_full(
+            &["/src", "/src/a.txt", "/dest"],
+            r#"{"result":0}"#,
+            Some(r#"{"result":0,"metadata":{"name":"src","isfolder":true}}"#),
+        )
+        .await;
+        let outcome = provider.server_copy("/src", "/dest/src").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::Other(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "/createfolder?path=/dest/src",
+                "/deletefolder?path=/dest/src"
+            ]
+        );
     }
 
     /// `folder_id` only reads: a source that vanished after `stat` answered
