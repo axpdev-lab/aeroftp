@@ -39,15 +39,20 @@ describe('connection metadata used by saved profiles', () => {
         expect(connectionProfileDefaults('scp')).toMatchObject({ port: 22, server: '', options: {} });
     });
 
-    it('puter-webdav documents 2FA expiration and token auth guidance in credential helpText', () => {
+    it('puter-webdav asks for the account username and an API token, never -token', () => {
         const puter = PROVIDERS.find(p => p.id === 'puter-webdav');
         expect(puter).toBeDefined();
         const userField = puter?.fields?.find(f => f.key === 'username');
         const passField = puter?.fields?.find(f => f.key === 'password');
-        expect(userField?.helpText).toContain('-token');
-        expect(passField?.helpText).toMatch(/appended verification codes expire and may stop authenticating/i);
-        expect(passField?.helpText).toMatch(/-token/);
-        expect(passField?.helpText).toMatch(/persistent connections/i);
+        expect(passField?.label).toBe('API token');
+        for (const field of puter?.fields ?? []) {
+            expect(field.label ?? '').not.toContain('-token');
+            expect(field.placeholder ?? '').not.toContain('-token');
+            expect(field.helpText ?? '').not.toContain('-token');
+        }
+        expect(userField?.helpText).toContain('not your email');
+        const manifestPreset = connectionManifest.presets.find(p => p.id === 'puter-webdav');
+        expect(manifestPreset?.defaults?.server).toBe('https://dav.puter.com/{username}');
     });
 
     it('LifetimeCloud WebDAV preset is declared in manifest and registry as a free plan with token onboarding', () => {

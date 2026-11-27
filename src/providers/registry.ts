@@ -1507,18 +1507,27 @@ export const PROVIDERS: ProviderConfig[] = [
     {
         id: 'puter-webdav',
         name: 'Puter',
-        description: 'Puter cloud storage via WebDAV (25 MB free, no card)',
+        description: 'Puter cloud storage via WebDAV (200 MB free, no card)',
         protocol: 'webdav',
         category: 'webdav',
         icon: 'Cloud',
         color: '#8B5CF6',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.username, placeholder: 'Your Puter username', helpText: 'Token auth: use -token as the username (literal)' },
-            { ...COMMON_FIELDS.password, helpText: 'Your Puter password; with 2FA enabled, append the code (appended verification codes expire and may stop authenticating later requests; use -token authentication for persistent connections). Token auth: the auth token as password with -token as username, and set {ui:connection.endpointUrl} to https://dav.puter.com/<username> under {ui:protocol.advanced} ({ui:common.edit}, then {ui:protocol.advancedUnlock}): the {username} path resolves to -token otherwise' },
+            {
+                ...COMMON_FIELDS.username,
+                placeholder: 'Your Puter username',
+                helpText: 'The username in Puter under Settings > Account > Username, not your email: it names your drive, https://dav.puter.com/{username}',
+            },
+            {
+                ...COMMON_FIELDS.password,
+                label: 'API token',
+                placeholder: 'Paste your Puter API token',
+                helpText: 'Puter > Settings > Account > API Token > Create token. AeroFTP signs in with the token; your Puter password is not used',
+            },
         ],
         setupInstructions: [
-            'The free plan is very limited: 25 MB in total, no card, useful to try and evaluate Puter, not for real use; a paid Puter plan adds storage',
+            'The free plan is small: 200 MB in total, no card, useful to try and evaluate Puter, not for a backup library; a paid Puter plan adds storage',
         ],
         features: {
             shareLink: false,

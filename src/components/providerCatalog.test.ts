@@ -343,12 +343,12 @@ describe('commercial tier model: free / free-card / paid', () => {
         expect(formatFreeStorage(15)).toBe('15 GB');
     });
 
-    it('Puter is listed as its published free plan, printed as 25 MB, in the Free filter', () => {
-        // Puter publishes a Free plan of 25 MB with no card.
+    it('Puter is listed as its published free plan, printed as 200 MB, in the Free filter', () => {
+        // Puter publishes a Free plan of 200 MB with no card.
         const entry = PROVIDER_CATALOG.find(c => c.logoId === 'puter');
         expect(entry).toBeDefined();
-        expect(entry!.freeStorageGb).toBe(0.025);
-        expect(formatFreeStorage(entry!.freeStorageGb!)).toBe('25 MB');
+        expect(entry!.freeStorageGb).toBe(0.2);
+        expect(formatFreeStorage(entry!.freeStorageGb!)).toBe('200 MB');
         expect(entry!.freeNote).not.toMatch(/trial/i);
         expect(companyTier(entry!)).toBe('free');
         expect(companyTierInCategory(entry!, 'webdav')).toBe('free');

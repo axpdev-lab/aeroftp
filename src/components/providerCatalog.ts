@@ -286,10 +286,10 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'ibm-cos', category: 'object-storage', paid: true }] },
     { company: 'CloudMe', logoId: 'cloudme', countryCode: 'SE', freeStorageGb: 3,
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'cloudme', category: 'webdav' }] },
-    // Puter publishes a Free plan: 25 MB, no card
-    // (puter.com/pricing, 2026-11-14). Printed as "25 MB".
-    { company: 'Puter', logoId: 'puter', countryCode: 'US', freeStorageGb: 0.025,
-      freeNote: 'limited: 25 MB in total', healthCheckUrl: 'https://api.puter.com',
+    // Puter publishes a Free plan: 200 MB, no card
+    // (puter.com/pricing, 2026-11-26). Printed as "200 MB".
+    { company: 'Puter', logoId: 'puter', countryCode: 'US', freeStorageGb: 0.2,
+      freeNote: 'limited: 200 MB in total', healthCheckUrl: 'https://api.puter.com',
       searchAliases: ['puter', 'dav.puter.com'],
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'puter-webdav', category: 'webdav' }] },
     // A free plan: 1 GB, no card, no time limit, limited use (at most 50 MB per

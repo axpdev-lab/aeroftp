@@ -67,9 +67,9 @@ describe('preset text references', () => {
     it('resolves every reference of the registry in every language', () => {
         const references = everyText.flatMap(({ provider, where, text }) =>
             presetTextReferences(text).map((reference) => ({ provider, where, ...reference })));
-        // The six presets that name a control of the form, at least once each.
+        // The five presets that name a control of the form, at least once each.
         expect(new Set(references.map(({ provider }) => provider.id))).toEqual(new Set([
-            'puter-webdav', 'lifetimecloud', 'megacmd-webdav', 'filen-desktop-webdav', 'filen-desktop-s3', 's3drive',
+            'lifetimecloud', 'megacmd-webdav', 'filen-desktop-webdav', 'filen-desktop-s3', 's3drive',
         ]));
         expect(Object.keys(LOCALES).length).toBeGreaterThan(40);
         for (const { provider, where, kind, key } of references) {
