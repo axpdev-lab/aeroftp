@@ -250,6 +250,99 @@ pub struct TreeListStart {
     pub gid_names: IdNameList,
 }
 
+/// `PATH_MAX` bound for a joined local path (Linux default).
+pub const PATH_MAX_BYTES: usize = 4096;
+
+/// Why a peer-chosen file-list name is refused as a local path. In a tree
+/// download the names come from the peer, so a hostile or broken sender
+/// is the new attack surface: a refused name is a STREAM error, the
+/// session stops (never a per-entry `Failed`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TreePathError {
+    /// Empty name.
+    EmptyName,
+    /// Absolute name (`/etc/x`).
+    AbsoluteName,
+    /// A `.` or `..` component.
+    DotComponent,
+    /// An empty component (`a//b`, trailing slash).
+    EmptyComponent,
+    /// A NUL byte in the name.
+    NulByte,
+    /// The joined path exceeds [`PATH_MAX_BYTES`].
+    TooLong,
+}
+
+impl fmt::Display for TreePathError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let msg = match self {
+            TreePathError::EmptyName => "empty file-list name",
+            TreePathError::AbsoluteName => "absolute file-list name",
+            TreePathError::DotComponent => "file-list name with a . or .. component",
+            TreePathError::EmptyComponent => "file-list name with an empty component",
+            TreePathError::NulByte => "file-list name with a NUL byte",
+            TreePathError::TooLong => "joined local path exceeds PATH_MAX",
+        };
+        f.write_str(msg)
+    }
+}
+
+impl std::error::Error for TreePathError {}
+
+impl From<TreePathError> for AerorsyncError {
+    fn from(err: TreePathError) -> Self {
+        // A refused peer-chosen name is a stream error: not a RealWireError,
+        // so the retry classification never sees it.
+        AerorsyncError::new(
+            AerorsyncErrorKind::InvalidFrame,
+            format!("unsafe peer-chosen path: {err}"),
+        )
+    }
+}
+
+/// Map one peer-chosen file-list name to a local path under `dest_root`.
+/// Pure: no filesystem access. Refuses empty names, absolute names, `.` /
+/// `..` / empty components, NUL bytes and joined paths over
+/// [`PATH_MAX_BYTES`]. The returned path stays under `dest_root` by
+/// construction; the no-symlink-component rule is enforced at creation
+/// time (step 1's second rule).
+pub fn tree_entry_local_path(
+    dest_root: &std::path::Path,
+    name: &[u8],
+) -> Result<std::path::PathBuf, TreePathError> {
+    if name.is_empty() {
+        return Err(TreePathError::EmptyName);
+    }
+    if name[0] == b'/' {
+        return Err(TreePathError::AbsoluteName);
+    }
+    if name.contains(&0u8) {
+        return Err(TreePathError::NulByte);
+    }
+    for part in name.split(|b| *b == b'/') {
+        if part.is_empty() {
+            return Err(TreePathError::EmptyComponent);
+        }
+        if part == b"." || part == b".." {
+            return Err(TreePathError::DotComponent);
+        }
+    }
+    #[cfg(unix)]
+    let joined = {
+        use std::os::unix::ffi::OsStrExt;
+        dest_root.join(std::ffi::OsStr::from_bytes(name))
+    };
+    #[cfg(not(unix))]
+    let joined = match std::str::from_utf8(name) {
+        Ok(text) => dest_root.join(text),
+        Err(_) => return Err(TreePathError::NulByte),
+    };
+    if joined.as_os_str().len() > PATH_MAX_BYTES {
+        return Err(TreePathError::TooLong);
+    }
+    Ok(joined)
+}
+
 /// Tree-list failure with its own type, so it never enters the driver's
 /// retry classification (which inspects only `RealWireError`), exactly
 /// like `SessionTableError` in `session_state.rs`.
@@ -606,6 +699,53 @@ mod tests {
         let mut ndx_state = NdxState::new();
         let (ndx, _) = decode_ndx(&start.state.buffered, &mut ndx_state).unwrap();
         assert_eq!(classify_tree_ndx(ndx), TreeNdx::Item(0));
+    }
+
+    /// Step 1: one test per refused name shape.
+    #[test]
+    fn tree_entry_local_path_refuses_unsafe_names() {
+        let root = std::path::Path::new("/dest");
+        assert_eq!(
+            tree_entry_local_path(root, b""),
+            Err(TreePathError::EmptyName)
+        );
+        assert_eq!(
+            tree_entry_local_path(root, b"/etc/x"),
+            Err(TreePathError::AbsoluteName)
+        );
+        assert_eq!(
+            tree_entry_local_path(root, b"../x"),
+            Err(TreePathError::DotComponent)
+        );
+        assert_eq!(
+            tree_entry_local_path(root, b"a/../../b"),
+            Err(TreePathError::DotComponent)
+        );
+        assert_eq!(
+            tree_entry_local_path(root, b"a/./b"),
+            Err(TreePathError::DotComponent)
+        );
+        assert_eq!(
+            tree_entry_local_path(root, b"a//b"),
+            Err(TreePathError::EmptyComponent)
+        );
+        assert_eq!(
+            tree_entry_local_path(root, b"a/"),
+            Err(TreePathError::EmptyComponent)
+        );
+        assert_eq!(
+            tree_entry_local_path(root, b"a\0b"),
+            Err(TreePathError::NulByte)
+        );
+        let long = vec![b'a'; PATH_MAX_BYTES + 1];
+        assert_eq!(
+            tree_entry_local_path(root, &long),
+            Err(TreePathError::TooLong)
+        );
+        assert_eq!(
+            tree_entry_local_path(root, b"a/b/c.txt").unwrap(),
+            root.join("a/b/c.txt")
+        );
     }
 
     /// C3: an end-of-list I/O error accumulates in the state instead of
