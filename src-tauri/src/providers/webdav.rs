@@ -7920,9 +7920,10 @@ fn whole_object_total_from_content_range(headers: &reqwest::header::HeaderMap) -
 /// loop does not keep re-uploading a file that can never land at that path.
 ///
 /// `413` and a `403` whose server reason names a size limit become the typed,
-/// non-retried `FileTooLarge`; `507` becomes the typed, non-retried
-/// `QuotaExceeded`. Both name the plan limit and quote the server's own
-/// reason, which `reason` carries already sanitized by `server_reason`.
+/// non-retried `FileTooLarge`; a `413` whose reason says the account storage
+/// is full, and `507`, become the typed, non-retried `QuotaExceeded`. All
+/// name the plan limit and quote the server's own reason, which `reason`
+/// carries already sanitized by `server_reason`.
 fn upload_failure_error(status: StatusCode, reason: Option<&str>) -> ProviderError {
     let says = reason
         .map(|reason| format!(" Server says: {reason}"))
@@ -7934,6 +7935,11 @@ fn upload_failure_error(status: StatusCode, reason: Option<&str>) -> ProviderErr
              409 here)"
                 .to_string(),
         ),
+        StatusCode::PAYLOAD_TOO_LARGE if reason.is_some_and(reason_says_storage_full) => {
+            ProviderError::QuotaExceeded(format!(
+                "the account is full or has reached its storage limit (HTTP 413).{says}"
+            ))
+        }
         StatusCode::PAYLOAD_TOO_LARGE => ProviderError::FileTooLarge(format!(
             "the server refused this file as larger than it accepts, often a per-file \
              limit of the account plan (HTTP 413).{says}"
@@ -7957,6 +7963,13 @@ fn upload_failure_error(status: StatusCode, reason: Option<&str>) -> ProviderErr
 fn reason_says_file_too_large(reason: &str) -> bool {
     let lower = reason.to_lowercase();
     lower.contains("too large") || lower.contains("file size limit")
+}
+
+/// A 413 reason that says the account is full ("Storage limit reached",
+/// Puter): the whole quota, not this file, is the limit.
+fn reason_says_storage_full(reason: &str) -> bool {
+    let lower = reason.to_lowercase();
+    lower.contains("storage limit") || lower.contains("quota") || lower.contains("storage full")
 }
 
 /// `Depth` of every MOVE, file or collection. RFC 4918 section 9.9.2: a MOVE
@@ -10968,6 +10981,31 @@ exit 1
             }
             other => panic!("413 should map to FileTooLarge, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn upload_413_that_says_the_storage_is_full_is_a_quota_error_and_never_retried() {
+        // Real Puter body when the account is full (live GUI test 2026-11-27).
+        let err =
+            upload_failure_error(StatusCode::PAYLOAD_TOO_LARGE, Some("Storage limit reached"));
+        let ProviderError::QuotaExceeded(msg) = &err else {
+            panic!(
+                "413 with a storage-full reason should map to QuotaExceeded, got {:?}",
+                err
+            )
+        };
+        assert!(msg.contains("HTTP 413"), "msg: {}", msg);
+        assert!(
+            msg.ends_with("Server says: Storage limit reached"),
+            "msg: {}",
+            msg
+        );
+        let transfer = crate::transfer_dag::TransferError::from_provider(&err);
+        assert_eq!(
+            transfer.kind,
+            crate::transfer_dag::TransferErrorKind::QuotaExceeded
+        );
+        assert_eq!(transfer.retry, crate::transfer_dag::RetryDirective::Never);
     }
 
     #[test]
