@@ -475,6 +475,16 @@ impl std::error::Error for InsecureRedirect {}
 /// `sent` is what the request sent as a secret (the account password, a
 /// generated share password): an echo of it is removed in any spelling once
 /// the message is decoded, see `without_sent_values`.
+/// The day an OCS share expires, from its `expiration` (`2026-11-28
+/// 00:00:00`): Nextcloud keeps a date, so the day is what the link gets.
+fn ocs_share_expiry(json: &serde_json::Value) -> Option<String> {
+    let expiration = json.pointer("/ocs/data/expiration")?.as_str()?;
+    let day = expiration.get(..10)?;
+    chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+        .ok()
+        .map(|_| day.to_string())
+}
+
 fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     static ELEMENT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r"<(?:[A-Za-z0-9_]+:)?message(?:\s[^>]*)?>([^<]*)</").unwrap()
@@ -3250,9 +3260,10 @@ impl WebDavProvider {
             .unwrap_or(false))
     }
 
-    /// OCS: Create a public share link for a file/folder.
-    /// If the Nextcloud instance enforces passwords on share links (HTTP 403),
-    /// retries automatically with a generated password and returns "url\npassword".
+    /// OCS: Create a public share link for a file/folder, with the password
+    /// asked for. Without one, a Nextcloud that enforces passwords on links
+    /// (HTTP 403) gets a generated one, returned with the link; a password
+    /// the user chose and the server refuses is the error, never replaced.
     pub async fn nextcloud_create_share(
         &mut self,
         path: &str,
@@ -3272,13 +3283,21 @@ impl WebDavProvider {
             let expire = chrono::Utc::now() + chrono::Duration::days(days as i64);
             form_body.push_str(&format!("&expireDate={}", expire.format("%Y-%m-%d")));
         }
+        let chosen_password = options.password.filter(|p| !p.is_empty());
+        // The secrets a reply must not repeat: the account's and the link's.
+        let mut sent = self.sent_secrets();
+        let mut first_form = form_body.clone();
+        if let Some(ref password) = chosen_password {
+            first_form.push_str(&format!("&password={}", urlencoding::encode(password)));
+            sent.push(password.clone());
+        }
 
         let resp: reqwest::Response = self
             .request_url(Method::POST, &url)
             .header("OCS-APIREQUEST", "true")
             .header("Accept", "application/json")
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(form_body.clone())
+            .body(first_form)
             .send()
             .await
             .map_err(send_error)?;
@@ -3297,6 +3316,7 @@ impl WebDavProvider {
         // URL, and an installation path can hold a token (CodeRabbit, #1520).
         let mut capability_unreadable = false;
         let password_needed = status == StatusCode::FORBIDDEN
+            && chosen_password.is_none()
             && match self.nextcloud_link_password_enforced(&base).await {
                 Ok(enforced) => enforced,
                 Err(_) => {
@@ -3354,7 +3374,7 @@ impl WebDavProvider {
             return Ok(ShareLinkResult {
                 url: share_url.to_string(),
                 password: Some(password),
-                expires_at: None,
+                expires_at: ocs_share_expiry(&json),
             });
         }
 
@@ -3362,7 +3382,7 @@ impl WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "OCS share failed: HTTP {} - {}",
                 status,
-                server_message(&text, &self.config.url, &self.sent_secrets())
+                server_message(&text, &self.config.url, &sent)
             )));
         }
         let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
@@ -3379,7 +3399,7 @@ impl WebDavProvider {
         Ok(ShareLinkResult {
             url: share_url.to_string(),
             password: None,
-            expires_at: None,
+            expires_at: ocs_share_expiry(&json),
         })
     }
 
@@ -8714,6 +8734,87 @@ mod tests {
         ));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         (base, posts, server)
+    }
+
+    /// Requested 183 (deep-scan item 64): the password chosen for a link is
+    /// sent with the share, the expiry Nextcloud stores is reported, and a
+    /// chosen password the server refuses is the error: it is not replaced
+    /// by a generated one, and the reply does not repeat it.
+    #[tokio::test]
+    async fn a_chosen_link_password_is_the_one_the_share_gets() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let posts = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = posts.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    if path == "/ocs/v1.php/cloud/capabilities" {
+                        return (
+                            axum::http::StatusCode::OK,
+                            r#"{"ocs":{"data":{"capabilities":{"files_sharing":{"public":{"password":{"enforced":true}}}}}}}"#.to_string(),
+                        );
+                    }
+                    seen.lock().unwrap().push(body.clone());
+                    if body.contains("&password=weak") {
+                        return (
+                            axum::http::StatusCode::FORBIDDEN,
+                            r#"{"ocs":{"meta":{"status":"failure","statuscode":403,"message":"Password weak is too short"}}}"#.to_string(),
+                        );
+                    }
+                    (
+                        axum::http::StatusCode::OK,
+                        r#"{"ocs":{"data":{"url":"https://cloud.example.test/s/abc","expiration":"2026-11-28 00:00:00"}}}"#.to_string(),
+                    )
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        let chosen = provider
+            .nextcloud_create_share(
+                "/report.pdf",
+                ShareLinkOptions {
+                    password: Some("Chosen pw&1".into()),
+                    expires_in_secs: Some(86_400),
+                    ..Default::default()
+                },
+            )
+            .await;
+        let refused = provider
+            .nextcloud_create_share(
+                "/report.pdf",
+                ShareLinkOptions {
+                    password: Some("weak".into()),
+                    ..Default::default()
+                },
+            )
+            .await;
+        let posts = posts.lock().unwrap().clone();
+        server.abort();
+        let link = chosen.expect("the share with the chosen password");
+        assert_eq!(link.url, "https://cloud.example.test/s/abc");
+        assert_eq!(link.password, None);
+        assert_eq!(link.expires_at.as_deref(), Some("2026-11-28"));
+        assert!(
+            posts[0].contains("&password=Chosen%20pw%261"),
+            "{}",
+            posts[0]
+        );
+        assert!(posts[0].contains("&expireDate="), "{}", posts[0]);
+        let err = refused.expect_err("a refused chosen password is the error");
+        assert!(!err.to_string().contains("weak"), "{err}");
+        assert_eq!(
+            posts.len(),
+            2,
+            "no retry with a generated password: {posts:?}"
+        );
     }
 
     /// #1506 row 164: the retry with a generated password follows the
