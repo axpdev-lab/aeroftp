@@ -503,9 +503,11 @@ impl DagObserver for SingleFileMetricsObserver {
     }
 }
 
-/// A folder-copy path with its empty components dropped, refused when one is
-/// `.` or `..`: `/other/../src/inner` would pass a prefix check against
-/// `/src` while naming a folder inside it.
+/// The form a folder-copy path is checked in: its empty components dropped,
+/// refused when one is `.` or `..` (`/other/../src/inner` would pass a prefix
+/// check against `/src` while naming a folder inside it). Only the checks use
+/// it: the provider receives the path as given, since on S3 `/reports/` (a
+/// folder marker) and `/reports` (a file) are different objects.
 fn folder_copy_path(path: &str) -> Result<String, ProviderError> {
     let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
     if parts.iter().any(|part| *part == "." || *part == "..") {
@@ -520,12 +522,13 @@ fn folder_copy_path(path: &str) -> Result<String, ProviderError> {
 /// Refuses, before any write and for the native and the file-by-file copy
 /// alike, a folder copy from or to the root, into the source itself, or onto
 /// a path that exists (it would merge two trees). Only `NotFound` means the
-/// destination is free: any other `stat` error is returned as it is.
+/// destination is free: any other `stat` error is returned as it is. The
+/// checks compare the [`folder_copy_path`] forms; `stat` gets `to` as given.
 async fn folder_copy_preflight(
     provider: &CopyProviderHandle,
     from: &str,
     to: &str,
-) -> Result<(String, String), ProviderError> {
+) -> Result<(), ProviderError> {
     let from_root = folder_copy_path(from)?;
     let to_root = folder_copy_path(to)?;
     if from_root.trim_matches('/').is_empty() || to_root.trim_matches('/').is_empty() {
@@ -538,11 +541,11 @@ async fn folder_copy_preflight(
             "cannot copy the folder {from} into itself ({to})"
         )));
     }
-    match provider.stat(&to_root).await {
+    match provider.stat(to).await {
         Ok(_) => Err(ProviderError::AlreadyExists(format!(
-            "{to_root}: copying a folder onto it would merge the two, nothing was copied"
+            "{to}: copying a folder onto it would merge the two, nothing was copied"
         ))),
-        Err(ProviderError::NotFound(_)) => Ok((from_root, to_root)),
+        Err(ProviderError::NotFound(_)) => Ok(()),
         Err(error) => Err(error),
     }
 }
@@ -679,10 +682,10 @@ pub async fn execute_copy_dag(
     if !source_is_dir {
         return execute_copy_file_dag(provider, from, to, observer).await;
     }
-    let (from_root, to_root) = folder_copy_preflight(&provider, &from, &to).await?;
+    folder_copy_preflight(&provider, &from, &to).await?;
     let caps = provider.transfer_capabilities().await?;
     let trigger = if TransferDagBuilder::shaped_copy(&caps).server_side {
-        match provider.server_side_copy(&from_root, &to_root).await {
+        match provider.server_side_copy(&from, &to).await {
             Ok(()) => {
                 let metrics = TransferDagMetrics::default();
                 observer.on_metrics(&metrics);
@@ -706,7 +709,7 @@ pub async fn execute_copy_dag(
     } else {
         CopyFallbackTrigger::CapabilityUnavailable
     };
-    copy_folder_by_files(provider, &from_root, &to_root, observer, trigger).await
+    copy_folder_by_files(provider, &from, &to, observer, trigger).await
 }
 
 /// Copy a folder as its files, after [`folder_copy_preflight`]: create `to`,
@@ -716,11 +719,14 @@ pub async fn execute_copy_dag(
 /// component stops the copy.
 async fn copy_folder_by_files(
     provider: CopyProviderHandle,
-    from_root: &str,
-    to_root: &str,
+    from: &str,
+    to: &str,
     observer: Arc<dyn DagObserver>,
     trigger: CopyFallbackTrigger,
 ) -> Result<CopyDagOutcome, ProviderError> {
+    // Children are joined with one `/`, so the roots lose a trailing one.
+    let from_root = from.trim_end_matches('/');
+    let to_root = to.trim_end_matches('/');
     let folder_observer = Arc::new(FolderCopyObserver::new(Arc::clone(&observer)));
     let mut metrics = TransferDagMetrics::default();
     let mut copied_files: u64 = 0;
@@ -2251,6 +2257,7 @@ mod tests {
         stat_denied: StdMutex<Option<String>>,
         list_denied: StdMutex<Option<String>>,
         listed: StdMutex<Vec<String>>,
+        server_copy_args: StdMutex<Vec<(String, String)>>,
         extra_entries: StdMutex<HashMap<String, Vec<RemoteEntry>>>,
     }
 
@@ -2495,6 +2502,11 @@ mod tests {
 
         async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
             self.state.server_copy_calls.fetch_add(1, Ordering::SeqCst);
+            self.state
+                .server_copy_args
+                .lock()
+                .expect("copy mock server copy args poisoned")
+                .push((from.to_string(), to.to_string()));
             if let Some(error) = self
                 .server_copy_error
                 .lock()
@@ -2939,6 +2951,44 @@ mod tests {
             assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
             assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
         }
+    }
+
+    /// On S3 `/reports/` is a folder marker and `/reports` a different object,
+    /// a file: the provider gets the folder path as written, never a spelling
+    /// the checks normalized.
+    #[tokio::test]
+    async fn a_folder_path_reaches_the_provider_as_written() {
+        let (provider, state) = DagCopyMockProvider::new(true, None, 0);
+        state
+            .dirs
+            .lock()
+            .expect("copy mock dirs poisoned")
+            .insert("/reports/".to_string());
+        state
+            .files
+            .lock()
+            .expect("copy mock files poisoned")
+            .insert("/reports".to_string(), b"a file".to_vec());
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/reports/".to_string(),
+            "/out/".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("native folder copy");
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(
+            *state
+                .server_copy_args
+                .lock()
+                .expect("copy mock server copy args poisoned"),
+            vec![("/reports/".to_string(), "/out/".to_string())]
+        );
+        let files = state.files.lock().expect("copy mock files poisoned");
+        assert!(!files.contains_key("/out"), "the file /reports was copied");
+        assert!(!files.contains_key("/out/"), "the file /reports was copied");
     }
 
     #[tokio::test]
