@@ -1891,7 +1891,7 @@ fn b2_session_tables_reencode_every_capture_byte_for_byte() {
     }
 }
 
-/// A reference past the end of the access ACL table.
+/// A reference past the end of the access ACL table, empty and non-empty.
 #[test]
 fn b2_acl_access_reference_out_of_range() {
     let mut tables = SessionTables::new();
@@ -1906,6 +1906,30 @@ fn b2_acl_access_reference_out_of_range() {
             table: SessionTable::AclAccess,
             index: 0,
             len: 0,
+        })
+    );
+    // non-empty table: one literal (index 0), then Reference(1) is one
+    // past the end; a "return the last element" bug would resolve it
+    let mut tables = SessionTables::new();
+    let mut literal_entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    literal_entry.acls = Some(FileListAcls {
+        access: AclWireEntry::Literal(RsyncAcl::empty()),
+        default: None,
+    });
+    tables
+        .resolve_entry(&literal_entry)
+        .expect("the literal fills the table");
+    let mut entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    entry.acls = Some(FileListAcls {
+        access: AclWireEntry::Reference(1),
+        default: None,
+    });
+    assert_eq!(
+        tables.resolve_entry(&entry),
+        Err(SessionTableError::ReferenceOutOfRange {
+            table: SessionTable::AclAccess,
+            index: 1,
+            len: 1,
         })
     );
 }
@@ -1928,9 +1952,33 @@ fn b2_acl_default_reference_out_of_range_in_its_own_space() {
             len: 0,
         })
     );
+    // non-empty default table: access literal + default literal, then an
+    // entry with access Reference(0) (valid) and default Reference(1)
+    let mut tables = SessionTables::new();
+    let mut both_literal = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    both_literal.acls = Some(FileListAcls {
+        access: AclWireEntry::Literal(RsyncAcl::empty()),
+        default: Some(AclWireEntry::Literal(RsyncAcl::empty())),
+    });
+    tables
+        .resolve_entry(&both_literal)
+        .expect("both literals fill their tables");
+    let mut entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    entry.acls = Some(FileListAcls {
+        access: AclWireEntry::Reference(0),
+        default: Some(AclWireEntry::Reference(1)),
+    });
+    assert_eq!(
+        tables.resolve_entry(&entry),
+        Err(SessionTableError::ReferenceOutOfRange {
+            table: SessionTable::AclDefault,
+            index: 1,
+            len: 1,
+        })
+    );
 }
 
-/// A reference past the end of the xattr set table.
+/// A reference past the end of the xattr set table, empty and non-empty.
 #[test]
 fn b2_xattr_reference_out_of_range() {
     let mut tables = SessionTables::new();
@@ -1942,6 +1990,27 @@ fn b2_xattr_reference_out_of_range() {
             table: SessionTable::XattrSet,
             index: 5,
             len: 0,
+        })
+    );
+    // non-empty table: one literal set (index 0), then Reference(1) is one
+    // past the end; a "return the last element" bug would resolve it
+    let mut tables = SessionTables::new();
+    let mut literal_entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    literal_entry.xattrs = Some(XattrWireEntry::Literal(vec![XattrPair::inline(
+        "user.color",
+        "red".as_bytes(),
+    )]));
+    tables
+        .resolve_entry(&literal_entry)
+        .expect("the literal fills the table");
+    let mut entry = regular_entry(FILE_MODE, MTIME, XMIT_EXTENDED_FLAGS);
+    entry.xattrs = Some(XattrWireEntry::Reference(1));
+    assert_eq!(
+        tables.resolve_entry(&entry),
+        Err(SessionTableError::ReferenceOutOfRange {
+            table: SessionTable::XattrSet,
+            index: 1,
+            len: 1,
         })
     );
 }
