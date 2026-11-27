@@ -517,6 +517,23 @@ fn puter_wire_user(account: &str) -> Result<String, ProviderError> {
     Ok(PUTER_TOKEN_USER.to_string())
 }
 
+/// Export-side view of the same Puter guard: a `puter-webdav` profile whose
+/// username is an email is refused at connect time, so an exporter must skip
+/// it with the identical reason instead of writing a profile no tool can use.
+/// One implementation: this only calls [`puter_wire_user`].
+pub(crate) fn puter_export_username_guard(
+    provider_id: Option<&str>,
+    username: &str,
+) -> Result<(), String> {
+    if provider_id == Some(PUTER_PROVIDER_ID) {
+        puter_wire_user(username)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        Ok(())
+    }
+}
+
 impl WebDavConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         // Build WebDAV URL from host. Three knobs decide the scheme, in order:

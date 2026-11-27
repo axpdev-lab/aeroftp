@@ -6092,6 +6092,21 @@ pub fn export_rclone(
             }
             "webdav" => {
                 body.push_str("type = webdav\n");
+                // The connect guard refuses a Puter profile holding an email
+                // in the username field; the export must skip it with the
+                // same reason (one guard in providers::types), never write a
+                // `url = https://dav.puter.com/<email>` rclone cannot dial.
+                if let Err(reason) = crate::providers::types::puter_export_username_guard(
+                    server.provider_id.as_deref(),
+                    &server.username,
+                ) {
+                    output.push_str(&format!(
+                        "# skipped profile '{}': {}\n\n",
+                        sanitized, reason
+                    ));
+                    outcome.skip(&server.name, &reason);
+                    continue;
+                }
                 // Nextcloud-derived presets (TAB.DIGITAL, FeliCloud, generic
                 // Nextcloud) speak the same WebDAV dialect as upstream
                 // Nextcloud. Mapping them to vendor=nextcloud lets rclone
@@ -14197,6 +14212,57 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             };
             for user in &users {
                 let user = user.as_str();
+                // Puter signs in with an API token: one guard refuses an
+                // email in the username field on connect and on both exports,
+                // so the email case asserts the same refusal three times
+                // instead of the URL equality below.
+                if *id == "puter-webdav" && user.contains('@') {
+                    let err = webdav_connect_url(id, "", *port, user).unwrap_err();
+                    assert!(
+                        err.contains("not your email address"),
+                        "connect {id} {user}: {err}"
+                    );
+                    let mut rserver =
+                        server_with(id, "webdav", "", *port, Some(id), serde_json::json!({}));
+                    rserver.username = user.to_string();
+                    let (outcome, conf) = export_to_string(&[rserver], "matrix");
+                    assert_eq!(outcome.exported, 0, "rclone {id} {user}: {conf}");
+                    assert!(
+                        outcome
+                            .skipped
+                            .iter()
+                            .any(|s| s.name == *id && s.reason.contains("not your email address")),
+                        "rclone skip {id} {user}: {:?} conf: {conf}",
+                        outcome.skipped
+                    );
+                    let duck_server: crate::cyberduck_import::CyberduckExportServer =
+                        serde_json::from_value(serde_json::json!({
+                            "id": id, "name": id, "host": "", "port": port, "username": user,
+                            "protocol": "webdav", "providerId": id
+                        }))
+                        .unwrap();
+                    let dir = tempfile::tempdir().unwrap();
+                    let duck_outcome = crate::cyberduck_import::export_cyberduck(
+                        &[duck_server],
+                        &std::collections::HashMap::new(),
+                        dir.path(),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        duck_outcome.exported, 0,
+                        "cyberduck {id} {user}: {:?}",
+                        duck_outcome.skipped
+                    );
+                    assert!(
+                        duck_outcome
+                            .skipped
+                            .iter()
+                            .any(|s| s.name == *id && s.reason.contains("not your email address")),
+                        "cyberduck skip {id} {user}: {:?}",
+                        duck_outcome.skipped
+                    );
+                    continue;
+                }
                 let expected =
                     crate::connection_manifest::expand_username_in_url(server, user).unwrap();
                 let connect = webdav_connect_url(id, "", *port, user).unwrap();
