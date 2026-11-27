@@ -8232,11 +8232,24 @@ impl StorageProvider for S3Provider {
         // marker: an empty folder, reported as a success. (The rename loop
         // copies its marker through `server_side_copy_recorded`, not here.)
         if from.len() > 1 && from.ends_with('/') {
-            return if self.copy_folder_keys(from, to, false).await? {
-                Ok(())
-            } else {
-                Err(ProviderError::NotFound(from.to_string()))
-            };
+            // The GUI always sends a folder with its slash, so a gateway's
+            // slashless zero-byte marker (`docs`, x-directory) is looked up
+            // here too: it is copied with the keys, and alone it is an empty
+            // folder. One HEAD per folder copy, none per file.
+            let from_trimmed = from.trim_matches('/');
+            let slashless_marker = self.slashless_key_is_directory_marker(from_trimmed).await?;
+            if self.copy_folder_keys(from, to, slashless_marker).await? {
+                return Ok(());
+            }
+            if slashless_marker {
+                let marker = format!("/{from_trimmed}");
+                let target = format!("/{}", to.trim_matches('/'));
+                let meta = self.stat(&marker).await?;
+                return self
+                    .copy_with_source_meta(&marker, &target, false, meta)
+                    .await;
+            }
+            return Err(ProviderError::NotFound(from.to_string()));
         }
         if self.config.filen_desktop_bridge {
             self.prepare_file_move(from).await?;
@@ -15249,6 +15262,50 @@ mod tests {
             bucket.get("dest/docs/sub/b.txt").as_deref(),
             Some(&b"beta"[..])
         );
+    }
+
+    /// The GUI sends a folder with its trailing slash: the slashless marker
+    /// is found on that path too, with keys under it and without.
+    #[tokio::test]
+    async fn a_trailing_slash_folder_copy_finds_the_slashless_marker() {
+        let objects: &[(&str, &[u8])] = &[
+            ("docs", b""),
+            ("docs/a.txt", b"alpha"),
+            ("docs/sub/b.txt", b"beta"),
+        ];
+        let (mut provider, bucket) = folder_bucket_with(
+            objects,
+            &[],
+            FolderBucketQuirks {
+                directory_typed: vec!["docs".to_string()],
+                ..FolderBucketQuirks::default()
+            },
+        )
+        .await;
+        provider
+            .server_copy("/docs/", "/dest/docs")
+            .await
+            .expect("folder copy");
+        assert!(bucket.get("dest/docs").is_some(), "{:?}", bucket.log());
+        assert_eq!(
+            bucket.get("dest/docs/sub/b.txt").as_deref(),
+            Some(&b"beta"[..])
+        );
+
+        let (mut provider, bucket) = folder_bucket_with(
+            &[("empty", b"")],
+            &[],
+            FolderBucketQuirks {
+                directory_typed: vec!["empty".to_string()],
+                ..FolderBucketQuirks::default()
+            },
+        )
+        .await;
+        provider
+            .server_copy("/empty/", "/dest/empty")
+            .await
+            .expect("marker copy");
+        assert!(bucket.get("dest/empty").is_some(), "{:?}", bucket.log());
     }
 
     /// An empty folder behind a slashless marker is the marker: one copy.
