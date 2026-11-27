@@ -6234,6 +6234,25 @@ impl S3Provider {
     /// page, which the checks read the same way. Either way the answer leans
     /// toward "free", so the rename would then overwrite, as it did before
     /// this check existed.
+    /// An empty folder kept as a slashless marker is copied as that marker,
+    /// with the refusal a full folder gets: an object or folder already at
+    /// the destination is not overwritten.
+    async fn copy_empty_folder_marker(
+        &mut self,
+        marker: &str,
+        to: &str,
+        meta: RemoteEntry,
+    ) -> Result<(), ProviderError> {
+        let to_trimmed = to.trim_matches('/');
+        if self.key_or_folder_exists(to_trimmed).await? {
+            return Err(ProviderError::AlreadyExists(format!(
+                "/{to_trimmed} already exists, and on S3 copying a folder into it would merge \
+                 the two: nothing was copied"
+            )));
+        }
+        self.copy_with_source_meta(marker, to, false, meta).await
+    }
+
     async fn key_or_folder_exists(&self, key: &str) -> Result<bool, ProviderError> {
         if self
             .list_keys_with_prefix_up_to(key, Some(1))
@@ -8245,9 +8264,7 @@ impl StorageProvider for S3Provider {
                 let marker = format!("/{from_trimmed}");
                 let target = format!("/{}", to.trim_matches('/'));
                 let meta = self.stat(&marker).await?;
-                return self
-                    .copy_with_source_meta(&marker, &target, false, meta)
-                    .await;
+                return self.copy_empty_folder_marker(&marker, &target, meta).await;
             }
             return Err(ProviderError::NotFound(from.to_string()));
         }
@@ -8271,7 +8288,7 @@ impl StorageProvider for S3Provider {
                 if self.copy_folder_keys(from, to, true).await? {
                     Ok(())
                 } else {
-                    self.copy_with_source_meta(from, to, false, meta).await
+                    self.copy_empty_folder_marker(from, to, meta).await
                 }
             }
             Ok(meta) => self.copy_with_source_meta(from, to, false, meta).await,
@@ -15306,6 +15323,27 @@ mod tests {
             .await
             .expect("marker copy");
         assert!(bucket.get("dest/empty").is_some(), "{:?}", bucket.log());
+
+        let (mut provider, bucket) = folder_bucket_with(
+            &[("empty", b""), ("dest/empty", b"keep")],
+            &[],
+            FolderBucketQuirks {
+                directory_typed: vec!["empty".to_string()],
+                ..FolderBucketQuirks::default()
+            },
+        )
+        .await;
+        for from in ["/empty/", "/empty"] {
+            let err = provider
+                .server_copy(from, "/dest/empty")
+                .await
+                .expect_err("occupied destination");
+            assert!(
+                matches!(err, ProviderError::AlreadyExists(_)),
+                "{from}: {err:?}"
+            );
+        }
+        assert_eq!(bucket.get("dest/empty").as_deref(), Some(&b"keep"[..]));
     }
 
     /// An empty folder behind a slashless marker is the marker: one copy.
