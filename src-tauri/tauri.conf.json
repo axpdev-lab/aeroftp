@@ -88,7 +88,7 @@
                 ],
                 "recommends": [
                     "python3-nautilus",
-                    "pkexec"
+                    "pkexec | policykit-1"
                 ],
                 "files": {
                     "/usr/share/doc/aeroftp/THIRD-PARTY-NOTICES.md": "../THIRD-PARTY-NOTICES.md",
