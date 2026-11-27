@@ -47,6 +47,12 @@ fn listed_key_cause_text(cause: &dyn std::fmt::Display, sent: &SentSecrets) -> S
     text_without_sent_values(&cause.to_string(), sent, "the cause")
 }
 
+/// What an error may show of a folder path the caller gave: a folder name
+/// can hold a value this session sent, so it goes through the same removal.
+fn shown_path(path: &str, sent: &SentSecrets) -> String {
+    text_without_sent_values(path, sent, "a path")
+}
+
 /// `text` with this session's sent values removed, or `what` withheld when
 /// a value cannot be cut out (too short to redact, or a retired token that
 /// is no longer known).
@@ -2846,14 +2852,18 @@ impl S3Provider {
             return Ok(false);
         }
         if folder_copy_into_itself(from_trimmed, to_trimmed) {
+            let sent = self.sent_secrets();
             return Err(ProviderError::InvalidPath(format!(
-                "cannot copy the folder {from} into itself ({to})"
+                "cannot copy the folder {} into itself ({})",
+                shown_path(from, &sent),
+                shown_path(to, &sent)
             )));
         }
         if self.key_or_folder_exists(to_trimmed).await? {
             return Err(ProviderError::AlreadyExists(format!(
-                "/{to_trimmed} already exists, and on S3 copying a folder into it would merge \
-                 the two: nothing was copied"
+                "{} already exists, and on S3 copying a folder into it would merge \
+                 the two: nothing was copied",
+                shown_path(&format!("/{to_trimmed}"), &self.sent_secrets())
             )));
         }
 
@@ -2893,8 +2903,14 @@ impl S3Provider {
                 let sent = self.sent_secrets();
                 let shown_key = listed_key_text(key, &sent);
                 let shown_cause = listed_key_cause_text(&error, &sent);
-                let message =
-                    partial_folder_copy_message(copied, total, from, to, &shown_key, &shown_cause);
+                let message = partial_folder_copy_message(
+                    copied,
+                    total,
+                    &shown_path(from, &sent),
+                    &shown_path(to, &sent),
+                    &shown_key,
+                    &shown_cause,
+                );
                 // The copy pipeline answers a capability error with a
                 // download and upload of the source, which for a folder
                 // would only fail again as "not found" and lose this message.
@@ -3338,8 +3354,8 @@ impl S3Provider {
                         moved,
                         to_delete.len(),
                         keys.len(),
-                        from,
-                        to,
+                        &shown_path(from, &self.sent_secrets()),
+                        &shown_path(to, &self.sent_secrets()),
                         &listed_key_text(old_key, &self.sent_secrets()),
                         &listed_key_cause_text(&e, &self.sent_secrets()),
                     )));
@@ -3368,23 +3384,27 @@ impl S3Provider {
                 }
                 for (key, etag) in validated {
                     let shown = listed_key_text(&key, &self.sent_secrets());
+                    let shown_to = shown_path(to, &self.sent_secrets());
                     self.delete_if_match(&key, &etag).await.map_err(|e| {
                         ProviderError::Other(format!(
                             "rename copied {} objects to {}, but deleting the validated marker \
                              {} failed, so the rename is incomplete: {e}",
                             to_delete.len(),
-                            to,
+                            shown_to,
                             shown
                         ))
                     })?;
                 }
                 if !originals.is_empty() {
+                    let sent = self.sent_secrets();
                     self.batch_delete_objects(&originals).await.map_err(|e| {
+                        // The batch error can name the listed keys it failed on.
                         ProviderError::Other(format!(
                             "rename copied {} objects to {}, but deleting the originals failed, \
-                             so the folder now exists under both names: {e}",
+                             so the folder now exists under both names: {}",
                             to_delete.len(),
-                            to
+                            shown_path(to, &sent),
+                            listed_key_cause_text(&e, &sent)
                         ))
                     })?;
                 }
@@ -6308,14 +6328,18 @@ impl S3Provider {
         let to_trimmed = to.trim_matches('/');
         let marker_trimmed = marker.trim_matches('/');
         if folder_copy_into_itself(marker_trimmed, to_trimmed) {
+            let sent = self.sent_secrets();
             return Err(ProviderError::InvalidPath(format!(
-                "cannot copy the folder /{marker_trimmed} into itself (/{to_trimmed})"
+                "cannot copy the folder {} into itself ({})",
+                shown_path(&format!("/{marker_trimmed}"), &sent),
+                shown_path(&format!("/{to_trimmed}"), &sent)
             )));
         }
         if self.key_or_folder_exists(to_trimmed).await? {
             return Err(ProviderError::AlreadyExists(format!(
-                "/{to_trimmed} already exists, and on S3 copying a folder into it would merge \
-                 the two: nothing was copied"
+                "{} already exists, and on S3 copying a folder into it would merge \
+                 the two: nothing was copied",
+                shown_path(&format!("/{to_trimmed}"), &self.sent_secrets())
             )));
         }
         match self.copy_with_source_meta(marker, to, false, meta).await {
@@ -15566,6 +15590,66 @@ mod tests {
             .to_string();
         assert!(!rename.contains(TOKEN), "{rename}");
         assert!(rename.contains("[REDACTED]"), "{rename}");
+    }
+
+    /// A folder path the caller gave can hold the session token too: the
+    /// errors of a folder copy (partial, into itself, onto an existing
+    /// folder) and of a partial folder rename never show it.
+    #[tokio::test]
+    async fn folder_copy_and_rename_errors_never_show_a_sent_token_in_a_path() {
+        const TOKEN: &str = "SESSIONabc123token";
+        let parent = format!("p-{TOKEN}");
+        let a = format!("{parent}/docs/a.txt");
+        let b = format!("{parent}/docs/b.txt");
+        let kept = format!("{parent}/dest/keep.txt");
+        let objects: &[(&str, &[u8])] = &[
+            (a.as_str(), b"alpha"),
+            (b.as_str(), b"beta"),
+            (kept.as_str(), b"k"),
+        ];
+        let source = format!("/{parent}/docs");
+        let refuse = [(
+            b.as_str(),
+            500u16,
+            "<Error><Code>InternalError</Code></Error>",
+        )];
+        let mut texts = Vec::new();
+        for (destination, refuse) in [
+            (format!("/{parent}/copy"), &refuse[..]),
+            (format!("/{parent}/docs/inner"), &[][..]),
+            (format!("/{parent}/dest"), &[][..]),
+        ] {
+            let (mut provider, _) =
+                folder_bucket_with(objects, refuse, FolderBucketQuirks::default()).await;
+            provider.config.session_token = Some(secrecy::SecretString::from(TOKEN.to_string()));
+            texts.push(
+                provider
+                    .server_copy(&source, &destination)
+                    .await
+                    .expect_err("each copy is refused or fails")
+                    .to_string(),
+            );
+        }
+        let (mut provider, _) =
+            folder_bucket_with(objects, &refuse, FolderBucketQuirks::default()).await;
+        provider.config.session_token = Some(secrecy::SecretString::from(TOKEN.to_string()));
+        texts.push(
+            provider
+                .rename(&source, &format!("/{parent}/moved"))
+                .await
+                .expect_err("the second copy fails")
+                .to_string(),
+        );
+        for (text, expected) in texts.iter().zip([
+            "confirmed 1 of 2 objects",
+            "into itself",
+            "already exists",
+            "rename copied 1 of 2",
+        ]) {
+            assert!(text.contains(expected), "{text}");
+            assert!(!text.contains(TOKEN), "{text}");
+            assert!(text.contains("p-[REDACTED]"), "{text}");
+        }
     }
 
     /// The same for a folder rename that stops on a listed key.
