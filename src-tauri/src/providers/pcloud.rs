@@ -781,13 +781,9 @@ impl PCloudProvider {
         Self::check_response(&resp)
     }
 
-    /// Look up the `folderid` of a directory by path, creating the directory
-    /// (idempotently) if pCloud reports it missing.
-    ///
-    /// Used by the shaped-graph multipart wiring (S3-T01) so
-    /// `complete_multipart_upload` has a folder id to pass to
-    /// `upload_save` without a second resolve round-trip.
-    async fn resolve_or_create_folder_id(&self, dir_path: &str) -> Result<u64, ProviderError> {
+    /// `folderid` of an existing directory by path; `NotFound` when pCloud
+    /// reports it missing. Creates nothing.
+    async fn folder_id(&self, dir_path: &str) -> Result<u64, ProviderError> {
         let normalised = if dir_path.is_empty() {
             "/".to_string()
         } else {
@@ -805,14 +801,54 @@ impl PCloudProvider {
             .json()
             .await
             .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+        Self::check_response(&resp)?;
+        resp.metadata.and_then(|m| m.folderid).ok_or_else(|| {
+            ProviderError::Other(format!(
+                "pCloud listfolder for '{}' returned no folderid",
+                normalised
+            ))
+        })
+    }
 
-        match Self::check_response(&resp) {
-            Ok(()) => resp.metadata.and_then(|m| m.folderid).ok_or_else(|| {
-                ProviderError::Other(format!(
-                    "pCloud listfolder for '{}' returned no folderid",
-                    normalised
-                ))
-            }),
+    /// `createfolder` (refuses an existing folder) returning the new
+    /// `folderid`. `get_after_refusal`, like `mkdir`.
+    async fn create_folder_returning_id(&self, dir_path: &str) -> Result<u64, ProviderError> {
+        let resolved = self.resolve_path(dir_path);
+        let url = format!(
+            "{}/createfolder?path={}",
+            self.api_base(),
+            urlencoding::encode(&resolved)
+        );
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self
+            .get_after_refusal(&url, &auth)
+            .await?
+            .json()
+            .await
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+        Self::check_response(&resp)?;
+        resp.metadata.and_then(|m| m.folderid).ok_or_else(|| {
+            ProviderError::Other(format!(
+                "pCloud createfolder for '{}' returned no folderid",
+                resolved
+            ))
+        })
+    }
+
+    /// Look up the `folderid` of a directory by path, creating the directory
+    /// (idempotently) if pCloud reports it missing.
+    ///
+    /// Used by the shaped-graph multipart wiring (S3-T01) so
+    /// `complete_multipart_upload` has a folder id to pass to
+    /// `upload_save` without a second resolve round-trip.
+    async fn resolve_or_create_folder_id(&self, dir_path: &str) -> Result<u64, ProviderError> {
+        let normalised = if dir_path.is_empty() {
+            "/".to_string()
+        } else {
+            Self::normalize_path(dir_path)
+        };
+        match self.folder_id(dir_path).await {
+            Ok(id) => Ok(id),
             Err(ProviderError::NotFound(_)) => {
                 // Create the missing parent and re-resolve.
                 let create_url = format!(
@@ -820,6 +856,7 @@ impl PCloudProvider {
                     self.api_base(),
                     urlencoding::encode(&normalised)
                 );
+                let auth = self.auth_header().await?;
                 let create_resp: PCloudResponse = self
                     .get_with_retry(&create_url, &auth)
                     .await?
@@ -1832,9 +1869,11 @@ impl StorageProvider for PCloudProvider {
             // path form answered 2208 even for a folder just created, live
             // 2026-11-27). The destination is created first and only the
             // content is copied into it, so the copy gets the name the caller
-            // asked for. Refused before any write into the source itself and
-            // onto an existing path: a copy into an existing folder would
-            // merge the two.
+            // asked for. The destination is created with createfolder, which
+            // refuses an existing folder: a folder that appeared after the
+            // check is never merged into, nor removed by the rollback. Refused
+            // before any write into the source itself and onto an existing
+            // path: a copy into an existing folder would merge the two.
             let from_root = from_resolved.trim_end_matches('/');
             let to_root = to_resolved.trim_end_matches('/');
             if to_root == from_root || to_root.starts_with(&format!("{from_root}/")) {
@@ -1851,8 +1890,8 @@ impl StorageProvider for PCloudProvider {
                 Err(ProviderError::NotFound(_)) => {}
                 Err(error) => return Err(error),
             }
-            let from_id = self.resolve_or_create_folder_id(from_root).await?;
-            let to_id = self.resolve_or_create_folder_id(to_root).await?;
+            let from_id = self.folder_id(from_root).await?;
+            let to_id = self.create_folder_returning_id(to_root).await?;
             let url = format!(
                 "{}/copyfolder?folderid={}&tofolderid={}&copycontentonly=1&noover=1",
                 self.api_base(),
@@ -2752,6 +2791,20 @@ mod tests {
         PCloudProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_on_pcloud_tree_full(tree, renamefile_answer, None).await
+    }
+
+    /// `provider_on_pcloud_tree` with `createfolder_answer` overriding the
+    /// `/createfolder` reply (used to script a folder appearing between the
+    /// destination check and the create).
+    async fn provider_on_pcloud_tree_full(
+        tree: &'static [&'static str],
+        renamefile_answer: &'static str,
+        createfolder_answer: Option<&'static str>,
+    ) -> (
+        PCloudProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         use std::sync::{Arc, Mutex};
         let calls: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&calls);
@@ -2809,6 +2862,25 @@ mod tests {
                             format!(
                                 r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":true,"folderid":{id}}}}}"#
                             )
+                        }
+                        // Same recording; `createfolder` refuses an existing
+                        // folder, scripted per test through
+                        // `createfolder_answer`.
+                        "/createfolder" => {
+                            seen.lock().unwrap().push(format!(
+                                "{}?{}",
+                                uri.path(),
+                                urlencoding::decode(uri.query().unwrap_or("")).unwrap()
+                            ));
+                            match createfolder_answer {
+                                Some(answer) => answer.to_string(),
+                                None => {
+                                    let id = tree.len() + 1;
+                                    format!(
+                                        r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":true,"folderid":{id}}}}}"#
+                                    )
+                                }
+                            }
                         }
                         endpoint => {
                             seen.lock().unwrap().push(format!(
@@ -2991,8 +3063,9 @@ mod tests {
 
     /// pCloud's `copyfolder` copies INTO the target folder, addressed by id:
     /// the path form answered 2208 even for a folder just created (live
-    /// 2026-11-27). A folder copy resolves both ids (creating the
-    /// destination on the way), then copies only the content into it, so the
+    /// 2026-11-27). A folder copy resolves the source id, creates the
+    /// destination with `createfolder` (which refuses an existing folder)
+    /// and copies only the content into it, so the
     /// copy lands under the name the caller asked for. `stat` and
     /// `listfolder` are not recorded by the double, so the trace shows the
     /// create and the copy.
@@ -3007,10 +3080,48 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             [
-                "/createfolderifnotexists?path=/dest/src",
+                "/createfolder?path=/dest/src",
                 "/copyfolder?folderid=1&tofolderid=4&copycontentonly=1&noover=1"
             ]
         );
+    }
+
+    /// A folder that appears between the destination check and the create is
+    /// never merged into: `createfolder` refuses it (2004 maps to
+    /// AlreadyExists) and the copy stops there, so the rollback cannot remove
+    /// a folder this call did not create.
+    #[tokio::test]
+    async fn a_folder_that_appears_before_the_create_is_neither_merged_nor_removed() {
+        let (mut provider, calls) = provider_on_pcloud_tree_full(
+            &["/src", "/src/a.txt", "/dest"],
+            r#"{"result":0}"#,
+            Some(r#"{"result":2004,"error":"File or folder already exists."}"#),
+        )
+        .await;
+        let outcome = provider.server_copy("/src", "/dest/src").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(*calls.lock().unwrap(), ["/createfolder?path=/dest/src"]);
+    }
+
+    /// `folder_id` only reads: a source that vanished after `stat` answered
+    /// is_dir gets NotFound, and no create is ever sent for it (the double
+    /// cannot script stat-is_dir and listfolder-NotFound on the same path,
+    /// so this exercises `folder_id` directly).
+    #[tokio::test]
+    async fn the_source_is_never_created_by_the_copy() {
+        let (provider, calls) = provider_on_pcloud_tree(&["/src"], r#"{"result":0}"#).await;
+        let outcome = provider.folder_id("/ghost").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// A file copy is the single `copyfile` call, unchanged.
