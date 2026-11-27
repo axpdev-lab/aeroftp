@@ -1827,42 +1827,70 @@ impl StorageProvider for PCloudProvider {
         let to_resolved = self.resolve_path(to);
         let auth = self.auth_header().await?;
 
-        // Try copyfile first
+        if self.stat(from).await?.is_dir {
+            // `copyfolder` copies the folder INTO `topath`, which has to exist
+            // (2208 "Target folder does not exist", live 2026-11-27). The
+            // destination is created first and only the content is copied into
+            // it, so the copy gets the name the caller asked for. Refused before
+            // any write into the source itself and onto an existing path: a
+            // copy into an existing folder would merge the two.
+            let from_root = from_resolved.trim_end_matches('/');
+            let to_root = to_resolved.trim_end_matches('/');
+            if to_root == from_root || to_root.starts_with(&format!("{from_root}/")) {
+                return Err(ProviderError::InvalidPath(format!(
+                    "cannot copy the folder {from} into itself ({to})"
+                )));
+            }
+            match self.stat(to).await {
+                Ok(_) => {
+                    return Err(ProviderError::AlreadyExists(format!(
+                        "{to} already exists: copying a folder into it would merge the two, nothing was copied"
+                    )))
+                }
+                Err(ProviderError::NotFound(_)) => {}
+                Err(error) => return Err(error),
+            }
+            self.mkdir(to).await?;
+            let url = format!(
+                "{}/copyfolder?path={}&topath={}&copycontentonly=1&noover=1",
+                self.api_base(),
+                urlencoding::encode(from_root),
+                urlencoding::encode(&format!("{to_root}/"))
+            );
+            let copied = async {
+                let resp: PCloudResponse = self
+                    .get_after_refusal(&url, &auth)
+                    .await?
+                    .json()
+                    .await
+                    .map_http_err(|e| {
+                        ProviderError::ParseError(sanitize_api_error(&e.to_string()))
+                    })?;
+                Self::check_response(&resp)
+            }
+            .await;
+            if let Err(error) = copied {
+                // The destination was created by this call: take it back so a
+                // failed copy leaves no half folder behind.
+                let _ = self.rmdir_recursive(to).await;
+                return Err(error);
+            }
+            return Ok(());
+        }
+
         let url = format!(
             "{}/copyfile?path={}&topath={}",
             self.api_base(),
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved)
         );
-
         let resp: PCloudResponse = self
             .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
             .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
-
-        if resp.result == 0 {
-            return Ok(());
-        }
-
-        // Try copyfolder
-        let url = format!(
-            "{}/copyfolder?path={}&topath={}",
-            self.api_base(),
-            urlencoding::encode(&from_resolved),
-            urlencoding::encode(&to_resolved)
-        );
-
-        let resp: PCloudResponse = self
-            .get_after_refusal(&url, &auth)
-            .await?
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
-
-        Self::check_response(&resp)?;
-        Ok(())
+        Self::check_response(&resp)
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -2940,6 +2968,75 @@ mod tests {
             *calls.lock().unwrap(),
             ["/renamefile?path=/a.txt&topath=/b.txt"]
         );
+    }
+
+    /// pCloud's `copyfolder` copies the folder INTO `topath`, which must
+    /// already exist (2208 "Target folder does not exist", live
+    /// 2026-11-27): a folder copy creates the destination first and copies
+    /// only the content into it, so the copy lands under the name the caller
+    /// asked for.
+    #[tokio::test]
+    async fn server_copy_of_a_folder_creates_the_destination_and_copies_its_content() {
+        let (mut provider, calls) =
+            provider_on_pcloud_tree(&["/src", "/src/a.txt", "/dest"], r#"{"result":0}"#).await;
+        provider
+            .server_copy("/src", "/dest/src")
+            .await
+            .expect("folder copy");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "/createfolder?path=/dest/src",
+                "/copyfolder?path=/src&topath=/dest/src/&copycontentonly=1&noover=1"
+            ]
+        );
+    }
+
+    /// A file copy is the single `copyfile` call, unchanged.
+    #[tokio::test]
+    async fn server_copy_of_a_file_is_one_copyfile() {
+        let (mut provider, calls) = provider_on_pcloud_tree(&["/a.txt"], r#"{"result":0}"#).await;
+        provider
+            .server_copy("/a.txt", "/b.txt")
+            .await
+            .expect("file copy");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["/copyfile?path=/a.txt&topath=/b.txt"]
+        );
+    }
+
+    /// Copying a folder onto a path that already exists would merge the two:
+    /// refused before any write.
+    #[tokio::test]
+    async fn server_copy_of_a_folder_onto_an_existing_path_writes_nothing() {
+        let (mut provider, calls) =
+            provider_on_pcloud_tree(&["/src", "/dest"], r#"{"result":0}"#).await;
+        let outcome = provider.server_copy("/src", "/dest").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
+    }
+
+    /// A folder cannot be copied into itself or into one of its own
+    /// subfolders: refused before any write.
+    #[tokio::test]
+    async fn server_copy_of_a_folder_into_itself_writes_nothing() {
+        let (mut provider, calls) = provider_on_pcloud_tree(&["/src"], r#"{"result":0}"#).await;
+        let outcome = provider.server_copy("/src", "/src/inner").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     fn fixture_connected() -> PCloudProvider {
