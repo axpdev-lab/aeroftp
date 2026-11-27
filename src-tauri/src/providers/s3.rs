@@ -2924,11 +2924,64 @@ impl S3Provider {
                 );
             }
         }
-        info!(
-            "Copied folder {} to {} ({} objects, server-side)",
-            from, to, total
-        );
+        self.log_copied_folder(from, to, total);
         Ok(true)
+    }
+
+    // The copy and rename lines below name paths and keys, which can hold
+    // this session's token. Each builds its line and logs it in one function
+    // and returns it, so a test reads the line that was logged: counting
+    // captured events is not reliable here (tracing's callsite interest
+    // cache is global, see `warn_cleartext_once`).
+
+    fn log_copied_folder(&self, from: &str, to: &str, total: usize) -> String {
+        let sent = self.sent_secrets();
+        let line = format!(
+            "Copied folder {} to {} ({total} objects, server-side)",
+            shown_path(from, &sent),
+            shown_path(to, &sent)
+        );
+        info!("{line}");
+        line
+    }
+
+    fn log_copied_key(&self, from_key: &str, to_key: &str) -> String {
+        let sent = self.sent_secrets();
+        let line = format!(
+            "Copied {} to {}",
+            shown_path(from_key, &sent),
+            shown_path(to_key, &sent)
+        );
+        info!("{line}");
+        line
+    }
+
+    fn log_renamed_file(&self, how: &str, from: &str, to: &str) -> String {
+        let sent = self.sent_secrets();
+        let line = format!(
+            "Renamed file ({how}) {} to {}",
+            shown_path(from, &sent),
+            shown_path(to, &sent)
+        );
+        info!("{line}");
+        line
+    }
+
+    fn log_renamed_folder(&self, moved: usize, copied: usize, from: &str, to: &str) -> String {
+        let sent = self.sent_secrets();
+        let line = format!(
+            "Renamed directory ({moved} moved, {copied} copied+deleted) {} to {}",
+            shown_path(from, &sent),
+            shown_path(to, &sent)
+        );
+        info!("{line}");
+        line
+    }
+
+    /// A request URL as the request logs show it: the key and the query can
+    /// hold this session's token.
+    fn logged_url(&self, url: &str) -> String {
+        text_without_sent_values(url, &self.sent_secrets(), "the request URL")
     }
 
     /// `record_validation` is true for the directory-rename loop, whose
@@ -3310,16 +3363,13 @@ impl S3Provider {
                 if outcome == TigrisRename::Copied {
                     self.delete_rename_source(from).await?;
                 }
-                info!(
-                    "Renamed file (Tigris rename, {:?}) {} to {}",
-                    outcome, from, to
-                );
+                self.log_renamed_file(&format!("Tigris rename, {outcome:?}"), from, to);
                 return Ok(());
             }
             self.copy_prepared_source(from, to, true).await?;
             self.verify_copy_target_exists(to).await?;
             self.delete_rename_source(from).await?;
-            info!("Renamed file (copy+delete) {} to {}", from, to);
+            self.log_renamed_file("copy+delete", from, to);
         } else {
             // Directory rename: copy all objects to new prefix, then delete
             // originals (the folder marker, when there is one, is among them).
@@ -3410,13 +3460,7 @@ impl S3Provider {
                 }
             }
 
-            info!(
-                "Renamed directory ({} moved, {} copied+deleted) {} to {}",
-                moved,
-                to_delete.len(),
-                from,
-                to
-            );
+            self.log_renamed_folder(moved, to_delete.len(), from, to);
         }
 
         Ok(())
@@ -3780,9 +3824,15 @@ impl S3Provider {
 
         // Per-request diagnostics stay on the gated `debug!` target so a plain
         // `ls` / `tree` on an S3 profile is not cluttered with GET lines (#196).
+        // The URL carries the key and the query: a name or a prefix can hold
+        // this session's token, so the logged URL goes through the removal.
         debug!(
             "[S3] {} {} (bucket={} region={} path_style={})",
-            method, url, self.config.bucket, self.config.region, self.config.path_style
+            method,
+            self.logged_url(&url),
+            self.config.bucket,
+            self.config.region,
+            self.config.path_style
         );
 
         let payload = body.as_deref().unwrap_or(&[]);
@@ -3878,7 +3928,12 @@ impl S3Provider {
 
         let status = response.status();
         if !status.is_success() {
-            warn!("S3 Response Status: {} for {} {}", status, method, url);
+            warn!(
+                "S3 Response Status: {} for {} {}",
+                status,
+                method,
+                self.logged_url(&url)
+            );
         }
 
         // A Fastly 400 for a region that does not match the host gets a message
@@ -5298,7 +5353,7 @@ impl S3Provider {
                     });
                 }
 
-                info!("Copied {} to {}", from_key, to_key);
+                self.log_copied_key(from_key, to_key);
                 Ok(())
             }
             _ => Err(CopyFailure {
@@ -15650,6 +15705,35 @@ mod tests {
             assert!(!text.contains(TOKEN), "{text}");
             assert!(text.contains("p-[REDACTED]"), "{text}");
         }
+    }
+
+    /// The copy and rename log lines and the logged request URL never show
+    /// a session token held in a folder name, a key or a query.
+    #[tokio::test]
+    async fn copy_and_rename_log_lines_never_show_a_sent_token() {
+        const TOKEN: &str = "SESSIONabc123token";
+        let (mut provider, _) = folder_bucket_with(&[], &[], FolderBucketQuirks::default()).await;
+        provider.config.session_token = Some(secrecy::SecretString::from(TOKEN.to_string()));
+        let from = format!("/p-{TOKEN}/docs");
+        let to = format!("/p-{TOKEN}/copy");
+        let lines = [
+            provider.log_copied_folder(&from, &to, 2),
+            provider.log_copied_key(&from[1..], &to[1..]),
+            provider.log_renamed_file("copy+delete", &from, &to),
+            provider.log_renamed_file("Tigris rename, Copied", &from, &to),
+            provider.log_renamed_folder(1, 1, &from, &to),
+            provider.logged_url(&format!(
+                "http://127.0.0.1/test-bucket{from}?prefix=p-{TOKEN}%2F"
+            )),
+        ];
+        for line in &lines {
+            assert!(!line.contains(TOKEN), "{line}");
+            assert!(line.contains("p-[REDACTED]"), "{line}");
+        }
+        // A token too short to cut out withholds the URL.
+        provider.config.session_token = Some(secrecy::SecretString::from("docs".to_string()));
+        let url = provider.logged_url("http://127.0.0.1/test-bucket/docs/a.txt");
+        assert!(url.contains("withheld"), "{url}");
     }
 
     /// The same for a folder rename that stops on a listed key.
