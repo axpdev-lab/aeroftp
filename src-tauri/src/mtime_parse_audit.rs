@@ -38,6 +38,16 @@ const ALLOWED: &[(&str, usize, &str)] = &[
         "GitHub App installation-token expiry, not a file time",
     ),
     (
+        "providers/box_provider.rs",
+        1,
+        "the `unshared_at` expiry Box reports for a shared link, checked against the one asked for: not a file time",
+    ),
+    (
+        "providers/dropbox.rs",
+        1,
+        "the `expires` of a Dropbox shared link, checked against the deadline sent: not a file time",
+    ),
+    (
         "providers/drime_cloud.rs",
         2,
         "producer: Drime `updated_at` to `modified`",
@@ -53,6 +63,11 @@ const ALLOWED: &[(&str, usize, &str)] = &[
         "producer: `x-amz-meta-mtime` / `Last-Modified` to `modified`",
     ),
     ("providers/sts.rs", 2, "STS credential expiry"),
+    (
+        "providers/webdav.rs",
+        1,
+        "the day a Nextcloud OCS share expires, checked to be a date: not a file time",
+    ),
     ("providers/filen/mod.rs", 1, "producer: Filen metadata time"),
     (
         "providers/proton_native/nodes.rs",

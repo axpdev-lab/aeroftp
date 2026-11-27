@@ -2615,7 +2615,7 @@ impl B2Provider {
             .header(reqwest::header::RANGE, "bytes=0-0")
             .send()
             .await
-            .map_err(|_| {
+            .map_http_err(|_| {
                 ProviderError::ConnectionFailed(format!(
                     "{NO_EXACT_LINK}: the S3-compatible endpoint did not answer"
                 ))

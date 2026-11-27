@@ -182,7 +182,7 @@ const REVIEWED: &[Reviewed] = &[
     ("providers/webdav.rs", "format", "koofr quota api returned {}", ", resp.status()", "a status code"),
     ("providers/webdav.rs", "format", "{}&password={}", ", form_body, urlencoding::encode(&password)", BUILDS_A_REQUEST),
     ("providers/webdav.rs", "format", "OCS share failed: HTTP {} - {}{}", ", status2, server_message(&text2, &self.config.url, &sent), lookup", SERVER_MESSAGE),
-    ("providers/webdav.rs", "format", "OCS share failed: HTTP {} - {}", ", status, server_message(&text, &self.config.url, &self.sent_secrets())", SERVER_MESSAGE),
+    ("providers/webdav.rs", "format", "OCS share failed: HTTP {} - {}", ", status, server_message(&text, &self.config.url, &sent)", SERVER_MESSAGE),
     ("providers/webdav.rs", "format", "Trashbin PROPFIND failed: HTTP {}", ", resp.status()", "a status code"),
     ("providers/webdav.rs", "format", "Restore failed: HTTP {}: {}", ", status, server_message(&body, &self.config.url, &self.sent_secrets())", SERVER_MESSAGE),
     ("providers/webdav.rs", "format", "File id PROPFIND failed: HTTP {}", ", response.status()", "a status code"),
