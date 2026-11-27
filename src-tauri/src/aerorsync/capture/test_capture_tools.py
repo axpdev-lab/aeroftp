@@ -214,10 +214,11 @@ class DecoderTests(unittest.TestCase):
 
 
     def test_every_frozen_b1_capture_decodes(self):
-        # The B1 addendum (b1_wire_campaign.py) against a 3.2 server: devices,
-        # specials, a symlink without -l, LONG_NAME, non-UTF-8 names and io_error.
+        # The B1 addendum (b1_wire_campaign.py): devices, specials, a symlink
+        # without -l, LONG_NAME, non-UTF-8 names, io_error, and the classic
+        # flags and unnegotiated preamble of a 3.1.3 server.
         runs = sorted(p for p in (FROZEN / "b1").iterdir() if p.is_dir())
-        self.assertEqual(len(runs), 10)
+        self.assertEqual(len(runs), 18)
         for run in runs:
             with self.subTest(run=run.name):
                 r = self.decode(run)
