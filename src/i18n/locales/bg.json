@@ -398,7 +398,9 @@
                 "refused": "Режимът не беше сменен",
                 "copyKeptTitle": "Началната папка е запазена",
                 "copyKept": "Началната папка {path} няма съответствие в режим {mode} и е запазена без промяна."
-            }
+            },
+            "fieldPatternInvalid": "Тази стойност не изглежда правилна за това поле",
+            "puterUsernameIsEmail": "Това е имейл адрес: Puter изисква вашето потребителско име в Puter (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Отдалечен",

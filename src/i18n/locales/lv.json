@@ -398,7 +398,9 @@
                 "refused": "Režīms netika pārslēgts",
                 "copyKeptTitle": "Sākotnējā mape saglabāta",
                 "copyKept": "Sākotnējai mapei {path} nav atbilsmes režīmā {mode}, un tā tika saglabāta nemainīta."
-            }
+            },
+            "fieldPatternInvalid": "Šī vērtība neizskatās pareiza šim laukam",
+            "puterUsernameIsEmail": "Šī ir e-pasta adrese: Puter nepieciešams jūsu Puter lietotājvārds (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Attālināts",

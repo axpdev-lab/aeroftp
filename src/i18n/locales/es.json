@@ -398,7 +398,9 @@
                 "refused": "No se cambió el modo",
                 "copyKeptTitle": "Carpeta inicial conservada",
                 "copyKept": "La carpeta inicial {path} no tiene equivalente en el modo {mode} y se ha conservado tal cual."
-            }
+            },
+            "fieldPatternInvalid": "Este valor no parece correcto para este campo",
+            "puterUsernameIsEmail": "Esto es una dirección de correo electrónico: Puter necesita tu nombre de usuario de Puter (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Remoto",

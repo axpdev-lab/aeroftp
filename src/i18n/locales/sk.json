@@ -398,7 +398,9 @@
                 "refused": "Režim nebol prepnutý",
                 "copyKeptTitle": "Počiatočný priečinok zachovaný",
                 "copyKept": "Počiatočný priečinok {path} nemá v režime {mode} žiadny ekvivalent a zostal bez zmeny."
-            }
+            },
+            "fieldPatternInvalid": "Táto hodnota nevyzerá pre toto pole správne",
+            "puterUsernameIsEmail": "Toto je e-mailová adresa: Puter potrebuje vaše používateľské meno v Puteri (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Vzdialený",

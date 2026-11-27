@@ -398,7 +398,9 @@
                 "refused": "Режимот не беше променет",
                 "copyKeptTitle": "Почетната папка е задржана",
                 "copyKept": "Почетната папка {path} нема еквивалент во режимот {mode} и е задржана како што е."
-            }
+            },
+            "fieldPatternInvalid": "Оваа вредност не изгледа правилно за ова поле",
+            "puterUsernameIsEmail": "Ова е е-поштенска адреса: Puter му треба вашето Puter корисничко име (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Далечински",

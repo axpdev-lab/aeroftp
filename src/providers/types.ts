@@ -45,8 +45,14 @@ export interface ProviderField {
     /** Options for select type */
     options?: Array<{ value: string; label: string }>;
 
-    /** Validation pattern (regex) */
+    /**
+     * Validation pattern (regex): a value matching it is valid, and an empty
+     * value is never flagged (required-ness is separate)
+     */
     pattern?: string;
+
+    /** i18n key of the inline warning shown while the value does not match `pattern` */
+    patternMessageKey?: string;
 
     /** Group this field belongs to (for UI organization) */
     group?: 'credentials' | 'server' | 'advanced';

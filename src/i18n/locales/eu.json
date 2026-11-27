@@ -398,7 +398,9 @@
                 "refused": "Ez da modua aldatu",
                 "copyKeptTitle": "Hasierako karpeta mantendu da",
                 "copyKept": "{path} hasierako karpetak ez du baliokiderik {mode} moduan, eta dagoen bezala mantendu da."
-            }
+            },
+            "fieldPatternInvalid": "Balio hau ez da zuzena eremu honetarako",
+            "puterUsernameIsEmail": "Hau e-posta helbide bat da: Puter-ek zure Puter erabiltzaile-izena behar du (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Urrunekoa",

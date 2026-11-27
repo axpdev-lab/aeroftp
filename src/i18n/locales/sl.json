@@ -398,7 +398,9 @@
                 "refused": "Način ni bil preklopljen",
                 "copyKeptTitle": "Začetna mapa ohranjena",
                 "copyKept": "Začetna mapa {path} nima ustreznice v načinu {mode} in je bila ohranjena nespremenjena."
-            }
+            },
+            "fieldPatternInvalid": "Ta vrednost ne izgleda pravilno za to polje",
+            "puterUsernameIsEmail": "To je e-poštni naslov: Puter potrebuje vaše uporabniško ime za Puter (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Oddaljeno",

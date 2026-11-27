@@ -398,7 +398,9 @@
                 "refused": "Режим не було змінено",
                 "copyKeptTitle": "Початкову теку збережено",
                 "copyKept": "Початкова тека {path} не має відповідника в режимі {mode} і залишилася без змін."
-            }
+            },
+            "fieldPatternInvalid": "Це значення виглядає неправильно для цього поля",
+            "puterUsernameIsEmail": "Це адреса електронної пошти: Puter потрібне ваше ім'я користувача Puter (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Віддалений",

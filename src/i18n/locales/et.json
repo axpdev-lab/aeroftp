@@ -398,7 +398,9 @@
                 "refused": "Režiimi ei vahetatud",
                 "copyKeptTitle": "Algkaust säilitati",
                 "copyKept": "Algkaustal {path} pole režiimis {mode} vastet ja see säilitati muutmata kujul."
-            }
+            },
+            "fieldPatternInvalid": "See väärtus ei tundu selle välja jaoks õige",
+            "puterUsernameIsEmail": "See on e-posti aadress: Puter vajab sinu Puteri kasutajanime (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Kaugserver",

@@ -398,7 +398,9 @@
                 "refused": "모드가 전환되지 않았습니다",
                 "copyKeptTitle": "시작 폴더 유지됨",
                 "copyKept": "시작 폴더 {path}에 해당하는 항목이 {mode} 모드에 없어 그대로 유지되었습니다."
-            }
+            },
+            "fieldPatternInvalid": "이 값은 이 필드에 올바르지 않은 것 같습니다",
+            "puterUsernameIsEmail": "이것은 이메일 주소입니다: Puter에는 Puter 사용자 이름이 필요합니다 (Settings > Account > Username)"
         },
         "browser": {
             "remote": "원격",

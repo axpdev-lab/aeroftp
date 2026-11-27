@@ -398,7 +398,9 @@
                 "refused": "របៀបមិនត្រូវបានប្ដូរទេ",
                 "copyKeptTitle": "បានរក្សាថតដំបូង",
                 "copyKept": "ថតដំបូង {path} គ្មានសមមូលក្នុងរបៀប {mode} ទេ ហើយត្រូវបានរក្សាទុកដដែល។"
-            }
+            },
+            "fieldPatternInvalid": "មិនត្រឹមត្រូវ",
+            "puterUsernameIsEmail": "អាសយដ្ឋានអ៊ីមែល: Puter ឈ្មោះអ្នកប្រើ (Settings > Account > Username)"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",

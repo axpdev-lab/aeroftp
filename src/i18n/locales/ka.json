@@ -398,7 +398,9 @@
                 "refused": "რეჟიმი არ გადაირთო",
                 "copyKeptTitle": "საწყისი საქაღალდე შენარჩუნდა",
                 "copyKept": "საწყის საქაღალდეს {path} არ აქვს შესატყვისი {mode} რეჟიმში და შენარჩუნდა უცვლელად."
-            }
+            },
+            "fieldPatternInvalid": "ეს არის არასწორი ისტვის ველის",
+            "puterUsernameIsEmail": "ეს არის ელფოსტის მისამართი: Puter სირდირა შეი Puter მომხმარებლის სახელი (Settings > Account > Username)"
         },
         "browser": {
             "remote": "დისტანციური",

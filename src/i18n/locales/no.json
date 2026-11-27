@@ -398,7 +398,9 @@
                 "refused": "Modusen ble ikke byttet",
                 "copyKeptTitle": "Startmappen er beholdt",
                 "copyKept": "Startmappen {path} har ingen tilsvarende i {mode}-modus og ble beholdt som den er."
-            }
+            },
+            "fieldPatternInvalid": "Denne verdien ser ikke riktig ut for dette feltet",
+            "puterUsernameIsEmail": "Dette er en e-postadresse: Puter trenger Puter-brukernavnet ditt (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Ekstern",

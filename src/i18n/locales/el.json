@@ -398,7 +398,9 @@
                 "refused": "Η λειτουργία δεν άλλαξε",
                 "copyKeptTitle": "Ο αρχικός φάκελος διατηρήθηκε",
                 "copyKept": "Ο αρχικός φάκελος {path} δεν έχει αντίστοιχο στη λειτουργία {mode} και διατηρήθηκε ως έχει."
-            }
+            },
+            "fieldPatternInvalid": "Αυτή η τιμή δεν φαίνεται σωστή για αυτό το πεδίο",
+            "puterUsernameIsEmail": "Αυτή είναι μια διεύθυνση email: Η Puter χρειάζεται το όνομα χρήστη Puter σας (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Απομακρυσμένο",

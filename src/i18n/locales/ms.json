@@ -398,7 +398,9 @@
                 "refused": "Mod tidak ditukar",
                 "copyKeptTitle": "Folder awal dikekalkan",
                 "copyKept": "Folder awal {path} tiada padanan dalam mod {mode} dan dikekalkan seperti sedia ada."
-            }
+            },
+            "fieldPatternInvalid": "Nilai ini tidak kelihatan betul untuk medan ini",
+            "puterUsernameIsEmail": "Ini adalah alamat e-mel: Puter memerlukan nama pengguna Puter anda (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Jauh",

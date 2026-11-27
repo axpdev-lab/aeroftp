@@ -398,7 +398,9 @@
                 "refused": "Der Modus wurde nicht gewechselt",
                 "copyKeptTitle": "Startordner beibehalten",
                 "copyKept": "Der Startordner {path} hat im Modus {mode} keine Entsprechung und wurde unverändert beibehalten."
-            }
+            },
+            "fieldPatternInvalid": "Dieser Wert sieht für dieses Feld nicht richtig aus",
+            "puterUsernameIsEmail": "Das ist eine E-Mail-Adresse: Puter benötigt deinen Puter-Benutzernamen (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Remote",

@@ -398,7 +398,9 @@
                 "refused": "モードは切り替えられませんでした",
                 "copyKeptTitle": "初期フォルダーを維持しました",
                 "copyKept": "初期フォルダー {path} には {mode} モードでの対応先がないため、そのまま維持されました。"
-            }
+            },
+            "fieldPatternInvalid": "この値はこのフィールドに対して正しくないようです",
+            "puterUsernameIsEmail": "これはメールアドレスです：Puter にはあなたの Puter ユーザー名が必要です (Settings > Account > Username)"
         },
         "browser": {
             "remote": "リモート",

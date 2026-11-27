@@ -398,7 +398,9 @@
                 "refused": "Ekki var skipt um ham",
                 "copyKeptTitle": "Upphafsmöppu haldið",
                 "copyKept": "Upphafsmappan {path} á sér enga samsvörun í {mode}-ham og var haldið óbreyttri."
-            }
+            },
+            "fieldPatternInvalid": "Þetta gildi lítur ekki rétt út fyrir þetta reit",
+            "puterUsernameIsEmail": "Þetta er netfang: Puter þarf Puter notandanafnið þitt (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Fjartengdur",

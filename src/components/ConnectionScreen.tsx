@@ -59,6 +59,7 @@ import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDef
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { resolvePresetText } from '../providers/presetText';
+import { fieldPatternIssue } from '../providers/fieldValidation';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { canonicalOptionsForEdit } from '../utils/profileSecurity';
 import { createProfileCredentialJournal, type ProfileCredentialJournal, type ProfileCredentialWriter } from '../utils/profileCredentialJournal';
@@ -447,6 +448,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     const usernameField = formProvider?.fields?.find(f => f.key === 'username');
     const passwordField = formProvider?.fields?.find(f => f.key === 'password');
+    const usernamePatternIssue = fieldPatternIssue(usernameField, connectionParams.username);
+    const passwordPatternIssue = fieldPatternIssue(passwordField, connectionParams.password);
     // A preset's own text names a control of this form by reference, resolved
     // to the label the form shows in the current language.
     const presetText = (text: string) => resolvePresetText(text, formProvider, t);
@@ -6373,10 +6376,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={connectionParams.username}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, username: e.target.value })}
-                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-12' : ''} bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm`}
+                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-12' : ''} bg-gray-50 dark:bg-gray-700 border ${usernamePatternIssue ? 'border-amber-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-sm`}
                                                     placeholder={getUsernamePlaceholder()}
                                                     maxLength={isFilenDesktopBridge ? FILEN_BRIDGE_MAX_LENGTH : undefined}
-                                                    aria-invalid={!!filenBridgeCredentialIssue}
+                                                    aria-invalid={!!filenBridgeCredentialIssue || !!usernamePatternIssue}
                                                 />
                                                 {isFilenDesktopBridge && (
                                                     <InlinePasswordGenerator
@@ -6386,7 +6389,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     />
                                                 )}
                                             </div>
-                                            {!isFilenDesktopBridge && usernameField?.helpText && (
+                                            {!isFilenDesktopBridge && usernamePatternIssue ? (
+                                                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400" role="alert">{t(usernamePatternIssue)}</p>
+                                            ) : !isFilenDesktopBridge && usernameField?.helpText && (
                                                 <p className="text-xs text-gray-500 mt-1">{presetText(usernameField.helpText)}</p>
                                             )}
                                         </div>
@@ -6400,10 +6405,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type={showPassword ? 'text' : 'password'}
                                                     value={connectionParams.password}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-20' : 'pr-12'} bg-gray-50 dark:bg-gray-700 border rounded-lg text-sm ${filenBridgeCredentialIssue ? 'border-amber-500' : 'border-gray-300 dark:border-gray-600'}`}
+                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-20' : 'pr-12'} bg-gray-50 dark:bg-gray-700 border rounded-lg text-sm ${filenBridgeCredentialIssue ? 'border-amber-500' : passwordPatternIssue ? 'border-amber-500' : 'border-gray-300 dark:border-gray-600'}`}
                                                     placeholder={t('connection.passwordPlaceholder')}
                                                     maxLength={isFilenDesktopBridge ? FILEN_BRIDGE_MAX_LENGTH : undefined}
-                                                    aria-invalid={!!filenBridgeCredentialIssue}
+                                                    aria-invalid={!!filenBridgeCredentialIssue || !!passwordPatternIssue}
                                                 />
                                                 {isFilenDesktopBridge && (
                                                     <InlinePasswordGenerator
@@ -6416,7 +6421,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
-                                            {!isFilenDesktopBridge && passwordField?.helpText && (
+                                            {!isFilenDesktopBridge && passwordPatternIssue ? (
+                                                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400" role="alert">{t(passwordPatternIssue)}</p>
+                                            ) : !isFilenDesktopBridge && passwordField?.helpText && (
                                                 <p className="text-xs text-gray-500 mt-1">{presetText(passwordField.helpText)}</p>
                                             )}
                                             {isFilenDesktopBridge && (

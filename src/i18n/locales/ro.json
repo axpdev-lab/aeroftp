@@ -398,7 +398,9 @@
                 "refused": "Modul nu a fost comutat",
                 "copyKeptTitle": "Folderul inițial a fost păstrat",
                 "copyKept": "Folderul inițial {path} nu are echivalent în modul {mode} și a fost păstrat ca atare."
-            }
+            },
+            "fieldPatternInvalid": "Această valoare nu pare corectă pentru acest câmp",
+            "puterUsernameIsEmail": "Aceasta este o adresă de e-mail: Puter are nevoie de numele tău de utilizator Puter (Settings > Account > Username)"
         },
         "browser": {
             "remote": "La distanță",

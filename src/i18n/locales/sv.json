@@ -398,7 +398,9 @@
                 "refused": "Läget byttes inte",
                 "copyKeptTitle": "Startmappen behölls",
                 "copyKept": "Startmappen {path} har ingen motsvarighet i {mode}-läge och behölls som den är."
-            }
+            },
+            "fieldPatternInvalid": "Detta värde ser inte rätt ut för det här fältet",
+            "puterUsernameIsEmail": "Detta är en e-postadress: Puter behöver ditt Puter-användarnamn (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Fjärr",

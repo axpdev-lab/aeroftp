@@ -398,7 +398,9 @@
                 "refused": "Tilaa ei vaihdettu",
                 "copyKeptTitle": "Aloituskansio säilytettiin",
                 "copyKept": "Aloituskansiolla {path} ei ole vastinetta {mode}-tilassa, ja se säilytettiin sellaisenaan."
-            }
+            },
+            "fieldPatternInvalid": "Tämä arvo ei näytä oikealta tälle kentälle",
+            "puterUsernameIsEmail": "Tämä on sähköpostiosoite: Puter tarvitsee Puter-käyttäjänimesi (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Etä",

@@ -398,7 +398,9 @@
                 "refused": "মোড পরিবর্তন করা হয়নি",
                 "copyKeptTitle": "প্রারম্ভিক ফোল্ডার রাখা হয়েছে",
                 "copyKept": "প্রারম্ভিক ফোল্ডার {path}-এর {mode} মোডে কোনো সমতুল্য নেই এবং এটি যেমন ছিল তেমনই রাখা হয়েছে।"
-            }
+            },
+            "fieldPatternInvalid": "মানটি সঠিক নয়",
+            "puterUsernameIsEmail": "এটি একটি ইমেইল ঠিকানা: Puter আপনার Puter ব্যবহারকারীর নাম চায় (Settings > Account > Username)"
         },
         "browser": {
             "remote": "রিমোট",

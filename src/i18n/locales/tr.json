@@ -398,7 +398,9 @@
                 "refused": "Mod değiştirilmedi",
                 "copyKeptTitle": "Başlangıç klasörü korundu",
                 "copyKept": "{path} başlangıç klasörünün {mode} modunda bir karşılığı yok ve olduğu gibi korundu."
-            }
+            },
+            "fieldPatternInvalid": "Bu değer bu alan için doğru görünmüyor",
+            "puterUsernameIsEmail": "Bu bir e-posta adresi: Puter, Puter kullanıcı adınızı ister (Settings > Account > Username)"
         },
         "browser": {
             "remote": "Uzak",

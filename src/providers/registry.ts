@@ -1518,6 +1518,8 @@ export const PROVIDERS: ProviderConfig[] = [
                 ...COMMON_FIELDS.username,
                 placeholder: 'Your Puter username',
                 helpText: 'The username in Puter under Settings > Account > Username, not your email: it names your drive, https://dav.puter.com/{username}',
+                pattern: '^[^@]*$',
+                patternMessageKey: 'connection.puterUsernameIsEmail',
             },
             {
                 ...COMMON_FIELDS.password,
