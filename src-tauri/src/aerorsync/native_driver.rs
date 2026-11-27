@@ -818,7 +818,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
 
     // Populated by `perform_preamble_exchange`.
     protocol_version: u32,
-    compat_flags: i32,
+    pub(super) compat_flags: i32,
     /// Whether the peer ran the negotiated strings (its compat flags carry
     /// `CF_VARINT_FLIST_FLAGS`). `None` until a server preamble was read.
     /// `Some(false)` is rsync 3.0.x / 3.1.x: MD5 checksums, classic
@@ -866,7 +866,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// Effective compact-flag metadata captured from the argv actually sent.
     /// File-list decode options read owner/group from here instead of
     /// hardcoding `-o -g`.
-    effective_metadata: EffectiveMetadataFlags,
+    pub(super) effective_metadata: EffectiveMetadataFlags,
 
     /// Whether the effective server argv contains the user-facing `-c`
     /// option and therefore carries a whole-file checksum in each regular
@@ -874,9 +874,9 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// requested file is never quick-check skipped, while its integrity is
     /// still verified by the checksum trailer computed during the delta pass.
     /// Capture/oracle profiles retain `-c` and the historical two-pass shape.
-    file_list_checksum_enabled: bool,
+    pub(super) file_list_checksum_enabled: bool,
 
-    phase: AerorsyncSessionPhase,
+    pub(super) phase: AerorsyncSessionPhase,
     committed: bool,
 
     // A2.1 runtime state.
@@ -893,7 +893,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// echoed NDX in `send_delta_phase_single_file` shift to a
     /// 3-byte form that the receiver decoded as garbage (rsync exit 2,
     /// "File-list index N not in 0 - -1").
-    inbound_ndx_state: NdxState,
+    pub(super) inbound_ndx_state: NdxState,
     /// File-list accumulator. Len 0 or 1 in A2.1 (single-file scope).
     file_list: Vec<FileListEntry>,
 
@@ -970,7 +970,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// Role this driver played for the current session; set by the
     /// `drive_*_inner` entry points. Drives the finish-session
     /// dispatcher (download receives summary, upload emits it).
-    session_role: Option<SessionRole>,
+    pub(super) session_role: Option<SessionRole>,
     /// Cumulative MSG_DATA payload bytes the driver has read from the
     /// remote. Mirror of `sent_data_bytes` for the inbound direction.
     /// Updated by `next_data_frame` after each Data poll.
@@ -1771,7 +1771,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
     // --- private helpers -------------------------------------------------
 
-    async fn open_raw_stream_internal(
+    pub(super) async fn open_raw_stream_internal(
         &mut self,
         command_spec: &RemoteCommandSpec,
     ) -> Result<(), AerorsyncError> {
@@ -1995,7 +1995,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// code 12 before a single file byte moved. Against a negotiating peer
     /// the bytes on the wire are the same as before, only split in two
     /// writes around a read.
-    async fn perform_preamble_exchange(
+    pub(super) async fn perform_preamble_exchange(
         &mut self,
         protocol_version: u32,
         checksum_algos: &str,
@@ -2144,7 +2144,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// width because download receives must use the negotiated width while
     /// upload sends use the width of the checksum already computed in the
     /// source entry.
-    fn build_flist_options(&self, csum_len: usize) -> FileListDecodeOptions {
+    pub(super) fn build_flist_options(&self, csum_len: usize) -> FileListDecodeOptions {
         FileListDecodeOptions {
             protocol: self.protocol_version,
             // Varint flags only when the peer set CF_VARINT_FLIST_FLAGS.
@@ -2454,7 +2454,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// Non-terminal OOB frames are routed to `bridge`; the first
     /// terminal OOB bails with a typed error (and is also forwarded to
     /// the bridge so it can capture `first_terminal()` for post-mortem).
-    async fn next_data_frame(
+    pub(super) async fn next_data_frame(
         &mut self,
         bridge: &mut dyn EventSink,
     ) -> Result<Vec<u8>, AerorsyncError> {
@@ -4593,7 +4593,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    fn check_cancel(&self, op: &'static str) -> Result<(), AerorsyncError> {
+    pub(super) fn check_cancel(&self, op: &'static str) -> Result<(), AerorsyncError> {
         if self.cancel_handle.requested() {
             Err(AerorsyncError::cancelled(format!(
                 "driver cancelled before {op}"
@@ -4682,7 +4682,7 @@ fn unsupported_checksum_error(chosen: &str) -> AerorsyncError {
     )
 }
 
-fn map_realwire_error(err: RealWireError, context: &'static str) -> AerorsyncError {
+pub(super) fn map_realwire_error(err: RealWireError, context: &'static str) -> AerorsyncError {
     AerorsyncError::new(
         AerorsyncErrorKind::InvalidFrame,
         format!("{context}: {err}"),
