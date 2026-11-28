@@ -17,7 +17,8 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use crate::aerorsync::real_wire::{
-    decode_file_list_entry, decode_id_list, decode_ndx, decode_varint, encode_file_list_entry,
+    decode_delta_stream, decode_file_list_entry, decode_id_list, decode_ndx, decode_varint,
+    encode_file_list_entry,
     encode_file_list_terminator, encode_id_list, encode_varint, encode_varlong, is_directory_mode,
     is_regular_mode, reassemble_msg_data, AclNamedEntry, AclPrincipal, AclWireEntry, FileListAcls,
     FileListCodecState, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry,
@@ -82,6 +83,18 @@ fn server_compat(run: &str) -> (i64, usize) {
     decode_varint(&out[4..]).expect("compat flags")
 }
 
+/// True when the capture's own server command carries `-z`: the session
+/// negotiated a compression algo (zstd in the p9z capture), so its item
+/// answers use the compressed byte-tag token framing instead of the raw
+/// int32 tokens of a no-`-z` session.
+fn capture_compressed(run: &str) -> bool {
+    let command = String::from_utf8(capture_bytes(run, "remote_command.txt")).expect("utf-8");
+    command
+        .split_whitespace()
+        .find(|a| a.starts_with('-') && !a.starts_with("--"))
+        .is_some_and(|b| b.split('.').next().unwrap_or("").contains('z'))
+}
+
 /// Raw bytes of the direction that carries the file list (the sender)
 /// and the offset where multiplexing starts in it.
 ///
@@ -95,10 +108,7 @@ fn sender_raw(run: &str) -> (Vec<u8>, usize) {
     let (compat, compat_len) = server_compat(run);
     let negotiated = compat & CF_VARINT_FLIST_FLAGS != 0;
     let command = String::from_utf8(capture_bytes(run, "remote_command.txt")).expect("utf-8");
-    let compress = command
-        .split_whitespace()
-        .find(|a| a.starts_with('-') && !a.starts_with("--"))
-        .is_some_and(|b| b.split('.').next().unwrap_or("").contains('z'));
+    let compress = capture_compressed(run);
     let skip_lists = |raw: &[u8], mut at: usize| {
         if negotiated {
             for _ in 0..if compress { 2 } else { 1 } {
@@ -3138,19 +3148,29 @@ mod b3_2_reactive {
                     // the sender echoes its own sum_head before the delta
                     let (_, csh) = decode_sum_head(&app[end..]).expect("answer sum_head");
                     end += csh;
-                    // no-`-z` captures use int32 LE tokens: 0 end, >0 literal, <0 match
-                    loop {
-                        assert!(end + 4 <= app.len(), "raw token truncated");
-                        let tag = i32::from_le_bytes(app[end..end + 4].try_into().unwrap());
-                        end += 4;
-                        if tag == 0 {
-                            break;
+                    if capture_compressed(run) {
+                        // A `-z` capture frames the tokens with the compressed
+                        // byte-tag grammar; the DEFLATED_DATA payloads stay
+                        // opaque here (the driver inflates them), so the whole
+                        // delta + checksum is skipped with the shared decoder.
+                        let (_, cdel) = decode_delta_stream(&app[end..], 16, None)
+                            .expect("answer compressed delta");
+                        end += cdel;
+                    } else {
+                        // no-`-z` captures use int32 LE tokens: 0 end, >0 literal, <0 match
+                        loop {
+                            assert!(end + 4 <= app.len(), "raw token truncated");
+                            let tag = i32::from_le_bytes(app[end..end + 4].try_into().unwrap());
+                            end += 4;
+                            if tag == 0 {
+                                break;
+                            }
+                            if tag > 0 {
+                                end += tag as usize;
+                            }
                         }
-                        if tag > 0 {
-                            end += tag as usize;
-                        }
+                        end += 16; // whole-file checksum (xxh128)
                     }
-                    end += 16; // whole-file checksum (xxh128)
                 }
                 events.push(ReplayEvent::ItemAnswer(ndx, app[pos..end].to_vec()));
                 pos = end;
@@ -3444,7 +3464,11 @@ mod b3_2_reactive {
             protocol_version: 31,
             compat_flags: compat as i32,
             checksum_algos: "xxh128".to_string(),
-            compression_algos: "none".to_string(),
+            compression_algos: if capture_compressed(run) {
+                "zstd".to_string()
+            } else {
+                "none".to_string()
+            },
             checksum_seed: 0,
             consumed: 0,
         })
@@ -3478,6 +3502,21 @@ mod b3_2_reactive {
         replay_run("p10-dl").await;
     }
 
+    /// The p9z-dl-inc replay (cherry-picked -az capture): the same structural
+    /// checks as p9-dl-inc, plus the served file contents must equal
+    /// p9-dl-inc's (the generator requests are byte-identical), proving the
+    /// compressed branch of the delta grammar and the zstd literal decode.
+    #[tokio::test]
+    async fn b3_2_reactive_replay_p9z_dl_inc() {
+        let p9 = replay_run("p9-dl-inc").await;
+        let p9z = replay_run("p9z-dl-inc").await;
+        assert!(!p9.is_empty(), "p9-dl-inc served at least one file");
+        assert_eq!(
+            p9, p9z,
+            "p9z-dl-inc must serve the same file contents as p9-dl-inc"
+        );
+    }
+
     /// NAS 3282 point 1, test (i): for every regular file of the four
     /// captures, the sorted ndx assigned by `flist_entry_cmp` equals the ndx
     /// the capture's generator requests (the ndx the sender delivers the
@@ -3485,7 +3524,7 @@ mod b3_2_reactive {
     #[test]
     fn b3_2_sorted_ndx_matches_capture_delivery() {
         use crate::aerorsync::tree_driver::flist_entry_cmp;
-        for run in ["p9-dl-inc", "p9-dl-noinc", "p9big-dl-inc", "p10-dl"] {
+        for run in ["p9-dl-inc", "p9-dl-noinc", "p9big-dl-inc", "p10-dl", "p9z-dl-inc"] {
             assert!(
                 file_ndx_sets_conform(run, flist_entry_cmp),
                 "{run}: the sorted ndx of every regular file must be the capture's delivery ndx"
@@ -3510,7 +3549,7 @@ mod b3_2_reactive {
                 .then_with(|| a.path.cmp(&b.path))
         };
         let identity = |_a: &FileListEntry, _b: &FileListEntry| Ordering::Equal;
-        let runs = ["p9-dl-inc", "p9-dl-noinc", "p9big-dl-inc", "p10-dl"];
+        let runs = ["p9-dl-inc", "p9-dl-noinc", "p9big-dl-inc", "p10-dl", "p9z-dl-inc"];
         for run in runs {
             assert!(
                 file_ndx_sets_conform(run, flist_entry_cmp),
@@ -3686,7 +3725,29 @@ mod b3_2_reactive {
             .collect()
     }
 
-    async fn replay_run(run: &'static str) {
+    /// Collect the served files (path relative to the destination root ->
+    /// content) so a replay can compare contents across captures
+    /// (p9z-dl-inc vs p9-dl-inc).
+    fn collect_files(
+        root: &std::path::Path,
+        rel: PathBuf,
+        out: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>,
+    ) {
+        for entry in std::fs::read_dir(root.join(&rel)).unwrap() {
+            let entry = entry.unwrap();
+            let mut p = rel.clone();
+            p.push(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                collect_files(root, p, out);
+            } else {
+                out.insert(p, std::fs::read(entry.path()).unwrap());
+            }
+        }
+    }
+
+    async fn replay_run(
+        run: &'static str,
+    ) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
         let parsed = parse_sender_events(run);
         let echo_total = parsed.echo_total;
         let lists = parsed.lists;
@@ -3712,7 +3773,8 @@ mod b3_2_reactive {
         d.open_raw_stream_internal(&RemoteCommandSpec::capture_download("/remote/target"))
             .await
             .unwrap();
-        d.perform_preamble_exchange(31, "xxh128", "none")
+        let compression = if capture_compressed(run) { "zstd" } else { "none" };
+        d.perform_preamble_exchange(31, "xxh128", compression)
             .await
             .unwrap();
         let (opts, _) = options_from_capture(run);
@@ -3774,5 +3836,8 @@ mod b3_2_reactive {
         if run == "p10-dl" {
             check_p10_xattrs(dest.path());
         }
+        let mut served = std::collections::BTreeMap::new();
+        collect_files(dest.path(), PathBuf::new(), &mut served);
+        served
     }
 }
