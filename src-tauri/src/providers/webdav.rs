@@ -466,15 +466,6 @@ impl std::fmt::Display for InsecureRedirect {
 
 impl std::error::Error for InsecureRedirect {}
 
-/// What an error may show of a WebDAV server's reply: its message element
-/// (Sabre `<s:message>`, OCS `<message>`, a JSON `"message"`), sanitized and
-/// with the profile's base path replaced by `<base>`, or only its length.
-/// The rest of a reply can echo the request (an href, the form, a path below
-/// a base URL that holds a token, as MEGAcmd's does).
-///
-/// `sent` is what the request sent as a secret (the account password, a
-/// generated share password): an echo of it is removed in any spelling once
-/// the message is decoded, see `without_sent_values`.
 /// The day an OCS share expires, from its `expiration` (`2026-11-28
 /// 00:00:00`): Nextcloud keeps a date, so the day is what the link gets.
 fn ocs_share_expiry(json: &serde_json::Value) -> Option<String> {
@@ -485,6 +476,15 @@ fn ocs_share_expiry(json: &serde_json::Value) -> Option<String> {
         .map(|_| day.to_string())
 }
 
+/// What an error may show of a WebDAV server's reply: its message element
+/// (Sabre `<s:message>`, OCS `<message>`, a JSON `"message"`), sanitized and
+/// with the profile's base path replaced by `<base>`, or only its length.
+/// The rest of a reply can echo the request (an href, the form, a path below
+/// a base URL that holds a token, as MEGAcmd's does).
+///
+/// `sent` is what the request sent as a secret (the account password, a
+/// generated share password): an echo of it is removed in any spelling once
+/// the message is decoded, see `without_sent_values`.
 fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     static ELEMENT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r"<(?:[A-Za-z0-9_]+:)?message(?:\s[^>]*)?>([^<]*)</").unwrap()
@@ -492,11 +492,27 @@ fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     static JSON: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r#""message"\s*:\s*"((?:[^"\\]|\\.)*)""#).unwrap()
     });
-    let message = ELEMENT
-        .captures(body)
-        .or_else(|| JSON.captures(body))
-        .and_then(|found| found.get(1))
-        .map(|found| found.as_str().trim())
+    // A JSON `"message"` is read as the string it spells: the raw capture
+    // keeps JSON's escapes (`\"`, `\\`, `\/`), and a value echoed through
+    // them matches no spelling the scrub knows.
+    let (message, from_json) = match ELEMENT.captures(body).and_then(|found| found.get(1)) {
+        Some(found) => (Some(found.as_str().to_string()), false),
+        None => match JSON.captures(body).and_then(|found| found.get(1)) {
+            Some(found) => match serde_json::from_str::<String>(&format!("\"{}\"", found.as_str()))
+            {
+                Ok(text) => (Some(text), true),
+                Err(_) => {
+                    return format!(
+                        "a reply of {} bytes, withheld: its message does not decode",
+                        body.len()
+                    )
+                }
+            },
+            None => (None, false),
+        },
+    };
+    let message = message
+        .map(|message| message.trim().to_string())
         .filter(|message| !message.is_empty());
     let Some(message) = message else {
         return if body.is_empty() {
@@ -507,9 +523,18 @@ fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     };
     // Fully decoded before scrubbing, so an entity-escaped path or query
     // value (`AB&amp;CD` for `AB%26CD`) matches.
-    let Some(decoded) = super::fully_unescaped(message) else {
+    let Some(decoded) = super::fully_unescaped(&message) else {
         return super::deeply_escaped_reply(body.len());
     };
+    // A `\` left in a JSON message once its entities are decoded
+    // (`&#92;u002f`) can still spell a sent value in an escape no matcher
+    // reads, as `json_reply_without_sent_values` holds.
+    if from_json && sent.iter().any(|value| !value.is_empty()) && decoded.contains('\\') {
+        return format!(
+            "a reply of {} bytes, withheld: its message holds an escape",
+            body.len()
+        );
+    }
     let Some(mut shown) = super::without_sent_values(&decoded, sent) else {
         return super::reply_with_a_sent_value(body.len());
     };
@@ -8815,6 +8840,89 @@ mod tests {
             2,
             "no retry with a generated password: {posts:?}"
         );
+    }
+
+    /// A chosen password the server refuses and echoes back is not in the
+    /// error in any spelling: JSON-escaped (`\"`, `\\`, `\/`), or with some of
+    /// its characters percent-encoded and the rest raw (`ab%2Fcd+secret` for
+    /// `ab/cd+secret`). The reason around the echo is still shown when the
+    /// echo can be cut out; a message that keeps a `\` is withheld whole.
+    #[tokio::test]
+    async fn a_refused_chosen_password_is_not_echoed_in_any_spelling() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |req: axum::extract::Request| async move {
+                let path = req.uri().path().to_string();
+                let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                if path == "/ocs/v1.php/cloud/capabilities" {
+                    return (axum::http::StatusCode::OK, "{}".to_string());
+                }
+                let password = url::form_urlencoded::parse(&body)
+                    .find(|(key, _)| key == "password")
+                    .map(|(_, value)| value.into_owned())
+                    .unwrap_or_default();
+                // The echo as each kind of server spells it in a JSON message.
+                let echo = match password.as_str() {
+                    "ab/cd+secret" => "ab%2Fcd+secret".to_string(),
+                    "slash/and/more" => r"slash\/and\/more".to_string(),
+                    other => {
+                        let quoted = serde_json::to_string(other).unwrap();
+                        quoted[1..quoted.len() - 1].to_string()
+                    }
+                };
+                (
+                    axum::http::StatusCode::FORBIDDEN,
+                    format!(
+                        r#"{{"ocs":{{"meta":{{"status":"failure","statuscode":403,"message":"Password {echo} rejected: too common"}}}}}}"#
+                    ),
+                )
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        // (password, whether the reason around it is still shown)
+        let cases = [
+            ("Q\"uoted-pw42", true),
+            ("slash/and/more", true),
+            ("ab/cd+secret", true),
+            ("Q\"uote\\back/sl", false),
+        ];
+        for (password, reason_shown) in cases {
+            let err = provider
+                .nextcloud_create_share(
+                    "/report.pdf",
+                    ShareLinkOptions {
+                        password: Some(password.into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect_err("a refused chosen password is the error")
+                .to_string();
+            let quoted = serde_json::to_string(password).unwrap();
+            let spellings = [
+                password.to_string(),
+                quoted[1..quoted.len() - 1].to_string(),
+                quoted[1..quoted.len() - 1].replace('/', r"\/"),
+                urlencoding::encode(password).into_owned(),
+                "ab%2Fcd+secret".to_string(),
+            ];
+            for spelling in spellings.iter().filter(|s| s.len() >= 8) {
+                if spelling == "ab%2Fcd+secret" && password != "ab/cd+secret" {
+                    continue;
+                }
+                assert!(!err.contains(spelling.as_str()), "{password:?}: {err}");
+            }
+            assert_eq!(
+                err.contains("rejected: too common"),
+                reason_shown,
+                "{password:?}: {err}"
+            );
+        }
+        server.abort();
     }
 
     /// #1506 row 164: the retry with a generated password follows the

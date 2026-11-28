@@ -4154,7 +4154,13 @@ impl StorageProvider for B2Provider {
         // resolved with its empty segments removed: the link would be for
         // the other file.
         // `reports/` names the folder: resolved, it would be the file
-        // `reports` beside it.
+        // `reports` beside it. So do `""` and `.`, which resolve to the
+        // current folder.
+        if path.is_empty() || path == "." {
+            return Err(ProviderError::InvalidPath(
+                "a B2 share link is made for a file, not the current folder".to_string(),
+            ));
+        }
         if path.len() > 1 && path.ends_with('/') {
             return Err(ProviderError::InvalidPath(format!(
                 "{path}: a B2 share link is made for a file, not a folder"
@@ -6968,6 +6974,28 @@ mod tests {
                 "{path}: {err:?}"
             );
         }
+        // In `/reports`, `""` and `.` name the folder: resolved, they would
+        // sign an object `reports` beside `reports/child.txt`. A plain
+        // relative name is still a file.
+        provider.current_path = "/reports".into();
+        for path in ["", "."] {
+            let err = provider
+                .create_share_link(path, ShareLinkOptions::default())
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(&err, ProviderError::InvalidPath(why) if why.contains("current folder")),
+                "{path:?}: {err:?}"
+            );
+        }
+        let relative = provider
+            .create_share_link("child.txt", ShareLinkOptions::default())
+            .await;
+        assert!(
+            !matches!(relative, Err(ProviderError::InvalidPath(_))),
+            "{relative:?}"
+        );
+        provider.current_path = "/".into();
         // A key that has expired signs nothing that would open.
         provider.key_expires_at_ms = Some(chrono::Utc::now().timestamp_millis() - 1_000);
         let err = provider

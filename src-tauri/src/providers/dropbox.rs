@@ -57,6 +57,25 @@ fn dropbox_reply_shown(text: &str, sent: &[String]) -> String {
     }
 }
 
+/// The `.tag` of a Dropbox error reply, when it is one of Dropbox's
+/// identifiers (`path`, `access_denied`), and no other part of the reply.
+fn dropbox_error_tag(text: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|reply| {
+            reply
+                .pointer("/error/.tag")
+                .and_then(serde_json::Value::as_str)
+                .filter(|tag| {
+                    !tag.is_empty()
+                        && tag.len() <= 64
+                        && tag.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+                })
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "no error tag".to_string())
+}
+
 /// A shared link as Dropbox describes one (`SharedLinkMetadata`).
 #[derive(Debug, Deserialize)]
 struct DropboxSharedLink {
@@ -919,10 +938,14 @@ impl DropboxProvider {
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         if !response.status().is_success() {
+            // The status and Dropbox's error tag only: a refused listing can
+            // hold link URLs, whose `rlkey` opens the file.
+            let status = response.status();
             let text = response.text().await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
-                "Failed to list share links: {}",
-                sanitize_api_error(&text)
+                "Failed to list share links: {} ({})",
+                status,
+                dropbox_error_tag(&text)
             )));
         }
         #[derive(Deserialize)]
@@ -1061,12 +1084,32 @@ impl DropboxProvider {
         } else {
             None
         };
+        // The listing fills in only what the answer left out: a setting both
+        // state must agree, or the link would be accepted on two different
+        // views of it (a password stated on by one, off by the other).
+        if let Some(row) = &row {
+            let differs = matches!(
+                (link.access_level(), row.access_level()),
+                (Some(a), Some(b)) if a != b
+            ) || matches!(
+                (link.password_protected(), row.password_protected()),
+                (Some(a), Some(b)) if a != b
+            ) || matches!((&link.expires, &row.expires), (Some(a), Some(b)) if a != b);
+            if differs {
+                return Err("settings its two answers agree on");
+            }
+        }
         let level = link
             .access_level()
             .or_else(|| row.as_ref().and_then(|row| row.access_level()));
         match level {
             Some(level) if level == access => {}
             Some(_) => return Err("the access asked for"),
+            // Dropbox declares the level optional. Unstated, a link asked
+            // for as `viewer`, the least access a link has, is not refused
+            // for the absence alone; edit access is handed out only when
+            // Dropbox states it.
+            None if access == "viewer" => {}
             None => return Err("a stated access level"),
         }
         let protected = link
@@ -2222,9 +2265,12 @@ impl StorageProvider for DropboxProvider {
         let sent: Vec<String> = password.iter().cloned().collect();
         // A whole second, as sent: the expiry Dropbox keeps is compared with
         // exactly this.
-        let deadline = options.expires_in_secs.and_then(|secs| {
-            chrono::DateTime::from_timestamp(chrono::Utc::now().timestamp() + secs as i64, 0)
-        });
+        // A duration no date holds is an error before anything is sent:
+        // read as "no expiry", it made a permanent link.
+        let deadline = match options.expires_in_secs {
+            Some(secs) => Some(super::share_link_deadline(chrono::Utc::now(), secs)?),
+            None => None,
+        };
         // What was asked for, sent both to a new link and, when the file
         // already has one, to that link: a request never comes back with
         // less than it asked. The password is set by `require_password`
@@ -2296,6 +2342,15 @@ impl StorageProvider for DropboxProvider {
                     password: None,
                     expires_at: existing.expires,
                 });
+            }
+            // Dropbox shows whether a link requires a password, never which
+            // one: a new password on a link that already had one would look
+            // the same applied or not. Set on a link stated to have none, the
+            // password it then requires is the one sent.
+            if password.is_some() && existing.password_protected() != Some(false) {
+                return Err(ProviderError::Other(
+                    "The file's existing shared link has a password already, or Dropbox does not say whether it has one, and Dropbox does not show a link's password, so a new one on it could not be confirmed; revoke the link in Dropbox and create it again with the password".to_string(),
+                ));
             }
             let mut asked = asked;
             if let Some(settings) = asked.as_object_mut() {
@@ -2375,8 +2430,10 @@ impl StorageProvider for DropboxProvider {
             ))
         })?;
 
-        // A new link Dropbox does not confirm with the access, the password
-        // and the expiry asked for is not handed out.
+        // A new link Dropbox does not confirm with the access asked for,
+        // password protection on when a password was sent, and the expiry
+        // asked for is not handed out. Dropbox shows no password, only that
+        // one is required; on a new link the only one set is the one sent.
         let url = result.url.clone();
         let result = match self
             .confirmed_link(result, &full_path, access, password.is_some(), deadline)
@@ -3665,6 +3722,22 @@ mod tests {
                         {
                             (axum::http::StatusCode::OK, "not json".to_string())
                         }
+                        // Links without a password, `own` expiring in half an
+                        // hour.
+                        "/sharing/list_shared_links" if sent["path"] == "/open.txt" => (
+                            axum::http::StatusCode::OK,
+                            format!(
+                                r#"{{"links":[{{"url":"https://www.dropbox.com/scl/fi/own","expires":"{}","link_permissions":{{"link_access_level":{{".tag":"{access_level}"}},"require_password":false}}}},{{"url":"https://www.dropbox.com/scl/fi/second","link_permissions":{}}}],"has_more":false}}"#,
+                                (chrono::Utc::now() + chrono::Duration::seconds(1800))
+                                    .format("%Y-%m-%dT%H:%M:%SZ"),
+                                second_permissions.replace("team_and_password", "public")
+                            ),
+                        ),
+                        // A refusal that repeats a link of the file.
+                        "/sharing/list_shared_links" if sent["path"] == "/refused.txt" => (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            r#"{"error_summary":"path/..","error":{".tag":"path"},"links":[{"url":"https://www.dropbox.com/scl/fi/leak?rlkey=LISTEDKEY"}]}"#.to_string(),
+                        ),
                         "/sharing/list_shared_links" if sent["path"] == "/more.txt" => (
                             axum::http::StatusCode::OK,
                             r#"{"links":[],"has_more":true}"#.to_string(),
@@ -3743,7 +3816,7 @@ mod tests {
         };
         let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
         let made = p
-            .create_share_link("/a.txt", restricted.clone())
+            .create_share_link("/open.txt", restricted.clone())
             .await
             .unwrap();
         assert_eq!(made.url, "https://www.dropbox.com/scl/fi/own");
@@ -3772,7 +3845,7 @@ mod tests {
             Some("https://www.dropbox.com/scl/fi/second"),
         )
         .await;
-        p.create_share_link("/a.txt", restricted.clone())
+        p.create_share_link("/open.txt", restricted.clone())
             .await
             .unwrap();
         let modify = called(&calls, "/sharing/modify_shared_link_settings");
@@ -3785,6 +3858,33 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("several shared links"), "{err}");
         assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
+        // Dropbox shows no link's password: a new one on a link that has one
+        // already would look the same applied or not, so it is refused
+        // before anything changes.
+        let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
+        let err = p
+            .create_share_link("/a.txt", restricted.clone())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("has a password already"), "{err}");
+        assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
+        // A duration no date holds is refused before any request: read as
+        // no expiry, it made a permanent link.
+        for secs in [u64::MAX, i64::MAX as u64] {
+            let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
+            let err = p
+                .create_share_link(
+                    "/a.txt",
+                    ShareLinkOptions {
+                        expires_in_secs: Some(secs),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert!(matches!(err, ProviderError::InvalidConfig(_)), "{err:?}");
+            assert!(calls.lock().unwrap().is_empty(), "{secs}: nothing sent");
+        }
 
         // A plain link asked for: the existing view link as it is.
         let (mut p, calls) = dropbox_sharing("viewer", Some("editor"), None, None).await;
@@ -3829,9 +3929,11 @@ mod tests {
                 r#"{"url":"https://www.dropbox.com/scl/fi/new","link_permissions":{"link_access_level":{".tag":"editor"},"require_password":true}}"#,
                 "without the access asked for",
             ),
+            // A level left unstated is no refusal by itself; the expiry
+            // still is.
             (
                 r#"{"url":"https://www.dropbox.com/scl/fi/new","link_permissions":{"require_password":true}}"#,
-                "without a stated access level",
+                "without the expiry",
             ),
             (
                 r#"{"url":"https://www.dropbox.com/scl/fi/new","expires":"2099-01-01T00:00:00Z","link_permissions":{"link_access_level":{".tag":"viewer"},"require_password":true}}"#,
@@ -3849,7 +3951,71 @@ mod tests {
             assert_eq!(revoked[0]["url"], "https://www.dropbox.com/scl/fi/new");
             let create = called(&calls, "/sharing/create_shared_link_with_settings");
             assert!(create[0]["settings"].get("requested_visibility").is_none());
+            assert!(create[0]["settings"]["expires"].is_string(), "{link}");
         }
+        // A view link whose level neither answer states is the view link
+        // asked for: handed out, not revoked.
+        let within = (chrono::Utc::now() + chrono::Duration::seconds(1800))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        let unstated: &'static str = Box::leak(
+            format!(r#"{{"url":"https://www.dropbox.com/scl/fi/new","expires":"{within}","link_permissions":{{"require_password":true}}}}"#)
+                .into_boxed_str(),
+        );
+        let (mut p, calls) = dropbox_sharing("viewer", None, Some((200, unstated)), None).await;
+        let made = p
+            .create_share_link("/a.txt", restricted.clone())
+            .await
+            .unwrap();
+        assert_eq!(made.url, "https://www.dropbox.com/scl/fi/new");
+        assert!(called(&calls, "/sharing/revoke_shared_link").is_empty());
+        // Edit access is handed out only when Dropbox states it.
+        let (mut p, calls) = dropbox_sharing(
+            "viewer",
+            None,
+            Some((
+                200,
+                r#"{"url":"https://www.dropbox.com/scl/fi/new","link_permissions":{}}"#,
+            )),
+            None,
+        )
+        .await;
+        let err = p
+            .create_share_link(
+                "/a.txt",
+                ShareLinkOptions {
+                    permissions: Some("edit".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("a stated access level"), "{err}");
+        assert_eq!(called(&calls, "/sharing/revoke_shared_link").len(), 1);
+        // The answer says the password is on and leaves the expiry out; the
+        // listed row has the expiry but the password off. Two views of the
+        // link: it is revoked, not handed out on the answer's password and
+        // the row's expiry.
+        let (mut p, calls) = dropbox_sharing(
+            "viewer",
+            None,
+            Some((
+                200,
+                r#"{"url":"https://www.dropbox.com/scl/fi/own","link_permissions":{"link_access_level":{".tag":"viewer"},"require_password":true}}"#,
+            )),
+            None,
+        )
+        .await;
+        let err = p
+            .create_share_link("/open.txt", restricted.clone())
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("settings its two answers agree on"),
+            "{err}"
+        );
+        assert_eq!(called(&calls, "/sharing/revoke_shared_link").len(), 1);
         // A protection the answer does not state, confirmed by the listing.
         let (mut p, _) = dropbox_sharing(
             "viewer",
@@ -3909,7 +4075,7 @@ mod tests {
         let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
         let err = p
             .create_share_link(
-                "/a.txt",
+                "/open.txt",
                 ShareLinkOptions {
                     password: Some("garble-password".into()),
                     ..Default::default()
@@ -3985,6 +4151,11 @@ mod tests {
             .await
             .unwrap_err();
         assert!(!err.to_string().contains("SECRETKEY"), "{err}");
+        // A refused listing repeating a link: only its status and tag.
+        let err = p.list_share_links("/refused.txt").await.unwrap_err();
+        assert!(!err.to_string().contains("LISTEDKEY"), "{err}");
+        assert!(!err.to_string().contains("scl/fi"), "{err}");
+        assert!(err.to_string().contains("(path)"), "{err}");
 
         // Listed by URL, with the protection either field reports; revoked by
         // that URL; the file id, shared by both links, picks neither, and the

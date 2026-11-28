@@ -41393,9 +41393,9 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
 fn parse_expires(s: &str) -> Option<u64> {
     let s = s.trim();
     if let Some(h) = s.strip_suffix('h') {
-        h.parse::<u64>().ok().map(|v| v * 3600)
+        h.parse::<u64>().ok().and_then(|v| v.checked_mul(3600))
     } else if let Some(d) = s.strip_suffix('d') {
-        d.parse::<u64>().ok().map(|v| v * 86400)
+        d.parse::<u64>().ok().and_then(|v| v.checked_mul(86400))
     } else {
         s.parse::<u64>().ok()
     }
@@ -41435,7 +41435,7 @@ async fn cmd_link(
         return 1;
     }
 
-    let options = ShareLinkOptions {
+    let options = match (ShareLinkOptions {
         expires_in_secs,
         password: password.map(|s| s.to_string()),
         permissions: if permissions == "view" {
@@ -41443,6 +41443,15 @@ async fn cmd_link(
         } else {
             Some(permissions.to_string())
         },
+    })
+    .checked()
+    {
+        Ok(options) => options,
+        Err(e) => {
+            print_error(format, &e.to_string(), 1);
+            let _ = provider.disconnect().await;
+            return 1;
+        }
     };
 
     match provider.create_share_link(path, options).await {

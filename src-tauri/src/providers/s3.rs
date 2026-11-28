@@ -8142,6 +8142,12 @@ impl StorageProvider for S3Provider {
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
+        // No object: the empty key signs the bucket's listing.
+        if key.is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "a share link is made for a file, not the bucket".to_string(),
+            ));
+        }
         // SigV4 caps X-Amz-Expires at seven days for every S3 service (AWS
         // answers AuthorizationQueryParametersError above it; R2, B2, MinIO,
         // MEGA S4 and Tigris state the same limit). Asking for more used to
@@ -20293,6 +20299,22 @@ mod tests {
             matches!(refused, Err(ProviderError::InvalidConfig(_))),
             "{refused:?}"
         );
+    }
+
+    /// An empty key is the bucket, and a link signed for it opens the
+    /// bucket's listing: no link is made for it.
+    #[tokio::test]
+    async fn a_share_link_for_the_bucket_is_refused() {
+        let mut provider = aws_doc_provider(false);
+        for path in ["", "/", "//"] {
+            let refused = provider
+                .create_share_link(path, ShareLinkOptions::default())
+                .await;
+            assert!(
+                matches!(refused, Err(ProviderError::InvalidPath(_))),
+                "{path:?}: {refused:?}"
+            );
+        }
     }
 
     #[tokio::test]

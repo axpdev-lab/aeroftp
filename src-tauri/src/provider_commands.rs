@@ -10295,7 +10295,9 @@ pub async fn provider_create_share_link(
         expires_in_secs,
         password,
         permissions,
-    };
+    }
+    .checked()
+    .map_err(|e| format!("Failed to create share link: {}", e))?;
 
     let result = provider
         .create_share_link(&path, options)

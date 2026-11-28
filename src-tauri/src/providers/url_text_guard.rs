@@ -179,6 +179,8 @@ const REVIEWED: &[Reviewed] = &[
     ("bin/aeroftp_cli.rs", "eprintln", "\\x1b[1;37mAeroFTP\\x1b[0m {g}v{}{r} {b}|{r} {} protocols, {} native integrations, {} via direct URL {b}|{r} pget {b}|{r} mcp {b}|{r} ai agent {b}|{r} vault profiles", ", env!(\"CARGO_PKG_VERSION\"), protocols, integrations, supported_url_schemes().len()", "the banner, not a URL"),
     ("bin/aeroftp_cli.rs", "eprintln", "AeroFTP v{} | {} protocols, {} native integrations, {} via direct URL | pget | mcp | ai agent | vault profiles", ", env!(\"CARGO_PKG_VERSION\"), protocols, integrations, supported_url_schemes().len()", "the banner, not a URL"),
     ("providers/webdav.rs", "format", "a reply of {} bytes with no message", ", body.len()", "a length"),
+    ("providers/webdav.rs", "format", "a reply of {} bytes, withheld: its message does not decode", ", body.len()", "a length"),
+    ("providers/webdav.rs", "format", "a reply of {} bytes, withheld: its message holds an escape", ", body.len()", "a length"),
     ("providers/webdav.rs", "debug", "[WebDAV] PROPFIND {} answered {}: a pause of {:?} would pass the {:?} listing budget, not retrying", ", path, response.status(), pause, LIST_RETRY_BUDGET", "a status code"),
     ("providers/webdav.rs", "debug", "[WebDAV] PROPFIND {} answered {}, retry {} after {:?}", ", path, response.status(), attempt + 1, pause", "a status code"),
     ("providers/webdav.rs", "format", "koofr quota api returned {}", ", resp.status()", "a status code"),

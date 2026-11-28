@@ -2930,6 +2930,37 @@ pub struct ShareLinkOptions {
     pub permissions: Option<String>,
 }
 
+impl ShareLinkOptions {
+    /// The options as asked for, or an error when the expiry asked for
+    /// lands on no date: every provider turns the duration into a date, and
+    /// one past what a date holds overflows that arithmetic or drops the
+    /// expiry, which made a link asked to expire a permanent one.
+    pub fn checked(self) -> Result<Self, ProviderError> {
+        if let Some(secs) = self.expires_in_secs {
+            share_link_deadline(chrono::Utc::now(), secs)?;
+        }
+        Ok(self)
+    }
+}
+
+/// The instant, in whole seconds, a link asked to live `secs` seconds from
+/// `now` ends; an error when no date holds it (`secs` past `i64`, or a
+/// timestamp past chrono's range), never "no expiry".
+pub(crate) fn share_link_deadline(
+    now: chrono::DateTime<chrono::Utc>,
+    secs: u64,
+) -> Result<chrono::DateTime<chrono::Utc>, ProviderError> {
+    i64::try_from(secs)
+        .ok()
+        .and_then(|secs| now.timestamp().checked_add(secs))
+        .and_then(|at| chrono::DateTime::from_timestamp(at, 0))
+        .ok_or_else(|| {
+            ProviderError::InvalidConfig(format!(
+                "A share link cannot expire {secs} seconds from now: no date holds that"
+            ))
+        })
+}
+
 /// Result of creating a share link - contains the URL and optional metadata
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct ShareLinkResult {
@@ -6940,6 +6971,34 @@ mod tests {
         let out = sanitize_api_error("The key &apos;003d90ca&apos; is not valid");
         assert_eq!(out, "The key '003d90ca' is not valid");
         assert!(!out.contains("&apos;"));
+    }
+
+    /// An expiry no date holds is an error, never "no expiry": a provider
+    /// that read it as none made a permanent link. A plain one is the whole
+    /// second it ends on.
+    #[test]
+    fn a_share_expiry_no_date_holds_is_refused() {
+        let now = chrono::DateTime::from_timestamp(1_800_000_000, 0).unwrap();
+        for secs in [u64::MAX, i64::MAX as u64, 300_000_000_000_000] {
+            assert!(
+                matches!(
+                    share_link_deadline(now, secs),
+                    Err(ProviderError::InvalidConfig(_))
+                ),
+                "{secs}"
+            );
+            assert!(ShareLinkOptions {
+                expires_in_secs: Some(secs),
+                ..Default::default()
+            }
+            .checked()
+            .is_err());
+        }
+        assert_eq!(
+            share_link_deadline(now, 3600).unwrap().timestamp(),
+            1_800_003_600
+        );
+        assert!(ShareLinkOptions::default().checked().is_ok());
     }
 
     /// A sent value is found in every spelling of its reflection: percent
