@@ -180,7 +180,7 @@ fn encode_s3_key_path(key: &str) -> String {
 /// the operation is refused with the key named instead (#1506 Requested 189).
 /// Batch deletes carry keys in the XML body and copy sources in a header, which
 /// are not rewritten.
-fn refuse_rewritten_path(url: &str, parsed: &url::Url) -> Result<(), ProviderError> {
+pub(crate) fn refuse_rewritten_path(url: &str, parsed: &url::Url) -> Result<(), ProviderError> {
     let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
     let built = after_scheme.find('/').map_or("/", |i| &after_scheme[i..]);
     let built = built.split(['?', '#']).next().unwrap_or(built);
@@ -959,6 +959,98 @@ fn presigned_host(url: &url::Url) -> String {
         Some(port) => format!("{host}:{port}"),
         None => host.to_string(),
     }
+}
+
+/// A SigV4 presigned `GET` URL of `url` (as built, with `parsed` its
+/// parse), valid `expires` seconds from `now`. Shared by the S3 share link
+/// and B2's, which signs the S3-compatible URL of one object: a B2 download
+/// token opens every name it is a prefix of.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sigv4_presigned_get_url(
+    url: &str,
+    parsed: &url::Url,
+    region: &str,
+    access_key_id: &str,
+    secret_access_key: &str,
+    session_token: Option<&str>,
+    now: DateTime<Utc>,
+    expires: u64,
+) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::{Digest, Sha256};
+
+    type HmacSha256 = Hmac<Sha256>;
+
+    let date_stamp = now.format("%Y%m%d").to_string();
+    let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, region);
+    let credential = format!("{}/{}", access_key_id, credential_scope);
+
+    // The host a browser sends for the link: with the port when the
+    // endpoint names one that is not its scheme's default (Coritan's
+    // :7337), or the server signs another host and refuses the link.
+    let host = presigned_host(parsed);
+    let raw_path = parsed.path();
+
+    // M-13: the canonical URI is the wire path encoded once. `raw_path` is
+    // already encoded by `build_url`; encoding it again signed `a%2520b`
+    // while the URL carried `a%20b` (SignatureDoesNotMatch on every key
+    // with a space, `+`, `%`, `&` or a non-ASCII character).
+    let canonical_path = sigv4_canonical_uri(raw_path);
+
+    // Build canonical query string. SigV4 requires the query parameters to
+    // appear in alphabetical order in the canonical request; the same string
+    // is reused verbatim for the final presigned URL. With temporary
+    // credentials the session token is carried as `X-Amz-Security-Token`,
+    // which sorts between `X-Amz-Expires` and `X-Amz-SignedHeaders`.
+    let signed_headers = "host";
+    let security_token_param = session_token
+        .map(|t| format!("X-Amz-Security-Token={}&", urlencoding::encode(t)))
+        .unwrap_or_default();
+    let query_params = format!(
+        "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential={}&X-Amz-Date={}&X-Amz-Expires={}&{}X-Amz-SignedHeaders={}",
+        urlencoding::encode(&credential),
+        amz_date,
+        expires,
+        security_token_param,
+        signed_headers
+    );
+
+    // Canonical request
+    let canonical_request = format!(
+        "GET\n{}\n{}\nhost:{}\n\n{}\nUNSIGNED-PAYLOAD",
+        canonical_path, query_params, host, signed_headers
+    );
+
+    let canonical_hash = {
+        let mut hasher = Sha256::new();
+        hasher.update(canonical_request.as_bytes());
+        hex::encode(hasher.finalize())
+    };
+
+    // String to sign
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
+        amz_date, credential_scope, canonical_hash
+    );
+
+    // Calculate signature
+    fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
+        let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
+        mac.update(data);
+        mac.finalize().into_bytes().to_vec()
+    }
+
+    let k_date = hmac_sha256(
+        format!("AWS4{secret_access_key}").as_bytes(),
+        date_stamp.as_bytes(),
+    );
+    let k_region = hmac_sha256(&k_date, region.as_bytes());
+    let k_service = hmac_sha256(&k_region, b"s3");
+    let k_signing = hmac_sha256(&k_service, b"aws4_request");
+    let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
+
+    format!("{}?{}&X-Amz-Signature={}", url, query_params, signature)
 }
 
 /// A single CopyObject that failed, with what the caller needs to tell a
@@ -8045,17 +8137,17 @@ impl StorageProvider for S3Provider {
         // the clear every time anyone opens it.
         self.validate_endpoint_confidentiality()?;
 
-        // Generate a presigned URL
-        use hmac::{Hmac, Mac};
-        use sha2::{Digest, Sha256};
-
-        type HmacSha256 = Hmac<Sha256>;
-
         // A presigned URL cannot outlive the session token, so refresh first
         // (issue #301, Fase 3).
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
+        // No object: the empty key signs the bucket's listing.
+        if key.is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "a share link is made for a file, not the bucket".to_string(),
+            ));
+        }
         // SigV4 caps X-Amz-Expires at seven days for every S3 service (AWS
         // answers AuthorizationQueryParametersError above it; R2, B2, MinIO,
         // MEGA S4 and Tigris state the same limit). Asking for more used to
@@ -8084,97 +8176,30 @@ impl StorageProvider for S3Provider {
             .min(SIGV4_MAX_PRESIGN_SECS)
             .min(session_left.unwrap_or(u64::MAX));
 
-        let date_stamp = now.format("%Y%m%d").to_string();
-        let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
-
         // Single consistent snapshot of the effective credentials (issue #301).
         let creds = self.effective_credentials();
-
-        let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, self.config.region);
-        let credential = format!("{}/{}", creds.access_key_id, credential_scope);
 
         let url = self.build_url(key);
         self.validate_request_url_confidentiality(&url)?;
         let parsed =
             url::Url::parse(&url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
         refuse_rewritten_path(&url, &parsed)?;
-
-        // The host a browser sends for the link: with the port when the
-        // endpoint names one that is not its scheme's default (Coritan's
-        // :7337), or the server signs another host and refuses the link.
-        let host = presigned_host(&parsed);
-        let raw_path = parsed.path();
-
-        // M-13: the canonical URI is the wire path encoded once. `raw_path` is
-        // already encoded by `build_url`; encoding it again signed `a%2520b`
-        // while the URL carried `a%20b` (SignatureDoesNotMatch on every key
-        // with a space, `+`, `%`, `&` or a non-ASCII character).
-        let canonical_path = sigv4_canonical_uri(raw_path);
-
-        // Build canonical query string. SigV4 requires the query parameters to
-        // appear in alphabetical order in the canonical request; the same string
-        // is reused verbatim for the final presigned URL. With temporary
-        // credentials the session token is carried as `X-Amz-Security-Token`,
-        // which sorts between `X-Amz-Expires` and `X-Amz-SignedHeaders`.
-        let signed_headers = "host";
-        let security_token_param = creds
-            .session_token
-            .as_ref()
-            .map(|t| {
-                format!(
-                    "X-Amz-Security-Token={}&",
-                    urlencoding::encode(t.expose_secret())
-                )
-            })
-            .unwrap_or_default();
-        let query_params = format!(
-            "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential={}&X-Amz-Date={}&X-Amz-Expires={}&{}X-Amz-SignedHeaders={}",
-            urlencoding::encode(&credential),
-            amz_date,
+        let presigned = sigv4_presigned_get_url(
+            &url,
+            &parsed,
+            &self.config.region,
+            &creds.access_key_id,
+            creds.secret_access_key.expose_secret(),
+            creds.session_token.as_ref().map(|t| t.expose_secret()),
+            now,
             expires,
-            security_token_param,
-            signed_headers
         );
-
-        // Canonical request
-        let canonical_request = format!(
-            "GET\n{}\n{}\nhost:{}\n\n{}\nUNSIGNED-PAYLOAD",
-            canonical_path, query_params, host, signed_headers
-        );
-
-        let canonical_hash = {
-            let mut hasher = Sha256::new();
-            hasher.update(canonical_request.as_bytes());
-            hex::encode(hasher.finalize())
-        };
-
-        // String to sign
-        let string_to_sign = format!(
-            "AWS4-HMAC-SHA256\n{}\n{}\n{}",
-            amz_date, credential_scope, canonical_hash
-        );
-
-        // Calculate signature
-        fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
-            let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
-            mac.update(data);
-            mac.finalize().into_bytes().to_vec()
-        }
-
-        let k_date = hmac_sha256(
-            format!("AWS4{}", creds.secret_access_key.expose_secret()).as_bytes(),
-            date_stamp.as_bytes(),
-        );
-        let k_region = hmac_sha256(&k_date, self.config.region.as_bytes());
-        let k_service = hmac_sha256(&k_region, b"s3");
-        let k_signing = hmac_sha256(&k_service, b"aws4_request");
-        let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
 
         // The real expiry, so the caller shows when the link stops working.
         let expires_at = (now + chrono::Duration::seconds(expires as i64))
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         Ok(ShareLinkResult {
-            url: format!("{}?{}&X-Amz-Signature={}", url, query_params, signature),
+            url: presigned,
             password: None,
             expires_at: Some(expires_at),
         })
@@ -20274,6 +20299,22 @@ mod tests {
             matches!(refused, Err(ProviderError::InvalidConfig(_))),
             "{refused:?}"
         );
+    }
+
+    /// An empty key is the bucket, and a link signed for it opens the
+    /// bucket's listing: no link is made for it.
+    #[tokio::test]
+    async fn a_share_link_for_the_bucket_is_refused() {
+        let mut provider = aws_doc_provider(false);
+        for path in ["", "/", "//"] {
+            let refused = provider
+                .create_share_link(path, ShareLinkOptions::default())
+                .await;
+            assert!(
+                matches!(refused, Err(ProviderError::InvalidPath(_))),
+                "{path:?}: {refused:?}"
+            );
+        }
     }
 
     #[tokio::test]

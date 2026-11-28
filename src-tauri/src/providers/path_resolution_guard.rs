@@ -961,6 +961,7 @@ const SERVER_URL_SITES: &[(&str, &str, &str)] = &[
     ("onedrive.rs", "nextlink", "the serde rename of @odata.nextLink, followed only through next_page_on_api_origin"),
     ("onedrive.rs", "next_page", "the calls of next_page_on_api_origin that keep nextLink on Graph"),
     ("onedrive.rs", "next_link", "followed with the bearer token: next_page_on_api_origin keeps it on Graph"),
+    ("onedrive.rs", "next: Option<String>", "the @odata.nextLink of link_permission_ids, only checked for presence: a listing in part is refused, the link is never requested"),
     ("onedrive.rs", "upload_url", "an upload session URL is pre-authenticated, sent without the bearer token"),
     ("opendrive.rs", "download_link", "kept as metadata or returned as a share link, never requested"),
     ("pcloud.rs", "download_url", "built from the getfilelink host and path, fetched without the auth token"),

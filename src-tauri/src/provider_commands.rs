@@ -10295,14 +10295,17 @@ pub async fn provider_create_share_link(
         expires_in_secs,
         password,
         permissions,
-    };
+    }
+    .checked(&provider.share_link_capabilities())
+    .map_err(|e| format!("Failed to create share link: {}", e))?;
 
     let result = provider
         .create_share_link(&path, options)
         .await
         .map_err(|e| format!("Failed to create share link: {}", e))?;
 
-    info!("Created share link for {}: {}", path, result.url);
+    // The URL opens the file for whoever holds it: it is not logged.
+    info!("Created share link for {}", path);
     Ok(result)
 }
 

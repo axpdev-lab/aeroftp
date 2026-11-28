@@ -2692,7 +2692,7 @@ impl StorageProvider for GoogleDriveProvider {
             )
         });
 
-        info!("Created share link for {}: {}", path, url);
+        info!("Created share link for {}", path);
         Ok(ShareLinkResult {
             url,
             password: None,

@@ -41,7 +41,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, s3PresetOffersObjectTags, s3PresetOffersTrash, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, s3PresetOffersObjectTags, s3PresetOffersTrash, supportsNativeShareLink, sharesFoldersByLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -17706,7 +17706,8 @@ const App: React.FC = () => {
     }
 
     // Add native Share Link for providers that support it (OAuth + S3 pre-signed URLs + MEGA)
-    const hasNativeShareLink = currentProtocol && supportsNativeShareLink(currentProtocol);
+    const hasNativeShareLink = currentProtocol && supportsNativeShareLink(currentProtocol)
+      && (!file.is_dir || sharesFoldersByLink(currentProtocol));
     if (hasNativeShareLink) {
       // Resolve share link icon from provider logo map (supports S3/WebDAV sub-providers)
       const shareProviderId = liveConnectionParams.providerId;

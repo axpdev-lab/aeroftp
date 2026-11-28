@@ -466,6 +466,16 @@ impl std::fmt::Display for InsecureRedirect {
 
 impl std::error::Error for InsecureRedirect {}
 
+/// The day an OCS share expires, from its `expiration` (`2026-11-28
+/// 00:00:00`): Nextcloud keeps a date, so the day is what the link gets.
+fn ocs_share_expiry(json: &serde_json::Value) -> Option<String> {
+    let expiration = json.pointer("/ocs/data/expiration")?.as_str()?;
+    let day = expiration.get(..10)?;
+    chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+        .ok()
+        .map(|_| day.to_string())
+}
+
 /// What an error may show of a WebDAV server's reply: its message element
 /// (Sabre `<s:message>`, OCS `<message>`, a JSON `"message"`), sanitized and
 /// with the profile's base path replaced by `<base>`, or only its length.
@@ -482,11 +492,30 @@ fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     static JSON: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r#""message"\s*:\s*"((?:[^"\\]|\\.)*)""#).unwrap()
     });
-    let message = ELEMENT
-        .captures(body)
-        .or_else(|| JSON.captures(body))
-        .and_then(|found| found.get(1))
-        .map(|found| found.as_str().trim())
+    // A JSON `"message"` is read as the string it spells: the raw capture
+    // keeps JSON's escapes (`\"`, `\\`, `\/`), and a value echoed through
+    // them matches no spelling the scrub knows. A message element found
+    // inside a JSON body is JSON text all the same: its escapes are not
+    // decoded, so the guard below withholds one that holds any.
+    let body_is_json = serde_json::from_str::<serde_json::Value>(body).is_ok();
+    let (message, from_json) = match ELEMENT.captures(body).and_then(|found| found.get(1)) {
+        Some(found) => (Some(found.as_str().to_string()), body_is_json),
+        None => match JSON.captures(body).and_then(|found| found.get(1)) {
+            Some(found) => match serde_json::from_str::<String>(&format!("\"{}\"", found.as_str()))
+            {
+                Ok(text) => (Some(text), true),
+                Err(_) => {
+                    return format!(
+                        "a reply of {} bytes, withheld: its message does not decode",
+                        body.len()
+                    )
+                }
+            },
+            None => (None, false),
+        },
+    };
+    let message = message
+        .map(|message| message.trim().to_string())
         .filter(|message| !message.is_empty());
     let Some(message) = message else {
         return if body.is_empty() {
@@ -497,9 +526,18 @@ fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     };
     // Fully decoded before scrubbing, so an entity-escaped path or query
     // value (`AB&amp;CD` for `AB%26CD`) matches.
-    let Some(decoded) = super::fully_unescaped(message) else {
+    let Some(decoded) = super::fully_unescaped(&message) else {
         return super::deeply_escaped_reply(body.len());
     };
+    // A `\` left in a JSON message once its entities are decoded
+    // (`&#92;u002f`) can still spell a sent value in an escape no matcher
+    // reads, as `json_reply_without_sent_values` holds.
+    if from_json && sent.iter().any(|value| !value.is_empty()) && decoded.contains('\\') {
+        return format!(
+            "a reply of {} bytes, withheld: its message holds an escape",
+            body.len()
+        );
+    }
     let Some(mut shown) = super::without_sent_values(&decoded, sent) else {
         return super::reply_with_a_sent_value(body.len());
     };
@@ -3250,9 +3288,10 @@ impl WebDavProvider {
             .unwrap_or(false))
     }
 
-    /// OCS: Create a public share link for a file/folder.
-    /// If the Nextcloud instance enforces passwords on share links (HTTP 403),
-    /// retries automatically with a generated password and returns "url\npassword".
+    /// OCS: Create a public share link for a file/folder, with the password
+    /// asked for. Without one, a Nextcloud that enforces passwords on links
+    /// (HTTP 403) gets a generated one, returned with the link; a password
+    /// the user chose and the server refuses is the error, never replaced.
     pub async fn nextcloud_create_share(
         &mut self,
         path: &str,
@@ -3272,13 +3311,21 @@ impl WebDavProvider {
             let expire = chrono::Utc::now() + chrono::Duration::days(days as i64);
             form_body.push_str(&format!("&expireDate={}", expire.format("%Y-%m-%d")));
         }
+        let chosen_password = options.password.filter(|p| !p.is_empty());
+        // The secrets a reply must not repeat: the account's and the link's.
+        let mut sent = self.sent_secrets();
+        let mut first_form = form_body.clone();
+        if let Some(ref password) = chosen_password {
+            first_form.push_str(&format!("&password={}", urlencoding::encode(password)));
+            sent.push(password.clone());
+        }
 
         let resp: reqwest::Response = self
             .request_url(Method::POST, &url)
             .header("OCS-APIREQUEST", "true")
             .header("Accept", "application/json")
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(form_body.clone())
+            .body(first_form)
             .send()
             .await
             .map_err(send_error)?;
@@ -3297,6 +3344,7 @@ impl WebDavProvider {
         // URL, and an installation path can hold a token (CodeRabbit, #1520).
         let mut capability_unreadable = false;
         let password_needed = status == StatusCode::FORBIDDEN
+            && chosen_password.is_none()
             && match self.nextcloud_link_password_enforced(&base).await {
                 Ok(enforced) => enforced,
                 Err(_) => {
@@ -3354,7 +3402,7 @@ impl WebDavProvider {
             return Ok(ShareLinkResult {
                 url: share_url.to_string(),
                 password: Some(password),
-                expires_at: None,
+                expires_at: ocs_share_expiry(&json),
             });
         }
 
@@ -3362,7 +3410,7 @@ impl WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "OCS share failed: HTTP {} - {}",
                 status,
-                server_message(&text, &self.config.url, &self.sent_secrets())
+                server_message(&text, &self.config.url, &sent)
             )));
         }
         let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
@@ -3379,7 +3427,7 @@ impl WebDavProvider {
         Ok(ShareLinkResult {
             url: share_url.to_string(),
             password: None,
-            expires_at: None,
+            expires_at: ocs_share_expiry(&json),
         })
     }
 
@@ -8714,6 +8762,195 @@ mod tests {
         ));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         (base, posts, server)
+    }
+
+    /// Requested 183 (deep-scan item 64): the password chosen for a link is
+    /// sent with the share, the expiry Nextcloud stores is reported, and a
+    /// chosen password the server refuses is the error: it is not replaced
+    /// by a generated one, and the reply does not repeat it.
+    #[tokio::test]
+    async fn a_chosen_link_password_is_the_one_the_share_gets() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let posts = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = posts.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    if path == "/ocs/v1.php/cloud/capabilities" {
+                        return (
+                            axum::http::StatusCode::OK,
+                            r#"{"ocs":{"data":{"capabilities":{"files_sharing":{"public":{"password":{"enforced":true}}}}}}}"#.to_string(),
+                        );
+                    }
+                    seen.lock().unwrap().push(body.clone());
+                    if body.contains("&password=weak") {
+                        return (
+                            axum::http::StatusCode::FORBIDDEN,
+                            r#"{"ocs":{"meta":{"status":"failure","statuscode":403,"message":"Password weak is too short"}}}"#.to_string(),
+                        );
+                    }
+                    (
+                        axum::http::StatusCode::OK,
+                        r#"{"ocs":{"data":{"url":"https://cloud.example.test/s/abc","expiration":"2026-11-28 00:00:00"}}}"#.to_string(),
+                    )
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        let chosen = provider
+            .nextcloud_create_share(
+                "/report.pdf",
+                ShareLinkOptions {
+                    password: Some("Chosen pw&1".into()),
+                    expires_in_secs: Some(86_400),
+                    ..Default::default()
+                },
+            )
+            .await;
+        let refused = provider
+            .nextcloud_create_share(
+                "/report.pdf",
+                ShareLinkOptions {
+                    password: Some("weak".into()),
+                    ..Default::default()
+                },
+            )
+            .await;
+        let posts = posts.lock().unwrap().clone();
+        server.abort();
+        let link = chosen.expect("the share with the chosen password");
+        assert_eq!(link.url, "https://cloud.example.test/s/abc");
+        assert_eq!(link.password, None);
+        assert_eq!(link.expires_at.as_deref(), Some("2026-11-28"));
+        assert!(
+            posts[0].contains("&password=Chosen%20pw%261"),
+            "{}",
+            posts[0]
+        );
+        assert!(posts[0].contains("&expireDate="), "{}", posts[0]);
+        let err = refused.expect_err("a refused chosen password is the error");
+        assert!(!err.to_string().contains("weak"), "{err}");
+        assert_eq!(
+            posts.len(),
+            2,
+            "no retry with a generated password: {posts:?}"
+        );
+    }
+
+    /// A chosen password the server refuses and echoes back is not in the
+    /// error in any spelling: JSON-escaped (`\"`, `\\`, `\/`), or with some of
+    /// its characters percent-encoded and the rest raw (`ab%2Fcd+secret` for
+    /// `ab/cd+secret`). The reason around the echo is still shown when the
+    /// echo can be cut out; a message that keeps a `\` is withheld whole.
+    /// A message element inside a JSON body is JSON text: an escape in it
+    /// (`\u002f` for `/`) can spell a sent value no matcher reads, so it is
+    /// withheld, as a JSON `"message"` holding one is. The same element in
+    /// an XML reply is shown.
+    #[test]
+    fn a_message_element_inside_json_is_read_as_json() {
+        let sent = vec!["Chosen/Secret42".to_string()];
+        let base = "https://cloud.example.com/remote.php/dav/files/user/";
+        let shown = server_message(
+            r#"{"message":"<message>Chosen\u002fSecret42</message>"}"#,
+            base,
+            &sent,
+        );
+        for spelling in ["Chosen/Secret42", r"Chosen\u002fSecret42", "Secret42"] {
+            assert!(!shown.contains(spelling), "{shown}");
+        }
+        assert!(shown.contains("withheld"), "{shown}");
+        let xml = server_message(
+            "<d:error><s:message>Share not allowed here</s:message></d:error>",
+            base,
+            &sent,
+        );
+        assert_eq!(xml, "Share not allowed here");
+    }
+
+    #[tokio::test]
+    async fn a_refused_chosen_password_is_not_echoed_in_any_spelling() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |req: axum::extract::Request| async move {
+                let path = req.uri().path().to_string();
+                let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                if path == "/ocs/v1.php/cloud/capabilities" {
+                    return (axum::http::StatusCode::OK, "{}".to_string());
+                }
+                let password = url::form_urlencoded::parse(&body)
+                    .find(|(key, _)| key == "password")
+                    .map(|(_, value)| value.into_owned())
+                    .unwrap_or_default();
+                // The echo as each kind of server spells it in a JSON message.
+                let echo = match password.as_str() {
+                    "ab/cd+secret" => "ab%2Fcd+secret".to_string(),
+                    "slash/and/more" => r"slash\/and\/more".to_string(),
+                    other => {
+                        let quoted = serde_json::to_string(other).unwrap();
+                        quoted[1..quoted.len() - 1].to_string()
+                    }
+                };
+                (
+                    axum::http::StatusCode::FORBIDDEN,
+                    format!(
+                        r#"{{"ocs":{{"meta":{{"status":"failure","statuscode":403,"message":"Password {echo} rejected: too common"}}}}}}"#
+                    ),
+                )
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        // (password, whether the reason around it is still shown)
+        let cases = [
+            ("Q\"uoted-pw42", true),
+            ("slash/and/more", true),
+            ("ab/cd+secret", true),
+            ("Q\"uote\\back/sl", false),
+        ];
+        for (password, reason_shown) in cases {
+            let err = provider
+                .nextcloud_create_share(
+                    "/report.pdf",
+                    ShareLinkOptions {
+                        password: Some(password.into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect_err("a refused chosen password is the error")
+                .to_string();
+            let quoted = serde_json::to_string(password).unwrap();
+            let spellings = [
+                password.to_string(),
+                quoted[1..quoted.len() - 1].to_string(),
+                quoted[1..quoted.len() - 1].replace('/', r"\/"),
+                urlencoding::encode(password).into_owned(),
+                "ab%2Fcd+secret".to_string(),
+            ];
+            for spelling in spellings.iter().filter(|s| s.len() >= 8) {
+                if spelling == "ab%2Fcd+secret" && password != "ab/cd+secret" {
+                    continue;
+                }
+                assert!(!err.contains(spelling.as_str()), "{password:?}: {err}");
+            }
+            assert_eq!(
+                err.contains("rejected: too common"),
+                reason_shown,
+                "{password:?}: {err}"
+            );
+        }
+        server.abort();
     }
 
     /// #1506 row 164: the retry with a generated password follows the

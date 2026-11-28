@@ -2155,6 +2155,93 @@ pub(crate) fn reply_with_a_sent_value(bytes: usize) -> String {
     format!("a reply of {bytes} bytes, withheld: it contains a value this session sent")
 }
 
+/// A JSON reply as an error may show it, as `without_sent_values` does for
+/// text. A reply that parses is read as its values, so an echo spelled with
+/// JSON's optional escapes (`\/`, `a`) is the value again: a value sent
+/// is cut out of each string, and a string (or key) holding a short one,
+/// which cannot be cut out of the word it touches, is replaced whole, so
+/// the rest of the reply (a reason code) is still shown. A reply that does
+/// not parse is taken as text, with each value also looked for in the
+/// escaped spelling JSON requires (a `"` in a password echoes as `\"`),
+/// unless it holds a `\` once its entities are decoded, when it is not
+/// shown. Entities are decoded first (`&#47;`), as the sanitizer that
+/// follows would decode them; a string that still holds a `\` after that
+/// (`&#92;u002f`) is replaced whole.
+pub(crate) fn json_reply_without_sent_values(body: &str, sent: &[String]) -> Option<String> {
+    let (long, short): (Vec<String>, Vec<String>) = sent
+        .iter()
+        .filter(|value| !value.is_empty())
+        .cloned()
+        .partition(|value| value.len() >= 8);
+    if let Ok(mut reply) = serde_json::from_str::<serde_json::Value>(body) {
+        scrub_sent_values(&mut reply, &long, &short);
+        return serde_json::to_string(&reply).ok();
+    }
+    // Text that does not parse but holds an escape, once its entities are
+    // decoded, may spell a value in any of JSON's ways (a reply cut short):
+    // it is not shown.
+    let decoded = fully_unescaped(body)?;
+    if (!long.is_empty() || !short.is_empty()) && decoded.contains('\\') {
+        return None;
+    }
+    let mut spellings: Vec<String> = sent.to_vec();
+    spellings.extend(sent.iter().filter_map(|value| {
+        let quoted = serde_json::to_string(value).ok()?;
+        Some(quoted[1..quoted.len() - 1].to_string())
+    }));
+    // `sanitize_api_error` decodes entities after this: the scrub reads the
+    // text already decoded, so `&#47;` cannot bring a value back.
+    without_sent_values(&decoded, &spellings)
+}
+
+fn scrub_sent_values(value: &mut serde_json::Value, long: &[String], short: &[String]) {
+    // Each string is read decoded (`&#47;` is `/`), as `sanitize_api_error`
+    // will read it; one that does not settle goes whole.
+    let any_sent = !long.is_empty() || !short.is_empty();
+    let scrubbed = |text: &str| {
+        let Some(text) = fully_unescaped(text) else {
+            return "[REDACTED]".to_string();
+        };
+        // An escape left after the entities (`&#92;u002f` is `/`) can
+        // spell a value no matcher reads.
+        if (any_sent && text.contains('\\')) || contains_any_spelling(&text, short) {
+            "[REDACTED]".to_string()
+        } else {
+            redact_values(&text, long, "[REDACTED]")
+        }
+    };
+    match value {
+        serde_json::Value::String(text) => *text = scrubbed(text),
+        // A value sent can come back as a bare scalar (`true`, `42`). A
+        // number is read as a float, so its spelling here is not the one
+        // sent (`100000000000000000000` prints `1e20`): it is also compared
+        // by value with every sent value that reads as a number.
+        serde_json::Value::Number(_) | serde_json::Value::Bool(_) | serde_json::Value::Null => {
+            let text = value.to_string();
+            let equals_a_sent_number = value.as_f64().is_some_and(|number| {
+                long.iter()
+                    .chain(short)
+                    .filter_map(|sent| sent.parse::<f64>().ok())
+                    .any(|sent| sent == number)
+            });
+            if equals_a_sent_number || scrubbed(&text) != text {
+                *value = serde_json::Value::String("[REDACTED]".to_string());
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                scrub_sent_values(item, long, short);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (key, mut item) in std::mem::take(map) {
+                scrub_sent_values(&mut item, long, short);
+                map.insert(scrubbed(&key), item);
+            }
+        }
+    }
+}
+
 /// `text` with each of `values` replaced by `placeholder`, in every spelling
 /// a reflection can take: as given, percent-encoded, and decoded the way the
 /// text was (`fully_unescaped`, so a value holding a literal `&amp;` matches
@@ -2841,7 +2928,9 @@ pub enum ProviderListExecutorKind {
 }
 
 /// Options for creating a share link - provider-specific fields are optional.
-/// Providers that don't support a given option simply ignore it.
+/// An option the provider does not declare in `share_link_capabilities` is
+/// refused by [`ShareLinkOptions::checked`] before the provider sees it: a
+/// provider that ignored it made an open link of one asked to be restricted.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct ShareLinkOptions {
     /// Link expiration in seconds from now (None = permanent/provider default)
@@ -2850,6 +2939,65 @@ pub struct ShareLinkOptions {
     pub password: Option<String>,
     /// Permission level: "view", "edit", "comment" (None = provider default)
     pub permissions: Option<String>,
+}
+
+impl ShareLinkOptions {
+    /// The options as asked for, or an error when the provider cannot honour
+    /// one: an expiry, a password or an access level `capabilities` does not
+    /// declare (Google Drive and MEGA made a permanent, open link of one asked
+    /// to expire), or an expiry that lands on no date (every provider turns
+    /// the duration into a date, and one past what a date holds overflows that
+    /// arithmetic or drops the expiry). Plain view access is no option: it is
+    /// what every link gives.
+    pub fn checked(self, capabilities: &ShareLinkCapabilities) -> Result<Self, ProviderError> {
+        let refused = |what: &str| {
+            Err(ProviderError::NotSupported(format!(
+                "This provider's share links cannot carry {what}, so no link is made"
+            )))
+        };
+        if self.expires_in_secs.is_some() && !capabilities.supports_expiration {
+            return refused("an expiry");
+        }
+        if self.password.is_some() && !capabilities.supports_password {
+            return refused("a password");
+        }
+        if let Some(access) = self
+            .permissions
+            .as_deref()
+            .filter(|access| *access != "view")
+        {
+            if !capabilities.supports_permissions
+                || !capabilities
+                    .available_permissions
+                    .iter()
+                    .any(|available| available == access)
+            {
+                return refused(&format!("{access} access"));
+            }
+        }
+        if let Some(secs) = self.expires_in_secs {
+            share_link_deadline(chrono::Utc::now(), secs)?;
+        }
+        Ok(self)
+    }
+}
+
+/// The instant, in whole seconds, a link asked to live `secs` seconds from
+/// `now` ends; an error when no date holds it (`secs` past `i64`, or a
+/// timestamp past chrono's range), never "no expiry".
+pub(crate) fn share_link_deadline(
+    now: chrono::DateTime<chrono::Utc>,
+    secs: u64,
+) -> Result<chrono::DateTime<chrono::Utc>, ProviderError> {
+    i64::try_from(secs)
+        .ok()
+        .and_then(|secs| now.timestamp().checked_add(secs))
+        .and_then(|at| chrono::DateTime::from_timestamp(at, 0))
+        .ok_or_else(|| {
+            ProviderError::InvalidConfig(format!(
+                "A share link cannot expire {secs} seconds from now: no date holds that"
+            ))
+        })
 }
 
 /// Result of creating a share link - contains the URL and optional metadata
@@ -6864,6 +7012,113 @@ mod tests {
         assert!(!out.contains("&apos;"));
     }
 
+    /// An expiry no date holds is an error, never "no expiry": a provider
+    /// that read it as none made a permanent link. A plain one is the whole
+    /// second it ends on.
+    #[test]
+    fn a_share_expiry_no_date_holds_is_refused() {
+        let now = chrono::DateTime::from_timestamp(1_800_000_000, 0).unwrap();
+        for secs in [u64::MAX, i64::MAX as u64, 300_000_000_000_000] {
+            assert!(
+                matches!(
+                    share_link_deadline(now, secs),
+                    Err(ProviderError::InvalidConfig(_))
+                ),
+                "{secs}"
+            );
+            assert!(ShareLinkOptions {
+                expires_in_secs: Some(secs),
+                ..Default::default()
+            }
+            .checked(&all_options())
+            .is_err());
+        }
+        assert_eq!(
+            share_link_deadline(now, 3600).unwrap().timestamp(),
+            1_800_003_600
+        );
+        assert!(ShareLinkOptions::default().checked(&all_options()).is_ok());
+    }
+
+    fn all_options() -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "edit".into()],
+            ..Default::default()
+        }
+    }
+
+    /// An option the provider does not declare is refused before it is
+    /// sent, never dropped: dropped, it made an open, permanent link of one
+    /// asked to be restricted. Plain view access needs no declaration.
+    #[test]
+    fn a_share_option_the_provider_cannot_honour_is_refused() {
+        let none = ShareLinkCapabilities::default();
+        let asks = [
+            ShareLinkOptions {
+                expires_in_secs: Some(3600),
+                ..Default::default()
+            },
+            ShareLinkOptions {
+                password: Some("Chosen-pw42".into()),
+                ..Default::default()
+            },
+            ShareLinkOptions {
+                permissions: Some("edit".into()),
+                ..Default::default()
+            },
+        ];
+        for ask in asks {
+            assert!(
+                matches!(
+                    ask.clone().checked(&none),
+                    Err(ProviderError::NotSupported(_))
+                ),
+                "{ask:?}"
+            );
+            assert!(ask.clone().checked(&all_options()).is_ok(), "{ask:?}");
+        }
+        // An access level the provider lists none of is refused too.
+        let comment = ShareLinkOptions {
+            permissions: Some("comment".into()),
+            ..Default::default()
+        };
+        assert!(comment.checked(&all_options()).is_err());
+        for plain in [
+            ShareLinkOptions::default(),
+            ShareLinkOptions {
+                permissions: Some("view".into()),
+                ..Default::default()
+            },
+        ] {
+            assert!(plain.checked(&none).is_ok());
+        }
+    }
+
+    /// A password that reads as a number is withheld when the reply echoes
+    /// it as a bare JSON number, whose float form is spelled otherwise
+    /// (`1e20`), as well as quoted; the rest of the reply stays readable.
+    #[test]
+    fn a_numeric_password_echoed_as_a_number_is_withheld() {
+        let sent = vec!["100000000000000000000".to_string()];
+        for body in [
+            r#"{"code":"bad_password","password":100000000000000000000}"#,
+            r#"{"code":"bad_password","password":"100000000000000000000"}"#,
+            r#"{"code":"bad_password","password":1e20}"#,
+        ] {
+            let shown = json_reply_without_sent_values(body, &sent).unwrap();
+            let reply: serde_json::Value = serde_json::from_str(&shown).unwrap();
+            // serde_json prints the float `1e+20`: no spelling of it is left.
+            assert_eq!(reply["password"], "[REDACTED]", "{body}: {shown}");
+            assert_eq!(reply["code"], "bad_password", "{shown}");
+        }
+        // A number not sent is still shown.
+        let shown = json_reply_without_sent_values(r#"{"retry":30}"#, &sent).unwrap();
+        assert!(shown.contains("30"), "{shown}");
+    }
+
     /// A sent value is found in every spelling of its reflection: percent
     /// escapes in either case, any mix of encoded and raw characters, and a
     /// value holding a literal entity against
@@ -6901,6 +7156,88 @@ mod tests {
         assert_eq!(
             without_sent_values("code accepted", &short).as_deref(),
             Some("code accepted")
+        );
+    }
+
+    /// A JSON reply echoing a sent value with an optional escape (`\/`,
+    /// `\u0061`) or with the escape JSON requires (`\"`) shows the value as
+    /// `[REDACTED]`; a string holding a short value is replaced whole, and
+    /// text that is not JSON holding one is not shown.
+    #[test]
+    fn a_sent_value_echoed_in_json_is_redacted_in_every_escape() {
+        let sent = vec!["a/b\"c-secret".to_string()];
+        for body in [
+            r#"{"message":"Invalid value 'a/b\"c-secret'."}"#,
+            r#"{"message":"Invalid value 'a\/b\"c-secret'."}"#,
+            r#"{"message":"Invalid value '\u0061\/b\u0022c-secret'."}"#,
+        ] {
+            let shown = json_reply_without_sent_values(body, &sent).expect("shown");
+            assert!(!shown.contains("secret"), "{body}: {shown}");
+            assert!(shown.contains("Invalid value '[REDACTED]'"), "{shown}");
+        }
+        // An entity the sanitizer decodes afterwards cannot bring it back.
+        let entity = json_reply_without_sent_values(
+            r#"{"message":"Invalid value 'a&#47;b&quot;c-secret'."}"#,
+            &sent,
+        )
+        .expect("shown");
+        assert!(!sanitize_api_error(&entity).contains("secret"), "{entity}");
+        // A backslash behind an entity is still an escape: in a string it
+        // goes whole, in text the reply is not shown.
+        let shown = json_reply_without_sent_values(
+            r#"{"reason":"bad","message":"refused a/b&#92;u0022c-secret"}"#,
+            &sent,
+        )
+        .expect("shown");
+        assert!(!sanitize_api_error(&shown).contains("secret"), "{shown}");
+        assert!(shown.contains("\"reason\":\"bad\""), "{shown}");
+        assert_eq!(
+            json_reply_without_sent_values("refused a/b&#92;u0022c-secret", &sent),
+            None
+        );
+        // A sent value echoed as a bare scalar, anywhere; others stay.
+        let scalars = vec!["true".to_string(), "null".to_string()];
+        let shown = json_reply_without_sent_values(
+            r#"{"password":true,"list":[null,1],"other":false}"#,
+            &scalars,
+        )
+        .map(|shown| serde_json::from_str::<serde_json::Value>(&shown).unwrap());
+        assert_eq!(
+            shown,
+            Some(
+                serde_json::json!({"password": "[REDACTED]", "list": ["[REDACTED]", 1], "other": false})
+            )
+        );
+        assert_eq!(
+            json_reply_without_sent_values("true", &scalars).as_deref(),
+            Some("\"[REDACTED]\"")
+        );
+        // JSON cut short with an escape: not shown.
+        assert_eq!(
+            json_reply_without_sent_values(r#"{"message":"Invalid value 'a\/b\"c-secret'"#, &sent),
+            None
+        );
+        // Not JSON: taken as text.
+        assert_eq!(
+            json_reply_without_sent_values("refused a/b\"c-secret", &sent).as_deref(),
+            Some("refused [REDACTED]")
+        );
+        // A short value is not cut out of its string: the string goes, the
+        // rest of the reply stays.
+        let short = vec!["p/w".to_string()];
+        assert_eq!(
+            json_reply_without_sent_values(
+                r#"{"reason":"invalid_parameter","message":"bad 'p\/w'","p\/w":1}"#,
+                &short
+            )
+            .map(|shown| serde_json::from_str::<serde_json::Value>(&shown).unwrap()),
+            Some(
+                serde_json::json!({"reason": "invalid_parameter", "message": "[REDACTED]", "[REDACTED]": 1})
+            )
+        );
+        assert_eq!(
+            json_reply_without_sent_values("not json: p/w", &short),
+            None
         );
     }
 
