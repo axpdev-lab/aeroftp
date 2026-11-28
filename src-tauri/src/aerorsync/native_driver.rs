@@ -64,7 +64,7 @@ use crate::aerorsync::real_wire::{
     compress_zstd_literal_stream, decode_delta_stream, decode_file_list_entry, decode_item_flags,
     decode_ndx, decode_server_hello, decode_server_preamble, decode_server_preamble_with,
     decode_sum_block, decode_sum_head, decode_summary_frame, decode_varint,
-    decompress_zstd_literal_stream_boundaries, encode_client_negotiated_strings,
+    encode_client_negotiated_strings, ZstdSessionDecoder,
     encode_client_preamble, encode_delta_op, encode_delta_stream, encode_file_list_entry,
     encode_file_list_terminator, encode_item_flags, encode_ndx, encode_protocol_version,
     encode_sum_block, encode_sum_head, encode_summary_frame, encode_xattr_datum_section,
@@ -3702,7 +3702,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             })
             .sum();
         let compression = self.literal_compression();
-        let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, &compression)?;
+        // Single-file path: one file per session, a fresh zstd context per call.
+        let mut zstd_rx = None;
+        let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, &compression, &mut zstd_rx)?;
         let block_size = self
             .sent_sum_head
             .as_ref()
@@ -3936,7 +3938,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             })
             .sum();
         let compression = self.literal_compression();
-        let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, &compression)?;
+        // Single-file path: one file per session, a fresh zstd context per call.
+        let mut zstd_rx = None;
+        let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, &compression, &mut zstd_rx)?;
         let _ = adapter; // adapter is unused on the streaming path -
                          // engine ops carry everything apply_delta_streaming needs.
                          // Kept in the signature for parity with the bulk twin and
@@ -4007,6 +4011,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         &self,
         wire_ops: &[DeltaOp],
         compression: &LiteralCompression,
+        zstd_rx: &mut Option<ZstdSessionDecoder>,
     ) -> Result<Vec<EngineDeltaOp>, AerorsyncError> {
         // Pass 1: coalesce consecutive DeltaOp::Literal chunks into
         // per-run blobs. Each run represents one logical literal; the
@@ -4038,8 +4043,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             literal_run_blobs
         } else {
             match compression {
-                LiteralCompression::Zstd => decompress_zstd_literal_stream_boundaries(&run_slices)
-                    .map_err(|e| map_realwire_error(e, "zstd decompress delta literals"))?,
+                LiteralCompression::Zstd => {
+                    // The zstd frame spans the whole session, so the DCtx
+                    // is carried in `zstd_rx` and reused across files.
+                    let dec = zstd_rx.get_or_insert_with(ZstdSessionDecoder::new);
+                    dec.decompress_boundaries(&run_slices)
+                        .map_err(|e| map_realwire_error(e, "zstd decompress delta literals"))?
+                }
                 LiteralCompression::Deflate => {
                     crate::aerorsync::real_wire::decompress_deflate_literal_stream_boundaries(
                         &run_slices,

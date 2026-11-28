@@ -282,6 +282,10 @@ pub struct TreeListState {
     pub io_error: i32,
     /// Bytes read from the wire but not consumed by any decoder yet.
     pub buffered: Vec<u8>,
+    /// Session-wide zstd decompressor for the download path: stock rsync
+    /// sends ONE zstd frame for the whole session, split across the
+    /// files' DEFLATED_DATA records, so the DCtx must outlive each file.
+    pub(crate) zstd_rx: Option<crate::aerorsync::real_wire::ZstdSessionDecoder>,
 }
 
 impl TreeListState {
@@ -296,6 +300,7 @@ impl TreeListState {
             total_entries: 0,
             io_error: 0,
             buffered: Vec::new(),
+            zstd_rx: None,
         }
     }
 }
@@ -1399,7 +1404,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             Ok(md) if md.is_file() => tokio::fs::read(&local).await.unwrap_or_default(),
             _ => Vec::new(),
         };
-        let engine_ops = self.delta_wire_to_engine_ops(&ops, &compression)?;
+        let engine_ops = self.delta_wire_to_engine_ops(&ops, &compression, &mut state.zstd_rx)?;
         let block_size = adapter.compute_block_size(baseline.len() as u64).max(1);
         let reconstructed = adapter
             .apply_delta(&baseline, &engine_ops, block_size)

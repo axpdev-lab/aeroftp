@@ -4807,10 +4807,48 @@ pub fn decompress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<u8>, Rea
 pub fn decompress_zstd_literal_stream_boundaries(
     payloads: &[&[u8]],
 ) -> Result<Vec<Vec<u8>>, RealWireError> {
-    use zstd::zstd_safe::{DCtx, InBuffer, OutBuffer};
+    let mut session = ZstdSessionDecoder::new();
+    session.decompress_boundaries(payloads)
+}
 
-    let mut ctx = DCtx::create();
-    let staging_capacity = DCtx::out_size().max(1 << 14);
+/// Session-wide zstd decompressor for the download path. Stock rsync
+/// (`token.c::send_zstd_token`) compresses the whole session's token
+/// stream into ONE streaming zstd frame and emits it as successive
+/// `DEFLATED_DATA` records (one per flushed chunk, not one per file), so
+/// the `DCtx` must persist across files: a fresh context per file fails
+/// on every chunk after the first with "Unknown frame descriptor"
+/// (measured on the p9z-dl-inc capture: one zstd magic in the whole
+/// sender stream).
+pub(crate) struct ZstdSessionDecoder(zstd::zstd_safe::DCtx<'static>);
+
+impl std::fmt::Debug for ZstdSessionDecoder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ZstdSessionDecoder(..)")
+    }
+}
+
+impl ZstdSessionDecoder {
+    pub(crate) fn new() -> Self {
+        Self(zstd::zstd_safe::DCtx::create())
+    }
+
+    /// Decompress `payloads` in order through the session context,
+    /// returning one output per payload (empty in, empty out).
+    pub(crate) fn decompress_boundaries(
+        &mut self,
+        payloads: &[&[u8]],
+    ) -> Result<Vec<Vec<u8>>, RealWireError> {
+        decompress_zstd_literal_stream_boundaries_ctx(&mut self.0, payloads)
+    }
+}
+
+fn decompress_zstd_literal_stream_boundaries_ctx(
+    ctx: &mut zstd::zstd_safe::DCtx<'_>,
+    payloads: &[&[u8]],
+) -> Result<Vec<Vec<u8>>, RealWireError> {
+    use zstd::zstd_safe::{InBuffer, OutBuffer};
+
+    let staging_capacity = zstd::zstd_safe::DCtx::out_size().max(1 << 14);
     let mut staging: Vec<u8> = vec![0u8; staging_capacity];
     let mut results: Vec<Vec<u8>> = Vec::with_capacity(payloads.len());
 
