@@ -504,7 +504,7 @@ impl RusshSessionTransport {
         &self.config.host
     }
 
-    /// Z.1.2 — reconnect orchestration.
+    /// Z.1.2 - reconnect orchestration.
     ///
     /// Tear the current SSH handle down and re-run `connect()` using the
     /// saved [`SshTransportConfig`]. The new handle is swapped into the
@@ -1248,7 +1248,7 @@ mod tests {
         transport.cancel().await;
     }
 
-    /// Z.1.2 — reconnect refuses to fire when the cancel flag has
+    /// Z.1.2 - reconnect refuses to fire when the cancel flag has
     /// already been raised. This keeps cancel + reconnect race-free:
     /// the user's cancel always wins, even if a transient drop fires
     /// concurrently with `cancel()`.
@@ -1276,7 +1276,7 @@ mod tests {
         assert_eq!(transport.handshake_count(), 0);
     }
 
-    /// Z.1.2 — when reconnect cannot reach the server (port 1 is the
+    /// Z.1.2 - when reconnect cannot reach the server (port 1 is the
     /// canary used elsewhere), the inner handle is left empty and the
     /// handshake counter is NOT incremented. Callers can then surface
     /// the original transfer error rather than a misleading

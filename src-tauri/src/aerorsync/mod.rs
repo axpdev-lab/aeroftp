@@ -49,6 +49,7 @@ pub mod ssh_transport;
 pub mod streaming_writer;
 pub mod tests;
 pub mod transport;
+pub mod tree_driver;
 pub mod types;
 pub mod xattr_fs;
 

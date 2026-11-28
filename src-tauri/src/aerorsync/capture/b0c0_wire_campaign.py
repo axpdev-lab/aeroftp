@@ -44,6 +44,12 @@ REAL_CAPTURE = WS / "real_capture"
 FROZEN = CAPTURE / "artifacts_real" / "frozen" / "b0c0"
 
 IMAGE = "aeroftp-rsync-b0c0:latest"
+# The frozen corpus is rsync 3.2.7 at protocol 31. bookworm now ships
+# 3.5.0 (protocol 32) through bookworm-security, so captures pin the exact
+# .deb through the Dockerfile's RSYNC_DEB_VERSION build arg and their own
+# tag, leaving :latest (and the CI/compose path) untouched.
+PINNED_IMAGE = "aeroftp-rsync-b0c0:3.2.7"
+RSYNC_DEB_PIN = "3.2.7-1+deb12u6"
 CONTAINER = "aeroftp-rsync-b0c0"
 PORT = int(os.environ.get("B0C0_PORT", "2234"))
 MTIME = 1_700_000_000
@@ -151,6 +157,19 @@ def tree_p9big(r: Path):
             wfile(r / "w" / f"d{d:02d}" / f"f{f:02d}", b"x")
 
 
+def tree_p10(r: Path):
+    shared = {"user.color": b"blue", "user.tag": b"x"}
+    for n in ("f1", "f2"):
+        p = r / "xm" / "d1" / n
+        wfile(p, n.encode() * 4)
+        for k, v in shared.items():
+            os.setxattr(p, k, v)
+    p = r / "xm" / "d2" / "f3"
+    wfile(p, b"three\n")
+    os.setxattr(p, "user.long", b"L" * 80)
+    wfile(r / "xm" / "d2" / "f4", b"four\n")
+
+
 def tree_c(r: Path):
     wfile(r / "fl" / "keep" / "a.txt", b"a\n")
     wfile(r / "fl" / "keep" / "b.log", b"b\n")
@@ -160,7 +179,8 @@ def tree_c(r: Path):
 
 
 TREES = {"p1": tree_p1, "p2": tree_p2, "p3": tree_p3, "p4": tree_p4, "p5": tree_p5,
-         "p6": tree_p6, "p7": tree_p7, "p8": tree_p8, "p9": tree_p9, "p9big": tree_p9big, "c": tree_c}
+         "p6": tree_p6, "p7": tree_p7, "p8": tree_p8, "p9": tree_p9, "p9big": tree_p9big,
+         "p10": tree_p10, "c": tree_c}
 
 # ---------------------------------------------------------------- runs
 # (run id, point, tree, direction, source path inside the tree, client options,
@@ -194,8 +214,11 @@ RUNS = [
     ("p9-dl-inc", 9, "p9", "dl", "r", ["-a"], []),
     ("p9-up-noinc", 9, "p9", "up", "r", ["-a", NOINC], []),
     ("p9-dl-noinc", 9, "p9", "dl", "r", ["-a", NOINC], []),
+    ("p9z-dl-inc", 9, "p9", "dl", "r", ["-az"], []),
     ("p9big-up-inc", 9, "p9big", "up", "w", ["-a"], ["--max-entries", "4", "--max-items", "3"]),
     ("p9big-dl-inc", 9, "p9big", "dl", "w", ["-a"], ["--max-entries", "4", "--max-items", "3"]),
+    ("p10-up", 10, "p10", "up", "xm", ["-aX"], []),
+    ("p10-dl", 10, "p10", "dl", "xm", ["-aX"], []),
     ("c10-dl-inc", 10, "c", "dl", "fl",
      ["-a", "--include=keep/b.log", "--exclude=*.log", "--filter=- tmp/"], []),
     ("c10-dl-noinc", 10, "c", "dl", "fl",
@@ -217,14 +240,15 @@ def ssh_e(key: Path) -> str:
 
 def stack_up():
     sh(["bash", "-c", f'source "{CAPTURE}/fixture_key.sh" && ensure_fixture_key "{CAPTURE}"'])
-    sh(["docker", "build", "-q", "-t", IMAGE, "-f", str(CAPTURE / "Dockerfile.real-rsync-sshd"),
+    sh(["docker", "build", "-q", "-t", PINNED_IMAGE, "-f", str(CAPTURE / "Dockerfile.real-rsync-sshd"),
         "--build-arg", f"TESTUSER_UID={os.getuid()}", "--build-arg", f"TESTUSER_GID={os.getgid()}",
+        "--build-arg", f"RSYNC_DEB_VERSION={RSYNC_DEB_PIN}",
         str(CAPTURE)], stdout=subprocess.DEVNULL)
     subprocess.run(["docker", "rm", "-f", CONTAINER], capture_output=True)
     WS.mkdir(exist_ok=True)
     REAL_CAPTURE.mkdir(parents=True, exist_ok=True)
     sh(["docker", "run", "-d", "--name", CONTAINER, "-p", f"127.0.0.1:{PORT}:22",
-        "-v", f"{CAPTURE / 'keys'}:/keys:ro", "-v", f"{WS}:/workspace", IMAGE],
+        "-v", f"{CAPTURE / 'keys'}:/keys:ro", "-v", f"{WS}:/workspace", PINNED_IMAGE],
        stdout=subprocess.DEVNULL)
     for _ in range(30):
         r = subprocess.run(["rsync", "-e", ssh_e(CAPTURE / "keys" / "id_ed25519"), "--list-only",
@@ -237,6 +261,8 @@ def stack_up():
     ver = subprocess.run(["docker", "exec", CONTAINER, "rsync", "--version"],
                          capture_output=True, text=True).stdout.splitlines()[0]
     print(f"[b0c0] server: {ver}")
+    if "3.2.7" not in ver:
+        raise SystemExit(f"[b0c0] server rsync is not the pinned 3.2.7: {ver}")
     print(f"[b0c0] client: {subprocess.run(['rsync', '--version'], capture_output=True, text=True).stdout.splitlines()[0]}")
     # The probe above went through the proxy too: clear what it captured.
     clear_sessions()
@@ -273,6 +299,10 @@ def build_argv(run, key: Path, dest: Path) -> list:
     re-running the scenario."""
     rid, _, tree, direction, rel, opts, _ = run
     opts = [o.replace("@LIST@", str(dest / "files-from.txt")) for o in opts]
+    # The frozen corpus is protocol 31. Hosts whose rsync defaults to 32
+    # (3.4.x) must be pinned; older runs keep their recorded argv untouched.
+    if rid.startswith(("p10-", "p9z-")):
+        opts = ["--protocol=31", *opts]
     remote = "testuser@127.0.0.1:/workspace/b0c0"
     if direction == "up":
         if rid == "c12-up-mkpath":
@@ -330,10 +360,20 @@ def run_one(run, key: Path) -> Path:
         raise SystemExit(f"[b0c0] {rid}: expected exactly one proxied session, got {len(sessions)}")
     for f in sessions[0].iterdir():
         shutil.copy2(f, dest / f.name)
+    check_protocol_marker(dest, rid)
     if r.returncode != 0:
         raise SystemExit(f"[b0c0] {rid}: rsync exited {r.returncode}: {r.stderr.decode(errors='replace')}")
     (dest / "point.txt").write_text(f"{point}\n")
     return dest
+
+
+def check_protocol_marker(dest: Path, rid: str):
+    """Fail the run unless capture_in.bin opens with the protocol-31 marker.
+    A session negotiated at protocol 32 writes 0x20 there; the corpus is 31."""
+    head = (dest / "capture_in.bin").read_bytes()[:4]
+    if head != b"\x1f\x00\x00\x00":
+        raise SystemExit(f"[b0c0] {rid}: capture_in.bin does not start with the "
+                         f"protocol-31 marker (got {head.hex()})")
 
 
 def decode(run, dest: Path):

@@ -196,14 +196,41 @@ class DecoderTests(unittest.TestCase):
                     self.assertEqual(r.returncode, 3, r.stdout[-300:])
                     self.assertIn("!! STOP", r.stdout)
 
-    def test_compressed_stream_is_refused_by_name(self):
+    def test_compressed_zstd_stream_decodes(self):
+        # frozen/upload is a -z session: its DEFLATED_DATA payloads carry a
+        # zstd session stream, so the compressed grammar must decode it to
+        # the closing sequence instead of refusing.
         r = self.decode(FROZEN / "upload")
-        self.assertEqual(r.returncode, 3)
-        self.assertIn("(-z) is not modelled", r.stdout)
+        self.assertEqual(r.returncode, 0, r.stdout[-400:])
+        self.assertIn("DEFLATED_DATA", r.stdout)
+        self.assertIn("zstd, session CCtx", r.stdout)
+        self.assertIn("END_FLAG", r.stdout)
+        self.assertIn("closing sequence complete", r.stdout)
+
+    def test_compressed_token_grammar_synthetic(self):
+        # One synthetic sender token stream: a DEFLATED_DATA chunk, a
+        # TOKENRUN_REL match, a TOKENRUN_LONG match and END_FLAG.
+        sys.path.insert(0, str(HERE))
+        import decode_rsync_wire as d
+        payload = d.ZSTD_MAGIC + b"\x00" * 9
+        stream = bytes([0x40, len(payload)]) + payload
+        stream += bytes([0xC5, 0x03, 0x00])                    # TOKENRUN_REL rel=5 run=3
+        stream += b"\x21" + (7).to_bytes(4, "little") + b"\x02\x00"  # TOKENRUN_LONG tok=7 run=2
+        stream += b"\x00"                                     # END_FLAG
+        out, comp = d.Out(), {"is_zstd": None, "dctx": None, "comp_bytes": 0, "lit_bytes": 0}
+        reader = d.Reader(stream)
+        d.decode_compressed_file_data(out, reader, out, comp)
+        text = "\n".join(out.lines)
+        self.assertIn(f"DEFLATED_DATA len={len(payload)} (zstd, session CCtx)", text)
+        self.assertIn("match token -1-rx_token=-6", text)
+        self.assertIn("match token -1-rx_token=-8", text)
+        self.assertIn("END_FLAG", text)
+        self.assertEqual(reader.left(), 0)
+        self.assertEqual(comp["comp_bytes"], len(payload))
 
     def test_every_frozen_campaign_capture_decodes(self):
         runs = sorted(p for p in (FROZEN / "b0c0").iterdir() if p.is_dir())
-        self.assertEqual(len(runs), 35)
+        self.assertEqual(len(runs), 38)
         for run in runs:
             extra = ["--files-from"] if run.name == "c11-dl" else []
             if run.name.startswith(("p8", "p9big")):
@@ -212,6 +239,13 @@ class DecoderTests(unittest.TestCase):
                 r = self.decode(run, *extra)
                 self.assertEqual(r.returncode, 0, r.stdout[-300:])
 
+    def test_p9z_compressed_download_decodes_to_the_end(self):
+        # p9z-dl-inc is p9-dl-inc with -az: the sender stream carries a
+        # session-wide zstd CCtx, and the decode must reach the stats tail.
+        r = self.decode(FROZEN / "b0c0" / "p9z-dl-inc")
+        self.assertEqual(r.returncode, 0, r.stdout[-400:])
+        self.assertIn("zstd, session CCtx", r.stdout)
+        self.assertIn("closing sequence complete", r.stdout)
 
     def test_every_frozen_b1_capture_decodes(self):
         # The B1 addendum (b1_wire_campaign.py): devices, specials, a symlink

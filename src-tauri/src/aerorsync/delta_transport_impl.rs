@@ -721,7 +721,7 @@ impl AerorsyncDeltaTransport {
 /// The temp is removed while the writer still holds its claim, and the
 /// writer is dropped after: released first, another download of the target
 /// could take the temp in between and have it removed here.
-async fn discard_streaming_temp(writer: StreamingAtomicWriter) {
+pub(crate) async fn discard_streaming_temp(writer: StreamingAtomicWriter) {
     let _ = fs::remove_file(writer.temp_path()).await;
     drop(writer);
 }
@@ -734,18 +734,33 @@ async fn discard_streaming_temp(writer: StreamingAtomicWriter) {
 /// touching the filesystem (no TOCTOU, no following the link).
 #[cfg(unix)]
 fn symlink_target_is_safe(target: &str) -> bool {
+    // The single-file link sits at the download root, so its directory is
+    // the root itself: identical verdicts to the pre-tree behaviour.
+    symlink_target_is_safe_in_root(std::path::Path::new(""), target)
+}
+
+/// Audit S1, tree form: is `target` safe for a symlink at relative path
+/// `link_rel` inside the download root? The target is resolved lexically
+/// against the link's own directory and must not rise above the download
+/// ROOT (not just the link's directory): `a/b/l -> ../x` stays inside the
+/// root and is allowed, while `l -> ../x` at the root is refused. Resolved
+/// without touching the filesystem (no TOCTOU).
+#[cfg(unix)]
+pub(crate) fn symlink_target_is_safe_in_root(link_rel: &std::path::Path, target: &str) -> bool {
     use std::path::{Component, Path};
     let path = Path::new(target);
     if path.is_absolute() {
         return false;
     }
+    let link_dir = link_rel.parent().unwrap_or_else(|| Path::new(""));
+    let joined = link_dir.join(path);
     let mut depth: i64 = 0;
-    for component in path.components() {
+    for component in joined.components() {
         match component {
             Component::ParentDir => {
                 depth -= 1;
                 if depth < 0 {
-                    // Rose above the link's own directory.
+                    // Rose above the download root.
                     return false;
                 }
             }
@@ -757,6 +772,43 @@ fn symlink_target_is_safe(target: &str) -> bool {
         }
     }
     true
+}
+
+/// The whole-file checksum decision, pure, shared by the product layer and
+/// the tree driver (B3.2). `algo` is the negotiated algorithm, `expected`
+/// the trailer the peer sent, `actual` the digest recomputed in-tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WholeFileChecksumDecision {
+    /// Digests agree.
+    Match,
+    /// Peer sent a checksum and the recomputed digest differs.
+    Mismatch,
+    /// The peer sent no whole-file checksum: nothing to verify.
+    Absent,
+    /// A checksum arrived but no digest could be recomputed (no resolved
+    /// algorithm): never commit unverified.
+    Unverifiable,
+}
+
+/// Decide the whole-file checksum outcome from its three inputs. Pure: no
+/// I/O, no seed (rsync's file checksum is unseeded for every negotiable
+/// algorithm, see the SEED note at the verify site).
+pub(crate) fn decide_whole_file_checksum(
+    algo: Option<&str>,
+    expected: Option<&[u8]>,
+    actual: Option<&[u8]>,
+) -> WholeFileChecksumDecision {
+    let Some(expected) = expected else {
+        return WholeFileChecksumDecision::Absent;
+    };
+    if algo.is_none() {
+        return WholeFileChecksumDecision::Unverifiable;
+    }
+    match actual {
+        Some(actual) if actual == expected => WholeFileChecksumDecision::Match,
+        Some(_) => WholeFileChecksumDecision::Mismatch,
+        None => WholeFileChecksumDecision::Unverifiable,
+    }
 }
 
 /// Y-RSC.4: materialise a downloaded symlink entry at `local_path` with
@@ -1361,7 +1413,12 @@ where
         Some(XXH128_ALGO_NAME) => {
             if let Some(expected) = driver.received_file_checksum() {
                 let actual = xxh128_wire_bytes(reconstructed_digest);
-                if expected != actual.as_slice() {
+                if decide_whole_file_checksum(
+                    driver.effective_checksum_algo(),
+                    Some(expected),
+                    Some(&actual),
+                ) == WholeFileChecksumDecision::Mismatch
+                {
                     let stderr = format!(
                         "delta reconstruction checksum mismatch for {}: sender sent xxh128 {}, \
                          reconstruction hashes to {} ({} bytes); falling back to classic download",
@@ -1411,7 +1468,12 @@ where
                         return Err(TransferError::Soft { detail: stderr });
                     }
                 };
-                if expected != actual.as_slice() {
+                if decide_whole_file_checksum(
+                    driver.effective_checksum_algo(),
+                    Some(expected),
+                    Some(&actual),
+                ) == WholeFileChecksumDecision::Mismatch
+                {
                     let stderr = format!(
                         "delta reconstruction checksum mismatch for {}: sender sent {} {}, \
                          reconstruction hashes to {} ({} bytes); falling back to classic download",
@@ -1633,7 +1695,7 @@ impl AerorsyncBatch {
         local_path: &Path,
         remote_path: &str,
     ) -> Result<TransferReport, TransferError> {
-        // Z.1.2 — single retry budget on transient SSH channel drops.
+        // Z.1.2 - single retry budget on transient SSH channel drops.
         // The first attempt uses the existing shared session; if it
         // fails with a transient I/O error or a `TransferFailed` whose
         // stderr matches the channel-drop allowlist, we re-authenticate
@@ -1716,7 +1778,7 @@ impl AerorsyncBatch {
         remote_path: &str,
         local_path: &Path,
     ) -> Result<TransferReport, TransferError> {
-        // Z.1.2 — symmetric retry budget on the download leg. Reconnect
+        // Z.1.2 - symmetric retry budget on the download leg. Reconnect
         // semantics match the upload branch above; see the matching
         // comment for the classification rules.
         tracing::debug!(
@@ -1878,7 +1940,7 @@ fn build_source_entry(
     // B3 / X.3: when the session negotiates `-X`, read `user.*` xattrs
     // via libc. `None` when xattrs are off keeps the encoder emitting
     // zero xattr bytes (frozen oracles stay byte-identical). `Some(vec)`
-    // — empty or not — when on matches the codec contract for negotiated
+    // - empty or not - when on matches the codec contract for negotiated
     // sessions.
     let xattrs = if metadata_flags.preserve_xattrs {
         Some(crate::aerorsync::xattr_fs::read_user_xattrs(local_path).unwrap_or_default())
@@ -4056,7 +4118,7 @@ mod tests {
     /// Same probe, but reading the **link itself** (`lgetxattr`) instead of
     /// its target. R2 needs this: asking `getxattr` about an uploaded symlink
     /// resolves the target, and when that target does not exist remotely the
-    /// call returns ENOENT — which would make "the link carries no attribute"
+    /// call returns ENOENT - which would make "the link carries no attribute"
     /// pass for the wrong reason. See
     /// `delta_upload_symlink_xattr_not_inherited_live_lane_3`, which asserts
     /// both probes to keep that distinction observable.
@@ -4105,7 +4167,7 @@ PY"#
         // "Absent" must mean ENODATA and nothing else. The first version of
         // this probe printed MISSING on *any* first-call failure and mapped an
         // empty stdout to `None`, so a wrong path, a permission error or an
-        // unreadable namespace all read as "the attribute is not there" — and
+        // unreadable namespace all read as "the attribute is not there" - and
         // every `expect_absent` assertion in this file would have passed
         // without the probe ever having worked. Reported by CodeRabbit on #487.
         //
@@ -4773,7 +4835,7 @@ PY"#
     /// unit test on the local wrappers. What was never observed is the wire
     /// consequence: that stock rsync ends up with a bare link. On Linux the
     /// kernel forbids `user.*` on a symlink, so the pre-fix behaviour could
-    /// also make the receiver answer EPERM — this test therefore asserts the
+    /// also make the receiver answer EPERM - this test therefore asserts the
     /// upload *succeeds* as well as what it leaves behind.
     ///
     /// Two remote probes, deliberately: `lgetxattr` on the link must find

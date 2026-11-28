@@ -37,7 +37,7 @@ fn env_path(name: &str) -> PathBuf {
 /// fixtures with plain `fs::write` instead of copying them over SSH.
 ///
 /// It used to be hardcoded to the in-repo directory. That made the whole lane
-/// unrunnable for anyone whose checkout does not own that tree — on a machine
+/// unrunnable for anyone whose checkout does not own that tree - on a machine
 /// where the workspace had been created by a different account, three tests
 /// died on `PermissionDenied` inside `write_bytes` before reaching a single
 /// wire byte. `RSNP_TEST_REAL_WORKSPACE` lets a runner point both the mount
@@ -58,7 +58,7 @@ fn real_workspace() -> PathBuf {
 /// across lanes, and wrong for CI: libtest has no "skipped" state, so the
 /// early return prints one line to stderr and reports **ok**. Eight tests
 /// that never ran are indistinguishable, in a result list, from eight that
-/// passed — which is exactly how this lane stayed silently inactive.
+/// passed - which is exactly how this lane stayed silently inactive.
 ///
 /// Setting `RSNP_TEST_REAL_REQUIRED=1` turns the missing configuration into a
 /// panic, so a job that means to exercise the lane cannot pass by skipping it.

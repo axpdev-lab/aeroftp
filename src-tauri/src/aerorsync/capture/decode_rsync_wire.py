@@ -27,6 +27,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+try:
+    import zstandard as _zstd
+except ImportError:
+    _zstd = None
+
 MPLEX_BASE = 7
 MSG_NAMES = {
     0: "MSG_DATA", 1: "MSG_ERROR_XFER", 2: "MSG_INFO", 3: "MSG_ERROR",
@@ -623,9 +628,77 @@ def try_stats_tail(out: Out, r: Reader, o: Opts, st: FlistState) -> bool:
     return True
 
 
+ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+
+
+def decode_compressed_file_data(out, r, tgt, comp):
+    """Delta token stream under -z (token.c recv_zstd_token grammar, v3.2.7).
+
+    Flag byte: END_FLAG 0; TOKEN_LONG 0x20 / TOKENRUN_LONG 0x21 (32-bit token,
+    optional 16-bit run); DEFLATED_DATA (flag & 0xC0) == 0x40 with a 14-bit
+    length (6 flag bits + 1 byte); TOKEN_REL 0x80 / TOKENRUN_REL 0xc0 with a
+    6-bit relative token and optional 16-bit run. Literal bytes travel only
+    inside DEFLATED_DATA payloads; match tokens stay in the clear.
+
+    comp carries per-stream state: is_zstd is decided by the first payload's
+    frame magic (a zstd CCtx writes its header first), dctx is the optional
+    streaming decompressor, comp_bytes/lit_bytes the running totals.
+    """
+    rx_token = 0
+    while True:
+        s = r.pos
+        flag = r.byte()
+        if (flag & 0xC0) == 0x40:
+            n = ((flag & 0x3F) << 8) + r.byte()
+            payload = r.take(n)
+            if comp["is_zstd"] is None:
+                comp["is_zstd"] = payload.startswith(ZSTD_MAGIC)
+                if not comp["is_zstd"]:
+                    raise Stop("compressed token stream (-z) is not zstd; "
+                               "non-zstd compressors are not modelled")
+                if _zstd is not None:
+                    try:
+                        comp["dctx"] = _zstd.ZstdDecompressor().decompressobj()
+                    except Exception:
+                        comp["dctx"] = None
+            comp["comp_bytes"] += n
+            note = "zstd, session CCtx"
+            if comp.get("dctx") is not None:
+                try:
+                    produced = comp["dctx"].decompress(payload)
+                    comp["lit_bytes"] += len(produced)
+                    note += f", {len(produced)} literal bytes out"
+                except Exception:
+                    pass
+            field_line(tgt, r, s, f"DEFLATED_DATA len={n} ({note})")
+            continue
+        if flag == 0:
+            field_line(tgt, r, s, "END_FLAG (end of file data)")
+            break
+        if flag & 0x80:
+            rx_token += flag & 0x3F
+            run = (flag >> 6) & 1
+        else:
+            rx_token = r.int32()
+            run = flag & 1
+        nrun = 0
+        if run:
+            nrun = r.byte() + (r.byte() << 8)
+        field_line(tgt, r, s, f"match token -1-rx_token={-(rx_token + 1)} run={nrun + 1}")
+        if nrun:
+            # r_running semantics: the header returns once, then rx_run more
+            # consecutive block indexes follow.
+            rx_token += nrun
+    tail = f"compressed token data: {comp['comp_bytes']} bytes (zstd payloads)"
+    if _zstd is not None:
+        tail += f", {comp['lit_bytes']} literal bytes"
+    field_line(tgt, r, r.pos, tail)
+
+
 def transfer_phase(out: Out, r: Reader, o: Opts, st: FlistState, role: str, max_items: int):
     """Walk the post-list stream of one side. role is 'sender' or 'generator'."""
     ndxs = NdxState()
+    comp = {"is_zstd": None, "dctx": None, "comp_bytes": 0, "lit_bytes": 0}
     out(f"-- {role} stream after the initial file list")
     printed = 0
     counts = {"file": 0, "done": 0, "segments": 0}
@@ -720,19 +793,21 @@ def transfer_phase(out: Out, r: Reader, o: Opts, st: FlistState, role: str, max_
                 field_line(tgt, r, s, f"{count} block signatures")
         else:
             if o.has("z"):
-                raise Stop("compressed token stream (-z) is not modelled by this decoder; "
-                           "07-deflate-token-wire-evidence.md covers it")
-            while True:
-                s = r.pos
-                tok = r.int32()
-                if tok == 0:
-                    field_line(tgt, r, s, "token 0 = end of file data")
-                    break
-                if tok > 0:
-                    lit = r.take(tok)
-                    field_line(tgt, r, s, f"literal {tok} bytes {lit[:16]!r}")
-                else:
-                    field_line(tgt, r, s, f"match block {-(tok + 1)}")
+                comp["comp_bytes"] = 0
+                comp["lit_bytes"] = 0
+                decode_compressed_file_data(out, r, tgt, comp)
+            else:
+                while True:
+                    s = r.pos
+                    tok = r.int32()
+                    if tok == 0:
+                        field_line(tgt, r, s, "token 0 = end of file data")
+                        break
+                    if tok > 0:
+                        lit = r.take(tok)
+                        field_line(tgt, r, s, f"literal {tok} bytes {lit[:16]!r}")
+                    else:
+                        field_line(tgt, r, s, f"match block {-(tok + 1)}")
             s = r.pos
             field_line(tgt, r, s, f"whole-file checksum {r.take(o.csum_len).hex()}")
     if printed > max_items:
