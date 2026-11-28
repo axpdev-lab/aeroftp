@@ -2942,10 +2942,7 @@ mod b3_2_reactive {
             };
             pos += c2;
             if iflags & 0x0100 != 0 {
-                loop {
-                    let Ok((skip, c3)) = decode_varint(&app[pos..]) else {
-                        break;
-                    };
+                while let Ok((skip, c3)) = decode_varint(&app[pos..]) {
                     pos += c3;
                     if skip == 0 {
                         break;
@@ -3086,7 +3083,7 @@ mod b3_2_reactive {
         let mut echoes_seen = 0usize;
         let tail = |events: &mut Vec<ReplayEvent>, pos: usize, app: &[u8]| {
             assert!(
-                app.len() >= 1 && app[app.len() - 1] == 0x00,
+                !app.is_empty() && app[app.len() - 1] == 0x00,
                 "capture ends with NDX_DONE"
             );
             events.push(ReplayEvent::Stats(app[pos..app.len() - 1].to_vec()));

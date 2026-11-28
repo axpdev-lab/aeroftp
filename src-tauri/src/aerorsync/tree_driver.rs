@@ -659,7 +659,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
 /// Options for [`AerorsyncDriver::drive_download_tree`]: the list limits
 /// plus the metadata policies, mirroring the single-file defaults.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct TreeDownloadOptions {
     pub limits: TreeListLimits,
     pub preserve_acls: bool,
@@ -667,19 +667,6 @@ pub struct TreeDownloadOptions {
     pub preserve_uid: bool,
     pub preserve_gid: bool,
     pub fail_on_metadata_loss: bool,
-}
-
-impl Default for TreeDownloadOptions {
-    fn default() -> Self {
-        Self {
-            limits: TreeListLimits::default(),
-            preserve_acls: false,
-            preserve_xattrs: false,
-            preserve_uid: false,
-            preserve_gid: false,
-            fail_on_metadata_loss: false,
-        }
-    }
 }
 
 /// The outcome of [`AerorsyncDriver::drive_download_tree`]: one result per
@@ -1029,8 +1016,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     }
 
     /// Send one file item request: ndx + iflags (+ the xattr request
-    /// section when the entry carries attributes and `-X` was negotiated)
-    /// + sum_head. The signatures use the same construction as the
+    /// section when the entry carries attributes and `-X` was negotiated),
+    /// then the sum_head. The signatures use the same construction as the
     /// single-file path (block size from the adapter, strong = negotiated
     /// block algo truncated to s2length); with no local baseline the head
     /// is all zeros, exactly like the p9-dl-inc capture.
@@ -1121,6 +1108,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// dir_flist done is sent here: the done is tied to the cursor leaving
     /// a dir_flist, not to a segment arriving). Any other item ndx is a
     /// stream error.
+    #[allow(clippy::too_many_arguments)]
     async fn wait_tree_echo(
         &mut self,
         want: i32,
@@ -1264,6 +1252,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// the delta is read from `state.buffered` (C1: bytes past the entry
     /// stay there), written through a `StreamingAtomicWriter`, verified
     /// against the whole-file checksum (step 3 helper), then finalized.
+    #[allow(clippy::too_many_arguments)]
     async fn serve_tree_file(
         &mut self,
         dest_root: &Path,
@@ -1690,7 +1679,7 @@ mod tests {
         assert_eq!(flist_entry_cmp(&dot, &file), std::cmp::Ordering::Less);
         assert_eq!(flist_entry_cmp(&dot, &zdir), std::cmp::Ordering::Less);
         assert_eq!(flist_entry_cmp(&file, &dot), std::cmp::Ordering::Greater);
-        let mut v = vec![zdir, file, dot];
+        let mut v = [zdir, file, dot];
         v.sort_by(flist_entry_cmp);
         assert_eq!(v[0].path, b".");
         assert_eq!(v[1].path, b"a.txt");
