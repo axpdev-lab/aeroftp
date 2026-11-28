@@ -29,9 +29,26 @@ if [ ! -x "$LIB_DIR/aeroftp-cli" ]; then
     exit 1
 fi
 
+# The sha256 of a file, from coreutils only: the .rpm does not require
+# diffutils, and without `cmp` the old `! cmp -s` test was always true, so a
+# second run moved the dispatcher over the GUI payload. A file that cannot be
+# hashed stops the script: guessing "different" would make the same move.
+digest_of() {
+    local out
+    out="$(sha256sum < "$1")" || {
+        echo "ERROR: cannot hash $1" >&2
+        exit 1
+    }
+    printf '%s\n' "${out%% *}"
+}
+
 # Tauri installs the GUI payload as /usr/bin/aeroftp. Move that real GUI
 # payload under /usr/lib/aeroftp and put the dispatcher at /usr/bin/aeroftp.
-if [ -f "$DISPATCH_BIN" ] && ! cmp -s "$DISPATCH_BIN" "$DISPATCH_SRC"; then
+if [ -f "$DISPATCH_BIN" ]; then
+    DISPATCH_BIN_SHA="$(digest_of "$DISPATCH_BIN")" || exit 1
+    DISPATCH_SRC_SHA="$(digest_of "$DISPATCH_SRC")" || exit 1
+fi
+if [ -f "$DISPATCH_BIN" ] && [ "$DISPATCH_BIN_SHA" != "$DISPATCH_SRC_SHA" ]; then
     mv -f "$DISPATCH_BIN" "$GUI_BIN"
     chmod 0755 "$GUI_BIN"
 fi

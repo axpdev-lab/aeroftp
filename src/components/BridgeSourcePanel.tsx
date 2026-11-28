@@ -18,6 +18,7 @@ import { bridgeProfileKey, commitImportedServersForScan, createScanSettler, impo
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
 import { securityRelaxations } from '../utils/profileSecurity';
+import { ImportSuccessOverlay, type ImportCounts } from './ImportSuccessOverlay';
 
 interface BridgeImportResult {
     servers: ImportedServer[];
@@ -97,6 +98,9 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    // The counts of a confirmed import, shown in the success overlay for a
+    // short pause before the dialog closes itself.
+    const [importSummary, setImportSummary] = useState<ImportCounts | null>(null);
 
     // import state
     const [detectedPath, setDetectedPath] = useState<string | null>(null);
@@ -233,6 +237,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         setLoading(true);
         setError(null);
         setResult(null);
+        setImportSummary(null);
         setKeptRelaxed(new Set());
         await scans.release();
         let latest = true;
@@ -327,7 +332,19 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             if (outcome.updated > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(outcome.updated)));
             setSuccess(parts.join(', '));
             cancelDelayedClose();
-            closeTimerRef.current = setTimeout(() => onClose(), 2500);
+            // The overlay auto-closes the dialog, so it mounts only when there
+            // is nothing to read first: a scan that warned (e.g. a password
+            // that did not reveal) keeps its warnings list visible, with no
+            // auto-close (CodeRabbit Minor on #1641).
+            if ((result.warnings ?? []).length === 0) {
+                // Show the real counts (added / not selected or skipped /
+                // replaced) for a short pause; the overlay closes the dialog.
+                setImportSummary({
+                    imported: outcome.added,
+                    skipped: result.skipped.length + (result.servers.length - selected.length),
+                    overwritten: outcome.updated,
+                });
+            }
         } finally {
             committingRef.current = false;
             setLoading(false);
@@ -398,6 +415,15 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     if (direction === 'import') {
         return (
             <div className="space-y-4">
+                {importSummary && (
+                    <ImportSuccessOverlay
+                        counts={importSummary}
+                        onDone={() => {
+                            setImportSummary(null);
+                            onClose();
+                        }}
+                    />
+                )}
                 {secretNote()}
                 {!result ? (
                     detectedPath === null ? (

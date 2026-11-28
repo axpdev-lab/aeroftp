@@ -93,10 +93,6 @@ type Reviewed = (
 const BUILDS_A_REQUEST: &str = "builds a request URL or body, not text";
 /// Prints the origin only (scheme, host, port), never a path, query or userinfo.
 const ORIGIN_ONLY: &str = "prints the origin only";
-/// An S3 request URL: endpoint origin without query, fragment or userinfo
-/// (refused by `S3Provider::new`), bucket, key, operation query; credentials
-/// are in signed headers.
-const S3_URL: &str = "an S3 request URL, no secret by construction";
 /// The S3 endpoint: no query, fragment or userinfo (refused by
 /// `S3Provider::new`), and S3 authenticates by signed headers, so its path is
 /// a gateway prefix and not a credential.
@@ -107,6 +103,10 @@ const SERVER_MESSAGE: &str = "the server's message element only, base path remov
 /// (`s3::s3_error_text`), or the reply's length.
 const S3_MESSAGE: &str = "the S3 Code and Message only";
 const S3_ENDPOINT: &str = "the S3 endpoint, no secret by construction";
+/// An S3 path, key, request URL or error cause with every value sent in this
+/// session (a token in a folder name) redacted or the text withheld
+/// (`s3::text_without_sent_values`, `shown_path`, `listed_key_cause_text`).
+const S3_SENT_REDACTED: &str = "an S3 path, key or URL with every sent value redacted";
 
 const REVIEWED: &[Reviewed] = &[
     ("providers/webdav.rs", "format", "{}:{}", ", method, uri", "the Digest A2 input, hashed and never shown"),
@@ -140,8 +140,10 @@ const REVIEWED: &[Reviewed] = &[
     ("providers/s3.rs", "ProviderError::TransferFailed", "", "e.without_url().to_string()", "the reqwest error with its URL dropped"),
     ("providers/s3.rs", "ProviderError::ParseError", "", "e.without_url().to_string()", "the reqwest error with its URL dropped"),
     ("providers/s3.rs", "format", "{}?{}", ", url, query", BUILDS_A_REQUEST),
-    ("providers/s3.rs", "debug", "[S3] {} {} (bucket={} region={} path_style={})", ", method, url, self.config.bucket, self.config.region, self.config.path_style", S3_URL),
-    ("providers/s3.rs", "warn", "S3 Response Status: {} for {} {}", ", status, method, url", S3_URL),
+    ("providers/s3.rs", "debug", "[S3] {} {} (bucket={} region={} path_style={})", ", method, self.logged_url(&url), self.config.bucket, self.config.region, self.config.path_style", S3_SENT_REDACTED),
+    ("providers/s3.rs", "warn", "S3 Response Status: {} for {} {}", ", status, method, self.logged_url(&url)", S3_SENT_REDACTED),
+    ("providers/s3.rs", "ProviderError::Other", "", "partial_rename_message( moved, to_delete.len(), keys.len(), &shown_path(from, &self.sent_secrets()), &shown_path(to, &self.sent_secrets()), &listed_key_text(old_key, &self.sent_secrets()), &listed_key_cause_text(&e, &self.sent_secrets()), )", S3_SENT_REDACTED),
+    ("providers/s3.rs", "format", "rename copied {} objects to {}, but deleting the originals failed, \\ so the folder now exists under both names: {}", ", to_delete.len(), shown_path(to, &sent), listed_key_cause_text(&e, &sent)", S3_SENT_REDACTED),
     ("providers/s3.rs", "format", "{}/", ", self.endpoint().trim_end_matches('/')", BUILDS_A_REQUEST),
     ("providers/s3.rs", "format", "S3 Storage: {} - Bucket: {}", ", endpoint, self.config.bucket", S3_ENDPOINT),
     ("providers/s3.rs", "format", "{}?{}&X-Amz-Signature={}", ", url, query_params, signature", "the presigned share link, returned to the user who asked for it, never logged"),

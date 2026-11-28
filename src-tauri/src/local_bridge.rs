@@ -127,7 +127,7 @@ fn decide_install(kind: &str, active: bool) -> (bool, bool) {
 }
 
 /// Look up a bare command name on PATH (and Windows `.exe`/`.bat` variants).
-fn which_on_path(cmd: &str) -> bool {
+pub(crate) fn which_on_path(cmd: &str) -> bool {
     let path = match std::env::var_os("PATH") {
         Some(p) => p,
         None => return false,

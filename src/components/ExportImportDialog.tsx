@@ -21,7 +21,8 @@ import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useGuardedClose } from '../hooks/useGuardedClose';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetection } from '../hooks/useDetectedBridgeConfigs';
-import { announceStoredServerProfiles } from '../utils/serverProfileStore';
+import { announceStoredServerProfiles, announceServersImported } from '../utils/serverProfileStore';
+import { ImportSuccessOverlay, type ImportCounts } from './ImportSuccessOverlay';
 import { accountChangeGeneration, getUnlockStatus } from '../utils/userPartitions';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
@@ -164,8 +165,12 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
-    // The close scheduled after a successful import; a new import or leaving
+    // The counts of a successful `.aeroftp` import, shown in the success
+    // overlay for a short pause before the dialog closes itself.
+    const [importSummary, setImportSummary] = useState<ImportCounts | null>(null);
+    // The close scheduled after a successful export; a new export or leaving
     // the dialog cancels it, so it never hides a later attempt's result.
+    // (An import closes through the success overlay instead.)
     const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     /** Cancel the close scheduled after a successful import, if any. */
     const cancelScheduledClose = () => {
@@ -318,8 +323,14 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
      */
     const handleChooseImportFile = async () => {
         // Before the picker opens: the user may stay in it longer than the
-        // close scheduled by a previous success.
+        // close scheduled by a previous success. The success overlay is
+        // cleared here too (before the await): cancelScheduledClose() does
+        // not cancel the overlay's own timer, and a picker left open past
+        // IMPORT_SUCCESS_CLOSE_DELAY_MS would let that timer close the dialog
+        // (CodeRabbit Minor on #1641). Clearing it unmounts the overlay, and
+        // its unmount cleanup clears the timer.
         cancelScheduledClose();
+        setImportSummary(null);
         const filePath = await pickFile({
             title: t('settings.importServers'),
             filters: [
@@ -396,7 +407,12 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             announceStoredServerProfiles(result.stored, accountBefore);
             // A switch during the import brings its own re-read: this list is the
             // previous account's.
-            if (accountChangeGeneration() === accountBefore) onProfilesStored(result.stored);
+            if (accountChangeGeneration() === accountBefore) {
+                onProfilesStored(result.stored);
+                // Tell the My Servers list an import landed, so it drops any
+                // active filter and shows the new profiles at once.
+                announceServersImported();
+            }
             const count = (outcome: ImportedServer['importOutcome']) =>
                 result.servers.filter(s => s.importOutcome === outcome).length;
             const overwritten = count('overwritten');
@@ -426,7 +442,13 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             if (warnings.length > 0) {
                 setImportWarning(warnings.join(' '));
             } else {
-                closeTimerRef.current = setTimeout(() => onClose(), 2500);
+                // No warning to read: show the real counts for a short pause
+                // (the overlay closes the dialog), instead of a bare message.
+                setImportSummary({
+                    imported: result.servers.length - overwritten,
+                    skipped: result.skipped.length,
+                    overwritten,
+                });
             }
         } catch (err) {
             const errStr = String(err);
@@ -453,6 +475,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setMode(null);
         setError(null);
         setSuccess(null);
+        setImportSummary(null);
         setPassword('');
         setConfirmPassword('');
         setImportFilePath(null);
@@ -1034,6 +1057,15 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     canAbort={guarded.canAbort}
                     onKeep={guarded.cancelConfirm}
                     onConfirm={guarded.confirmAndClose}
+                />
+            )}
+            {importSummary && (
+                <ImportSuccessOverlay
+                    counts={importSummary}
+                    onDone={() => {
+                        setImportSummary(null);
+                        onClose();
+                    }}
                 />
             )}
         </div>
