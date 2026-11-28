@@ -504,6 +504,20 @@ jobs:
             src-tauri/scripts/patch-deb-dispatch.sh "$deb"
           done
 
+      # rpm 6 (Fedora 45) refuses unsigned packages: sign with rpmsign and
+      # verify against the shipped public key. Unset key: a tag fails, any
+      # other run warns and leaves the rpm unsigned.
+      - name: Sign rpm (OpenPGP)
+        if: matrix.target == 'linux'
+        shell: bash
+        env:
+          RPM_SIGNING_KEY: ${{ secrets.RPM_SIGNING_KEY }}
+          RPM_SIGNING_KEY_PASSPHRASE: ${{ secrets.RPM_SIGNING_KEY_PASSPHRASE }}
+        run: |
+          shopt -s nullglob
+          rpms=(src-tauri/target/release/bundle/rpm/*.rpm)
+          src-tauri/scripts/sign-rpm.sh src-tauri/resources/RPM-GPG-KEY-aeroftp.asc "${rpms[@]}"
+
       # Record the size footprint of the dispatcher payload and the produced
       # Linux bundles so regressions in binary size surface in the CI log.
       # Informational only: no fail conditions. Linux-only because this step

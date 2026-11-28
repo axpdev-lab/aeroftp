@@ -136,6 +136,11 @@ if require_or_skip ".rpm" "$RPM"; then
   else
     echo "OK: $(basename "$RPM") contains the AeroRsync CLI payload"
   fi
+  if ! rpm -qpl "$RPM" | grep -qx '/usr/lib/aeroftp/RPM-GPG-KEY-aeroftp.asc'; then
+    fail "$RPM does not ship /usr/lib/aeroftp/RPM-GPG-KEY-aeroftp.asc (the in-app updater imports it before rpm -U)"
+  else
+    echo "OK: $(basename "$RPM") contains the RPM GPG public key"
+  fi
 fi
 
 APPIMAGE=""

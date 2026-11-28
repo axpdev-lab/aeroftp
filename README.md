@@ -797,6 +797,12 @@ Download from [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases/l
 - **.rpm** - Fedora, openSUSE, RHEL
 - **.AppImage** - Portable, runs on any distro ([AppImageHub](https://appimage.github.io/AeroFTP/))
 
+The `.rpm` is signed with the project's OpenPGP key from v4.2.9 on (fingerprint `E6F7 42AC 0AD0 3434 DF72  FEAD 1D4F 4488 022D 7D42`). Import the key once before the first install: Fedora 45 and later refuse a package they cannot verify.
+```bash
+sudo rpm --import https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/src-tauri/resources/RPM-GPG-KEY-aeroftp.asc
+```
+Updates installed from inside the app import the key shipped in the package on their own.
+
 ### Windows
 
 #### Winget
