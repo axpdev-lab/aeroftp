@@ -494,9 +494,12 @@ fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     });
     // A JSON `"message"` is read as the string it spells: the raw capture
     // keeps JSON's escapes (`\"`, `\\`, `\/`), and a value echoed through
-    // them matches no spelling the scrub knows.
+    // them matches no spelling the scrub knows. A message element found
+    // inside a JSON body is JSON text all the same: its escapes are not
+    // decoded, so the guard below withholds one that holds any.
+    let body_is_json = serde_json::from_str::<serde_json::Value>(body).is_ok();
     let (message, from_json) = match ELEMENT.captures(body).and_then(|found| found.get(1)) {
-        Some(found) => (Some(found.as_str().to_string()), false),
+        Some(found) => (Some(found.as_str().to_string()), body_is_json),
         None => match JSON.captures(body).and_then(|found| found.get(1)) {
             Some(found) => match serde_json::from_str::<String>(&format!("\"{}\"", found.as_str()))
             {
@@ -8847,6 +8850,31 @@ mod tests {
     /// its characters percent-encoded and the rest raw (`ab%2Fcd+secret` for
     /// `ab/cd+secret`). The reason around the echo is still shown when the
     /// echo can be cut out; a message that keeps a `\` is withheld whole.
+    /// A message element inside a JSON body is JSON text: an escape in it
+    /// (`\u002f` for `/`) can spell a sent value no matcher reads, so it is
+    /// withheld, as a JSON `"message"` holding one is. The same element in
+    /// an XML reply is shown.
+    #[test]
+    fn a_message_element_inside_json_is_read_as_json() {
+        let sent = vec!["Chosen/Secret42".to_string()];
+        let base = "https://cloud.example.com/remote.php/dav/files/user/";
+        let shown = server_message(
+            r#"{"message":"<message>Chosen\u002fSecret42</message>"}"#,
+            base,
+            &sent,
+        );
+        for spelling in ["Chosen/Secret42", r"Chosen\u002fSecret42", "Secret42"] {
+            assert!(!shown.contains(spelling), "{shown}");
+        }
+        assert!(shown.contains("withheld"), "{shown}");
+        let xml = server_message(
+            "<d:error><s:message>Share not allowed here</s:message></d:error>",
+            base,
+            &sent,
+        );
+        assert_eq!(xml, "Share not allowed here");
+    }
+
     #[tokio::test]
     async fn a_refused_chosen_password_is_not_echoed_in_any_spelling() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

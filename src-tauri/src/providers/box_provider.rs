@@ -232,6 +232,32 @@ async fn box_share_error(
     }
 }
 
+/// A refusal shown by its status and Box's error `code` only, never its
+/// body: an answer about a file's shared link can carry the link's URL,
+/// which opens the file while the link lives.
+async fn box_link_status_error(response: reqwest::Response, context_prefix: &str) -> ProviderError {
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    let code = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|reply| reply.get("code")?.as_str().map(str::to_string))
+        .filter(|code| {
+            !code.is_empty()
+                && code.len() <= 64
+                && code.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+        });
+    let shown = match code {
+        Some(code) => format!("{context_prefix} {status} ({code})"),
+        None => format!("{context_prefix} {status}"),
+    };
+    match status.as_u16() {
+        401 => ProviderError::AuthenticationFailed(shown),
+        403 => ProviderError::PermissionDenied(shown),
+        404 => ProviderError::NotFound(shown),
+        _ => ProviderError::Other(shown),
+    }
+}
+
 /// A lookup is absent only on the endpoint's explicit 404 answer.
 async fn box_lookup_response(
     response: reqwest::Response,
@@ -308,6 +334,9 @@ struct BoxSharedLink {
     url: String,
     #[serde(default)]
     effective_access: Option<String>,
+    /// `can_edit`, `can_download` or `can_preview`: what a recipient can do.
+    #[serde(default)]
+    effective_permission: Option<String>,
     #[serde(default)]
     unshared_at: Option<String>,
     #[serde(default)]
@@ -710,9 +739,31 @@ impl BoxProvider {
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(box_share_error(resp, "Box shared link removal failed:", &[]).await);
+            return Err(box_link_status_error(resp, "Box shared link removal failed:").await);
         }
         Ok(())
+    }
+
+    /// File `file_id` with its shared link and etag as Box shows them now.
+    async fn file_with_link(&self, file_id: &str) -> Result<BoxItemWithLink, ProviderError> {
+        let token = self.get_token().await?;
+        let resp = self
+            .client
+            .get(format!(
+                "{}/files/{}?fields=shared_link,etag",
+                self.api_base(),
+                file_id
+            ))
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(box_link_status_error(resp, "Box file lookup failed:").await);
+        }
+        resp.json()
+            .await
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     /// The etag to remove the link `url` of file `file_id` by: `known`, or
@@ -2894,6 +2945,11 @@ impl StorageProvider for BoxProvider {
         options: ShareLinkOptions,
     ) -> Result<ShareLinkResult, ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
+        // The create PUT also updates a link the file has already: one that
+        // then lacks what was asked is left to its recipients, not removed.
+        // Its etag guards the PUT, so a link another client sets meanwhile
+        // is neither updated nor taken for this one.
+        let before = self.file_with_link(&file_id).await?;
         let token = self.get_token().await?;
 
         // Box API: shared_link with access, password, unshared_at, permissions
@@ -2919,14 +2975,18 @@ impl StorageProvider for BoxProvider {
         }
         let body = serde_json::json!({"shared_link": shared_link});
 
-        let resp = self
+        let mut request = self
             .client
             .put(format!(
                 "{}/files/{}?fields=shared_link,etag",
                 self.api_base(),
                 file_id
             ))
-            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?);
+        if let Some(etag) = before.etag.as_deref() {
+            request = request.header(reqwest::header::IF_MATCH, etag);
+        }
+        let resp = request
             .json(&body)
             .send()
             .await
@@ -2948,21 +3008,38 @@ impl StorageProvider for BoxProvider {
         // out: Box keeps one shared link per file, so it is removed again
         // rather than left open to anyone holding the URL.
         // An expiry later than the one asked for (a minute of slack for the
-        // clocks) is no expiry the user chose.
+        // clocks) is no expiry the user chose, and one already past is a
+        // link that opens nothing.
         let expires_in_time = |deadline: chrono::DateTime<chrono::Utc>| {
             link.unshared_at
                 .as_deref()
                 .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-                .is_some_and(|at| at <= deadline + chrono::Duration::seconds(60))
+                .is_some_and(|at| {
+                    at <= deadline + chrono::Duration::seconds(60) && at > chrono::Utc::now()
+                })
         };
+        // Box states the role apart from the settings sent: edit access is
+        // handed out only when stated, and a link that lets recipients edit
+        // is not handed out as a view link.
+        let edit = options.permissions.as_deref() == Some("edit");
+        let role = link.effective_permission.as_deref();
         let missing = if options.password.is_some() && link.is_password_enabled != Some(true) {
             Some("the password")
         } else if deadline.is_some_and(|deadline| !expires_in_time(deadline)) {
             Some("the expiry")
+        } else if edit && role != Some("can_edit") {
+            Some("edit access")
+        } else if !edit && role == Some("can_edit") {
+            Some("view-only access")
         } else {
             None
         };
         if let Some(missing) = missing {
+            if before.shared_link.is_some() {
+                return Err(ProviderError::Other(format!(
+                    "The file's existing Box shared link came back without {missing}; it was left in place for its recipients, and its settings may have changed, so check it in Box"
+                )));
+            }
             // Removed only while the file is as Box last showed it with this
             // link (`If-Match`): another client's link set in between is not
             // taken away. Box declares the etag optional; without one the
@@ -4016,6 +4093,19 @@ mod tests {
         BoxProvider,
         std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
     ) {
+        box_sharing_over(serde_json::Value::Null, status, link).await
+    }
+
+    /// `box_sharing` for a file whose shared link is `before` (`null`: none)
+    /// when it is read, with etag `2`.
+    async fn box_sharing_over(
+        before: serde_json::Value,
+        status: u16,
+        link: serde_json::Value,
+    ) -> (
+        BoxProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    ) {
         use std::sync::{Arc, Mutex};
         let puts: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
         let seen = Arc::clone(&puts);
@@ -4026,6 +4116,7 @@ mod tests {
                   body: String| {
                 let seen = Arc::clone(&seen);
                 let link = link.clone();
+                let before = before.clone();
                 async move {
                     use axum::response::IntoResponse;
                     match (method.as_str(), uri.path()) {
@@ -4034,6 +4125,10 @@ mod tests {
                             "offset": 0, "limit": 1000, "total_count": 1
                         }))
                         .into_response(),
+                        ("GET", "/files/77") => {
+                            axum::Json(serde_json::json!({"shared_link": before, "etag": "2"}))
+                                .into_response()
+                        }
                         ("PUT", "/files/77") => {
                             let mut sent: serde_json::Value = serde_json::from_str(&body).unwrap();
                             let removal = sent["shared_link"].is_null();
@@ -4184,9 +4279,11 @@ mod tests {
                         "offset": 0, "limit": 1000, "total_count": 1
                     }))
                     .into_response(),
+                    // The refusal repeats the live link's URL.
                     _ => (
                         axum::http::StatusCode::FORBIDDEN,
-                        axum::Json(serde_json::json!({"type": "error", "code": "access_denied"})),
+                        axum::Json(serde_json::json!({"type": "error", "code": "access_denied",
+                            "message": "Cannot remove https://app.box.com/s/livelinkkey99"})),
                     )
                         .into_response(),
                 }
@@ -4197,7 +4294,88 @@ mod tests {
         tokio::spawn(async move { axum::serve(listener, app).await.ok() });
         let mut p = fixture_connected();
         p.api_base_override = Some(format!("http://{addr}"));
-        assert!(p.remove_share_link("/a.txt").await.is_err());
+        let err = p.remove_share_link("/a.txt").await.unwrap_err();
+        assert!(matches!(err, ProviderError::PermissionDenied(_)), "{err:?}");
+        assert!(err.to_string().contains("access_denied"), "{err}");
+        assert!(!err.to_string().contains("livelinkkey99"), "{err}");
+    }
+
+    /// What Box states of the link decides: an expiry already past opens
+    /// nothing, edit access is handed out only when Box states it, and a
+    /// link recipients can edit is no view link. A link the file had before
+    /// is left to its recipients when it comes back without what was asked:
+    /// the create PUT updated it, under the etag read first.
+    #[tokio::test]
+    async fn a_box_link_is_handed_out_only_as_box_states_it() {
+        let expiring = ShareLinkOptions {
+            expires_in_secs: Some(3600),
+            ..Default::default()
+        };
+        let past = (chrono::Utc::now() - chrono::Duration::seconds(30)).to_rfc3339();
+        let (mut p, puts) = box_sharing(
+            200,
+            serde_json::json!({"url": "https://app.box.com/s/x", "unshared_at": past}),
+        )
+        .await;
+        let err = p.create_share_link("/a.txt", expiring).await.unwrap_err();
+        assert!(err.to_string().contains("without the expiry"), "{err}");
+        assert!(puts.lock().unwrap()[1]["shared_link"].is_null());
+
+        let edit = ShareLinkOptions {
+            permissions: Some("edit".into()),
+            ..Default::default()
+        };
+        for (role, handed_out) in [("can_download", false), ("can_edit", true)] {
+            let (mut p, puts) = box_sharing(
+                200,
+                serde_json::json!({"url": "https://app.box.com/s/x", "effective_permission": role}),
+            )
+            .await;
+            let made = p.create_share_link("/a.txt", edit.clone()).await;
+            assert_eq!(made.is_ok(), handed_out, "{role}: {made:?}");
+            if !handed_out {
+                assert!(
+                    made.unwrap_err()
+                        .to_string()
+                        .contains("without edit access"),
+                    "{role}"
+                );
+                assert!(puts.lock().unwrap()[1]["shared_link"].is_null());
+            }
+        }
+        let (mut p, _) = box_sharing(
+            200,
+            serde_json::json!({"url": "https://app.box.com/s/x", "effective_permission": "can_edit"}),
+        )
+        .await;
+        let err = p
+            .create_share_link("/a.txt", ShareLinkOptions::default())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("view-only access"), "{err}");
+
+        // The file's link before the PUT: it comes back without the
+        // password, and nothing removes it.
+        let (mut p, puts) = box_sharing_over(
+            serde_json::json!({"url": "https://app.box.com/s/x"}),
+            200,
+            serde_json::json!({"url": "https://app.box.com/s/x"}),
+        )
+        .await;
+        let err = p
+            .create_share_link(
+                "/a.txt",
+                ShareLinkOptions {
+                    password: Some("pw".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("left in place"), "{err}");
+        let sent = puts.lock().unwrap().clone();
+        assert_eq!(sent.len(), 1, "no removal: {sent:?}");
+        assert_eq!(sent[0]["if_match"], "2", "{sent:?}");
     }
 
     /// Box declares the etag optional. A create answer without one is not
@@ -4233,6 +4411,11 @@ mod tests {
                                 "offset": 0, "limit": 1000, "total_count": 1
                             }))
                             .into_response(),
+                            // No link before the create PUT; `current`
+                            // when read again after it.
+                            ("GET", "/files/77") if seen.lock().unwrap().is_empty() => {
+                                axum::Json(serde_json::json!({"shared_link": null})).into_response()
+                            }
                             ("GET", "/files/77") => axum::Json(serde_json::json!({
                                 "shared_link": {"url": current}, "etag": etag
                             }))

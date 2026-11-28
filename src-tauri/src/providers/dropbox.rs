@@ -43,7 +43,7 @@ fn dropbox_other_access(level: &str) -> ProviderError {
 
 fn dropbox_unstated_access() -> ProviderError {
     ProviderError::Other(
-        "Dropbox does not say the access of the file's existing shared link, so it is not handed out as the one asked for; revoke it and create the link again".to_string(),
+        "Dropbox does not say whether the file's existing shared link gives view or edit access, so it is not handed out as the one asked for; it was left as it is, and Dropbox shows its access".to_string(),
     )
 }
 
@@ -1023,12 +1023,16 @@ impl DropboxProvider {
                         .find_map(|link| link.access_level())
                         .map(str::to_string);
                     let listed = links.len();
+                    // A row of unstated access may be one with the access
+                    // asked for: then the only exact row is not the only
+                    // candidate.
+                    let unstated = links.iter().any(|link| link.access_level().is_none());
                     let mut exact: Vec<DropboxSharedLink> = links
                         .into_iter()
                         .filter(|link| link.access_level() == Some(access))
                         .collect();
                     match (exact.len(), other) {
-                        (1, _) => exact.remove(0),
+                        (1, _) if !unstated => exact.remove(0),
                         (0, Some(level)) => return Err(dropbox_other_access(&level)),
                         (0, None) if listed == 0 => {
                             return Err(ProviderError::Other(
@@ -3814,7 +3818,9 @@ mod tests {
             expires_in_secs: Some(3600),
             permissions: None,
         };
-        let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
+        // Unnamed, the only link of the level asked is picked when every
+        // other states another level.
+        let (mut p, calls) = dropbox_sharing("viewer", Some("editor"), None, None).await;
         let made = p
             .create_share_link("/open.txt", restricted.clone())
             .await
@@ -3850,18 +3856,27 @@ mod tests {
             .unwrap();
         let modify = called(&calls, "/sharing/modify_shared_link_settings");
         assert_eq!(modify[0]["url"], "https://www.dropbox.com/scl/fi/second");
-        // Unnamed, two links of the level asked: none is picked.
-        let (mut p, calls) = dropbox_sharing("viewer", Some("viewer"), None, None).await;
-        let err = p
-            .create_share_link("/a.txt", restricted.clone())
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("several shared links"), "{err}");
-        assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
+        // Unnamed, two links of the level asked, or one beside a link of
+        // unstated level (Dropbox declares the level optional, so it may be
+        // the level asked): none is picked.
+        for second in [Some("viewer"), None] {
+            for file in ["/a.txt", "/open.txt"] {
+                let (mut p, calls) = dropbox_sharing("viewer", second, None, None).await;
+                let err = p
+                    .create_share_link(file, restricted.clone())
+                    .await
+                    .unwrap_err();
+                assert!(
+                    err.to_string().contains("several shared links"),
+                    "{second:?} {file}: {err}"
+                );
+                assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
+            }
+        }
         // Dropbox shows no link's password: a new one on a link that has one
         // already would look the same applied or not, so it is refused
         // before anything changes.
-        let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
+        let (mut p, calls) = dropbox_sharing("viewer", Some("editor"), None, None).await;
         let err = p
             .create_share_link("/a.txt", restricted.clone())
             .await
@@ -4072,7 +4087,7 @@ mod tests {
         assert!(called(&calls, "/sharing/list_shared_links").is_empty());
         // A modify Dropbox accepted with an answer that cannot be read: the
         // existing link may have changed, and it is not revoked.
-        let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;
+        let (mut p, calls) = dropbox_sharing("viewer", Some("editor"), None, None).await;
         let err = p
             .create_share_link(
                 "/open.txt",
@@ -4112,7 +4127,8 @@ mod tests {
         assert!(called(&calls, "/sharing/list_shared_links").is_empty());
         assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
         // A named link whose access neither the answer nor the listing
-        // states is not handed out.
+        // states is not handed out, and nothing tells the user to revoke a
+        // link its recipients may be using: it is left as it is.
         let (mut p, calls) = dropbox_sharing(
             "viewer",
             None,
@@ -4124,7 +4140,10 @@ mod tests {
             .create_share_link("/a.txt", ShareLinkOptions::default())
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("does not say the access"), "{err}");
+        assert!(
+            err.to_string().contains("does not say whether") && !err.to_string().contains("revoke"),
+            "{err}"
+        );
         assert!(called(&calls, "/sharing/modify_shared_link_settings").is_empty());
         // The root is no item: nothing is listed, made or revoked for it.
         let (mut p, calls) = dropbox_sharing("viewer", None, None, None).await;

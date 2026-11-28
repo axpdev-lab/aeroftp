@@ -841,6 +841,80 @@ impl OneDriveProvider {
         Ok(response)
     }
 
+    /// The ids of the item's permissions that are sharing links.
+    async fn link_permission_ids(&self, item_id: &str) -> Result<Vec<String>, ProviderError> {
+        #[derive(Deserialize)]
+        struct Permission {
+            id: String,
+            #[serde(default)]
+            link: Option<serde_json::Value>,
+        }
+        #[derive(Deserialize)]
+        struct Permissions {
+            #[serde(default)]
+            value: Vec<Permission>,
+            #[serde(default, rename = "@odata.nextLink")]
+            next: Option<String>,
+        }
+        let response = self
+            .client
+            .get(format!("{}/permissions", self.api_item(item_id)))
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ProviderError::Other(format!(
+                "Failed to read the item's share links: {status}"
+            )));
+        }
+        let page: Permissions = response
+            .json()
+            .await
+            .map_http_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+        // Part of the links cannot say a link is new.
+        if page.next.is_some() {
+            return Err(ProviderError::Other(
+                "OneDrive listed the item's share links only in part, so no restricted link is made"
+                    .to_string(),
+            ));
+        }
+        Ok(page
+            .value
+            .into_iter()
+            .filter(|permission| permission.link.is_some())
+            .map(|permission| permission.id)
+            .collect())
+    }
+
+    /// Remove permission `permission_id` of the item.
+    async fn remove_link_permission(
+        &self,
+        item_id: &str,
+        permission_id: &str,
+    ) -> Result<(), ProviderError> {
+        // An id can be base64 (`+`, `/`, `=`): one path segment, encoded.
+        let response = self
+            .client
+            .delete(format!(
+                "{}/permissions/{}",
+                self.api_item(item_id),
+                urlencoding::encode(permission_id)
+            ))
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(ProviderError::Other(format!(
+                "Failed to remove the share link: {}",
+                response.status()
+            )));
+        }
+        Ok(())
+    }
+
     fn api_item(&self, item_id: &str) -> String {
         if item_id == "root" {
             format!("{}/me/drive/root", self.graph_api())
@@ -2454,14 +2528,26 @@ impl StorageProvider for OneDriveProvider {
             "type": link_type,
             "scope": self.effective_link_scope(),
         });
-        if let Some(secs) = options.expires_in_secs {
-            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+        let deadline = match options.expires_in_secs {
+            Some(secs) => Some(super::share_link_deadline(chrono::Utc::now(), secs)?),
+            None => None,
+        };
+        if let Some(deadline) = deadline {
             body["expirationDateTime"] =
-                serde_json::Value::String(expires_at.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+                serde_json::Value::String(deadline.format("%Y-%m-%dT%H:%M:%SZ").to_string());
         }
         if let Some(ref pw) = options.password {
             body["password"] = serde_json::json!(pw);
         }
+        // `createLink` hands back a link of the same type and scope the item
+        // has already: the links it has before are known, so one that comes
+        // back without what was asked is removed only if this call made it.
+        let restricted = options.password.is_some() || deadline.is_some();
+        let before = if restricted {
+            Some(self.link_permission_ids(&item_id).await?)
+        } else {
+            None
+        };
 
         let response = self
             .client
@@ -2477,10 +2563,15 @@ impl StorageProvider for OneDriveProvider {
 
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
+            // Graph can repeat the password it refused.
+            let sent: Vec<String> = options.password.iter().cloned().collect();
+            let shown = match super::json_reply_without_sent_values(&text, &sent) {
+                Some(shown) => sanitize_api_error(&shown),
+                None => super::reply_with_a_sent_value(text.len()),
+            };
             return Err(ProviderError::Other(format!(
                 "Failed to create share link: {} - {}",
-                status,
-                sanitize_api_error(&text)
+                status, shown
             )));
         }
 
@@ -2491,7 +2582,13 @@ impl StorageProvider for OneDriveProvider {
         }
         #[derive(Deserialize)]
         struct CreateLinkResponse {
+            #[serde(default)]
+            id: Option<String>,
             link: Link,
+            #[serde(default, rename = "hasPassword")]
+            has_password: Option<bool>,
+            #[serde(default, rename = "expirationDateTime")]
+            expiration: Option<String>,
         }
 
         let result: CreateLinkResponse = response
@@ -2504,11 +2601,48 @@ impl StorageProvider for OneDriveProvider {
             .web_url
             .ok_or_else(|| ProviderError::Other("No share URL in response".to_string()))?;
 
+        // What the answer states against what was asked. Graph does not
+        // always state the settings of a link; a setting it leaves out is
+        // not taken as dropped, one it states otherwise is (no password, an
+        // expiry later than asked, with a minute of slack, or already past).
+        let expiry = result
+            .expiration
+            .as_deref()
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok());
+        let missing = if options.password.is_some() && result.has_password == Some(false) {
+            Some("the password")
+        } else if deadline.is_some_and(|deadline| {
+            result.expiration.is_some()
+                && !expiry.is_some_and(|at| {
+                    at <= deadline + chrono::Duration::seconds(60) && at > chrono::Utc::now()
+                })
+        }) {
+            Some("the expiry")
+        } else {
+            None
+        };
+        if let Some(missing) = missing {
+            let made_now = match (&result.id, &before) {
+                (Some(id), Some(before)) => !before.contains(id),
+                _ => false,
+            };
+            let outcome = match (&result.id, made_now) {
+                (Some(id), true) => match self.remove_link_permission(&item_id, id).await {
+                    Ok(()) => "it was removed again",
+                    Err(_) => "removing it failed too, so remove it in OneDrive",
+                },
+                _ => "it is a link the file had already, left in place for its recipients, so check its settings in OneDrive",
+            };
+            return Err(ProviderError::Other(format!(
+                "OneDrive gave the share link without {missing}; {outcome}"
+            )));
+        }
+
         info!("Created share link for {}", path);
         Ok(ShareLinkResult {
             url,
             password: None,
-            expires_at: None,
+            expires_at: expiry.map(|at| at.to_rfc3339()),
         })
     }
 
@@ -3595,6 +3729,149 @@ mod tests {
         provider.api_origin_override = Some(format!("http://{addr}"));
         provider.test_access_token = Some("t".to_string());
         (provider, patches)
+    }
+
+    /// A share link is handed out only when what Graph states of it holds
+    /// what was asked: a link it states has no password, or an expiry later
+    /// than asked, is withheld, and removed only when this call made it (a
+    /// link the item had before is left to its recipients). A setting Graph
+    /// leaves out is not taken as dropped. A refusal does not repeat the
+    /// password sent.
+    #[tokio::test]
+    async fn a_onedrive_link_is_handed_out_only_as_graph_states_it() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let deleted: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&deleted);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                    let sent: serde_json::Value =
+                        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+                    let link = |id: &str, extra: serde_json::Value| {
+                        let mut answer = serde_json::json!({
+                            "id": id, "link": {"webUrl": format!("https://1drv.ms/u/{id}")}
+                        });
+                        for (key, value) in extra.as_object().unwrap() {
+                            answer[key] = value.clone();
+                        }
+                        axum::Json(answer).into_response()
+                    };
+                    match (method.as_str(), path.as_str()) {
+                        ("GET", "/v1.0/me/drive/root:/a.txt") => axum::Json(serde_json::json!({
+                            "id": "A", "name": "a.txt", "size": 3, "file": {},
+                            "parentReference": { "path": "/drive/root:" },
+                        }))
+                        .into_response(),
+                        ("GET", "/v1.0/me/drive/items/A/permissions") => {
+                            axum::Json(serde_json::json!({"value": [
+                                {"id": "OLD", "link": {"webUrl": "https://1drv.ms/u/OLD"}},
+                                {"id": "owner", "roles": ["owner"]}
+                            ]}))
+                            .into_response()
+                        }
+                        ("POST", "/v1.0/me/drive/items/A/createLink") => {
+                            match sent["password"].as_str() {
+                                Some("echo-long-secret") => (
+                                    axum::http::StatusCode::BAD_REQUEST,
+                                    r#"{"error":{"code":"invalidRequest","message":"Password echo-long-secret is too weak"}}"#,
+                                )
+                                    .into_response(),
+                                Some("new-without-pw") => {
+                                    link("NEW", serde_json::json!({"hasPassword": false}))
+                                }
+                                Some("old-without-pw") => {
+                                    link("OLD", serde_json::json!({"hasPassword": false}))
+                                }
+                                Some("unstated-pw") => link("NEW2", serde_json::json!({})),
+                                Some(_) => link("NEW3", serde_json::json!({"hasPassword": true})),
+                                None => link(
+                                    "NEW4",
+                                    serde_json::json!({"expirationDateTime": "2099-01-01T00:00:00Z"}),
+                                ),
+                            }
+                        }
+                        ("DELETE", deleting) => {
+                            seen.lock().unwrap().push(deleting.to_string());
+                            axum::http::StatusCode::NO_CONTENT.into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            }));
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        let with = |password: &str| ShareLinkOptions {
+            password: Some(password.into()),
+            ..Default::default()
+        };
+
+        let err = provider
+            .create_share_link("/a.txt", with("echo-long-secret"))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!err.contains("echo-long-secret"), "{err}");
+        assert!(err.contains("400"), "{err}");
+
+        let err = provider
+            .create_share_link("/a.txt", with("new-without-pw"))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("without the password") && err.contains("removed again"),
+            "{err}"
+        );
+        assert_eq!(
+            deleted.lock().unwrap().clone(),
+            vec!["/v1.0/me/drive/items/A/permissions/NEW".to_string()]
+        );
+
+        let err = provider
+            .create_share_link("/a.txt", with("old-without-pw"))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("left in place"), "{err}");
+        assert_eq!(deleted.lock().unwrap().len(), 1, "the old link stays");
+
+        let expiring = ShareLinkOptions {
+            expires_in_secs: Some(3600),
+            ..Default::default()
+        };
+        let err = provider
+            .create_share_link("/a.txt", expiring)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("without the expiry"), "{err}");
+        assert_eq!(
+            deleted.lock().unwrap().last().map(String::as_str),
+            Some("/v1.0/me/drive/items/A/permissions/NEW4")
+        );
+
+        for password in ["unstated-pw", "kept-pw"] {
+            let made = provider
+                .create_share_link("/a.txt", with(password))
+                .await
+                .unwrap();
+            assert!(
+                made.url.starts_with("https://1drv.ms/u/NEW"),
+                "{}",
+                made.url
+            );
+        }
+        assert_eq!(deleted.lock().unwrap().len(), 2);
     }
 
     /// A cached shortcut read again and found pointing at another target, or

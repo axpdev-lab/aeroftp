@@ -41444,13 +41444,14 @@ async fn cmd_link(
             Some(permissions.to_string())
         },
     })
-    .checked()
+    .checked(&provider.share_link_capabilities())
     {
         Ok(options) => options,
         Err(e) => {
-            print_error(format, &e.to_string(), 1);
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &e.to_string(), code);
             let _ = provider.disconnect().await;
-            return 1;
+            return code;
         }
     };
 

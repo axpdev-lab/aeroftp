@@ -2212,10 +2212,19 @@ fn scrub_sent_values(value: &mut serde_json::Value, long: &[String], short: &[St
     };
     match value {
         serde_json::Value::String(text) => *text = scrubbed(text),
-        // A value sent can come back as a bare scalar (`true`, `42`).
+        // A value sent can come back as a bare scalar (`true`, `42`). A
+        // number is read as a float, so its spelling here is not the one
+        // sent (`100000000000000000000` prints `1e20`): it is also compared
+        // by value with every sent value that reads as a number.
         serde_json::Value::Number(_) | serde_json::Value::Bool(_) | serde_json::Value::Null => {
             let text = value.to_string();
-            if scrubbed(&text) != text {
+            let equals_a_sent_number = value.as_f64().is_some_and(|number| {
+                long.iter()
+                    .chain(short)
+                    .filter_map(|sent| sent.parse::<f64>().ok())
+                    .any(|sent| sent == number)
+            });
+            if equals_a_sent_number || scrubbed(&text) != text {
                 *value = serde_json::Value::String("[REDACTED]".to_string());
             }
         }
@@ -2919,7 +2928,9 @@ pub enum ProviderListExecutorKind {
 }
 
 /// Options for creating a share link - provider-specific fields are optional.
-/// Providers that don't support a given option simply ignore it.
+/// An option the provider does not declare in `share_link_capabilities` is
+/// refused by [`ShareLinkOptions::checked`] before the provider sees it: a
+/// provider that ignored it made an open link of one asked to be restricted.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct ShareLinkOptions {
     /// Link expiration in seconds from now (None = permanent/provider default)
@@ -2931,11 +2942,39 @@ pub struct ShareLinkOptions {
 }
 
 impl ShareLinkOptions {
-    /// The options as asked for, or an error when the expiry asked for
-    /// lands on no date: every provider turns the duration into a date, and
-    /// one past what a date holds overflows that arithmetic or drops the
-    /// expiry, which made a link asked to expire a permanent one.
-    pub fn checked(self) -> Result<Self, ProviderError> {
+    /// The options as asked for, or an error when the provider cannot honour
+    /// one: an expiry, a password or an access level `capabilities` does not
+    /// declare (Google Drive and MEGA made a permanent, open link of one asked
+    /// to expire), or an expiry that lands on no date (every provider turns
+    /// the duration into a date, and one past what a date holds overflows that
+    /// arithmetic or drops the expiry). Plain view access is no option: it is
+    /// what every link gives.
+    pub fn checked(self, capabilities: &ShareLinkCapabilities) -> Result<Self, ProviderError> {
+        let refused = |what: &str| {
+            Err(ProviderError::NotSupported(format!(
+                "This provider's share links cannot carry {what}, so no link is made"
+            )))
+        };
+        if self.expires_in_secs.is_some() && !capabilities.supports_expiration {
+            return refused("an expiry");
+        }
+        if self.password.is_some() && !capabilities.supports_password {
+            return refused("a password");
+        }
+        if let Some(access) = self
+            .permissions
+            .as_deref()
+            .filter(|access| *access != "view")
+        {
+            if !capabilities.supports_permissions
+                || !capabilities
+                    .available_permissions
+                    .iter()
+                    .any(|available| available == access)
+            {
+                return refused(&format!("{access} access"));
+            }
+        }
         if let Some(secs) = self.expires_in_secs {
             share_link_deadline(chrono::Utc::now(), secs)?;
         }
@@ -6991,14 +7030,93 @@ mod tests {
                 expires_in_secs: Some(secs),
                 ..Default::default()
             }
-            .checked()
+            .checked(&all_options())
             .is_err());
         }
         assert_eq!(
             share_link_deadline(now, 3600).unwrap().timestamp(),
             1_800_003_600
         );
-        assert!(ShareLinkOptions::default().checked().is_ok());
+        assert!(ShareLinkOptions::default().checked(&all_options()).is_ok());
+    }
+
+    fn all_options() -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "edit".into()],
+            ..Default::default()
+        }
+    }
+
+    /// An option the provider does not declare is refused before it is
+    /// sent, never dropped: dropped, it made an open, permanent link of one
+    /// asked to be restricted. Plain view access needs no declaration.
+    #[test]
+    fn a_share_option_the_provider_cannot_honour_is_refused() {
+        let none = ShareLinkCapabilities::default();
+        let asks = [
+            ShareLinkOptions {
+                expires_in_secs: Some(3600),
+                ..Default::default()
+            },
+            ShareLinkOptions {
+                password: Some("Chosen-pw42".into()),
+                ..Default::default()
+            },
+            ShareLinkOptions {
+                permissions: Some("edit".into()),
+                ..Default::default()
+            },
+        ];
+        for ask in asks {
+            assert!(
+                matches!(
+                    ask.clone().checked(&none),
+                    Err(ProviderError::NotSupported(_))
+                ),
+                "{ask:?}"
+            );
+            assert!(ask.clone().checked(&all_options()).is_ok(), "{ask:?}");
+        }
+        // An access level the provider lists none of is refused too.
+        let comment = ShareLinkOptions {
+            permissions: Some("comment".into()),
+            ..Default::default()
+        };
+        assert!(comment.checked(&all_options()).is_err());
+        for plain in [
+            ShareLinkOptions::default(),
+            ShareLinkOptions {
+                permissions: Some("view".into()),
+                ..Default::default()
+            },
+        ] {
+            assert!(plain.checked(&none).is_ok());
+        }
+    }
+
+    /// A password that reads as a number is withheld when the reply echoes
+    /// it as a bare JSON number, whose float form is spelled otherwise
+    /// (`1e20`), as well as quoted; the rest of the reply stays readable.
+    #[test]
+    fn a_numeric_password_echoed_as_a_number_is_withheld() {
+        let sent = vec!["100000000000000000000".to_string()];
+        for body in [
+            r#"{"code":"bad_password","password":100000000000000000000}"#,
+            r#"{"code":"bad_password","password":"100000000000000000000"}"#,
+            r#"{"code":"bad_password","password":1e20}"#,
+        ] {
+            let shown = json_reply_without_sent_values(body, &sent).unwrap();
+            let reply: serde_json::Value = serde_json::from_str(&shown).unwrap();
+            // serde_json prints the float `1e+20`: no spelling of it is left.
+            assert_eq!(reply["password"], "[REDACTED]", "{body}: {shown}");
+            assert_eq!(reply["code"], "bad_password", "{shown}");
+        }
+        // A number not sent is still shown.
+        let shown = json_reply_without_sent_values(r#"{"retry":30}"#, &sent).unwrap();
+        assert!(shown.contains("30"), "{shown}");
     }
 
     /// A sent value is found in every spelling of its reflection: percent

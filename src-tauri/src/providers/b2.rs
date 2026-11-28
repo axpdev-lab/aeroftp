@@ -2629,7 +2629,17 @@ impl B2Provider {
                 .get(reqwest::header::CONTENT_RANGE)
                 .and_then(|range| range.to_str().ok())
                 == Some("bytes */0");
-        if status.is_success() || empty_object {
+        // A first byte is the object: the whole of it (a server that ignores
+        // the range) or the range asked for. Another 2xx (a `204`, a `206`
+        // of other bytes) shows no download.
+        let first_byte = status == reqwest::StatusCode::OK
+            || (status == reqwest::StatusCode::PARTIAL_CONTENT
+                && probe
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|range| range.to_str().ok())
+                    .is_some_and(|range| range.starts_with("bytes 0-0/")));
+        if first_byte || empty_object {
             // A link that expired while the probe was answered opens nothing.
             if chrono::Utc::now() >= signed_at + chrono::Duration::seconds(valid as i64) {
                 return Err(ProviderError::Other(format!(
@@ -6975,8 +6985,9 @@ mod tests {
             );
         }
         // In `/reports`, `""` and `.` name the folder: resolved, they would
-        // sign an object `reports` beside `reports/child.txt`. A plain
-        // relative name is still a file.
+        // sign an object `reports` beside `reports/child.txt`; refused
+        // before any request. A plain relative name is a file:
+        // `a_b2_link_is_vouched_for_by_the_endpoint_itself` signs it.
         provider.current_path = "/reports".into();
         for path in ["", "."] {
             let err = provider
@@ -6988,13 +6999,6 @@ mod tests {
                 "{path:?}: {err:?}"
             );
         }
-        let relative = provider
-            .create_share_link("child.txt", ShareLinkOptions::default())
-            .await;
-        assert!(
-            !matches!(relative, Err(ProviderError::InvalidPath(_))),
-            "{relative:?}"
-        );
         provider.current_path = "/".into();
         // A key that has expired signs nothing that would open.
         provider.key_expires_at_ms = Some(chrono::Utc::now().timestamp_millis() - 1_000);
@@ -7080,7 +7084,39 @@ mod tests {
                 "/test-bucket/d/slow.pdf",
                 axum::routing::get(|| async {
                     tokio::time::sleep(Duration::from_millis(2_100)).await;
-                    (axum::http::StatusCode::PARTIAL_CONTENT, "x")
+                    (
+                        axum::http::StatusCode::PARTIAL_CONTENT,
+                        [(axum::http::header::CONTENT_RANGE, "bytes 0-0/1")],
+                        "x",
+                    )
+                }),
+            )
+            .route(
+                "/test-bucket/d/nobody.pdf",
+                axum::routing::get(|| async { axum::http::StatusCode::NO_CONTENT }),
+            )
+            .route(
+                "/test-bucket/d/elsewise.pdf",
+                axum::routing::get(|| async {
+                    (
+                        axum::http::StatusCode::PARTIAL_CONTENT,
+                        [(axum::http::header::CONTENT_RANGE, "bytes 5-5/9")],
+                        "x",
+                    )
+                }),
+            )
+            .route(
+                "/test-bucket/d/whole.pdf",
+                axum::routing::get(|| async { (axum::http::StatusCode::OK, "whole") }),
+            )
+            .route(
+                "/test-bucket/reports/child.txt",
+                axum::routing::get(|| async {
+                    (
+                        axum::http::StatusCode::PARTIAL_CONTENT,
+                        [(axum::http::header::CONTENT_RANGE, "bytes 0-0/4")],
+                        "c",
+                    )
                 }),
             )
             .route(
@@ -7089,7 +7125,13 @@ mod tests {
             )
             .route(
                 "/test-bucket/d/report.pdf",
-                axum::routing::get(|| async { (axum::http::StatusCode::PARTIAL_CONTENT, "x") }),
+                axum::routing::get(|| async {
+                    (
+                        axum::http::StatusCode::PARTIAL_CONTENT,
+                        [(axum::http::header::CONTENT_RANGE, "bytes 0-0/1")],
+                        "x",
+                    )
+                }),
             );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
@@ -7130,6 +7172,35 @@ mod tests {
             .create_share_link("/d/odd.pdf", ShareLinkOptions::default())
             .await;
         assert!(odd.is_err(), "{odd:?}");
+        // A bodyless 2xx, or a range other than the first byte, shows no
+        // download; the whole object (a range ignored) does.
+        for path in ["/d/nobody.pdf", "/d/elsewise.pdf"] {
+            let shown = provider
+                .create_share_link(path, ShareLinkOptions::default())
+                .await;
+            assert!(
+                matches!(shown, Err(ProviderError::ServerError(_))),
+                "{path}: {shown:?}"
+            );
+        }
+        provider
+            .create_share_link("/d/whole.pdf", ShareLinkOptions::default())
+            .await
+            .expect("the whole object is a link that opens");
+        // A name relative to the current folder signs the object below it.
+        provider.current_path = "/reports".into();
+        let child = provider
+            .create_share_link("child.txt", ShareLinkOptions::default())
+            .await
+            .expect("a relative file name is a link to that file");
+        assert!(
+            child
+                .url
+                .starts_with(&format!("{origin}/test-bucket/reports/child.txt?")),
+            "{}",
+            child.url
+        );
+        provider.current_path = "/".into();
         // A one-second link answered after it expired is not handed out.
         let late = provider
             .create_share_link(

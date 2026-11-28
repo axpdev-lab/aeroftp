@@ -379,6 +379,13 @@ export const s3PresetOffersObjectTags = (providerId?: string | null): boolean =>
 export const s3PresetOffersTrash = (providerId?: string | null): boolean =>
   canonicalPresetId(providerId) !== "fastly";
 
+// Whether a native share link can be made for a folder row. An object store
+// signs a link for one object: its folders are key prefixes, so a link made
+// for a folder row would sign the object of the same name, a file the user
+// did not choose, whenever one exists beside the folder.
+export const sharesFoldersByLink = (type: ProviderType): boolean =>
+  !["s3", "backblaze", "azure"].includes(type);
+
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
   return [
