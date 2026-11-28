@@ -16,11 +16,17 @@
 //! and bytes read past a segment's end-of-list stay in the state, never
 //! lost. Items (ndx >= 0) are B3.2: nothing here consumes them.
 //!
-//! Two numberings exist on the wire: the wire ndx, kept on every
-//! [`TreeEntry`] because B4 needs it for hardlinks, and the transfer
-//! order of the sorted `dir_flist`. The gap `ndx_start - 1` at every
-//! segment boundary is the numbering hole the parent directory leaves
-//! (A4). Measured on p9big-dl-inc (NAS 3113): the sender uses that hole as
+//! Two numberings exist per segment: [`TreeEntry::ndx`] is the SORTED ndx
+//! (`ndx_start +` the entry's position in the segment's sorted order,
+//! [`tree_entry_cmp`], sorted per segment in inc and once over the whole
+//! list in noinc), which is the ndx the B3.2 generator requests items at;
+//! [`TreeEntry::wire_pos`] is the 0-based wire position inside the segment
+//! (wire ndx = `ndx_start + wire_pos`), the wire position used by B4 for
+//! the hardlink references. With `--iconv` rsync keeps the wire order
+//! (`need_unsorted_flist`, options.c:2049); the product never sends
+//! `--iconv`. The gap `ndx_start - 1` at every segment boundary is the
+//! numbering hole the parent directory leaves (A4).
+//! Measured on p9big-dl-inc (NAS 3113): the sender uses that hole as
 //! the item ndx of the segment's directory (iflags IS_NEW|LOCAL_CHANGE, no
 //! data); B3.2 serves it, B3.1 only records it.
 
@@ -32,9 +38,9 @@ use std::fmt;
 use crate::aerorsync::events::EventSink;
 use crate::aerorsync::native_driver::{map_realwire_error, AerorsyncDriver, AerorsyncSessionPhase};
 use crate::aerorsync::real_wire::{
-    decode_id_list, is_device_mode, is_special_mode, FileListCodecState, FileListDecodeOutcome,
-    FileListEntry, FileListStreamDecoder, IdNameList, RealWireError, MAX_FILE_LIST_ENTRY_BYTES,
-    NDX_DEL_STATS, NDX_DONE, NDX_FLIST_EOF, NDX_FLIST_OFFSET,
+    decode_id_list, is_device_mode, is_directory_mode, is_special_mode, FileListCodecState,
+    FileListDecodeOutcome, FileListEntry, FileListStreamDecoder, IdNameList, RealWireError,
+    MAX_FILE_LIST_ENTRY_BYTES, NDX_DEL_STATS, NDX_DONE, NDX_FLIST_EOF, NDX_FLIST_OFFSET,
 };
 use crate::aerorsync::session_state::{ResolvedMetadata, SessionTables};
 use crate::aerorsync::transport::RawRemoteShellTransport;
@@ -83,8 +89,14 @@ impl Default for TreeListLimits {
 /// request.
 #[derive(Debug, Clone)]
 pub struct TreeEntry {
-    /// Wire ndx of this entry inside the session's file list.
+    /// Sorted ndx of this entry: `ndx_start +` its position in the
+    /// segment's sorted order ([`tree_entry_cmp`]). This is the ndx the
+    /// B3.2 generator requests items at.
     pub ndx: i32,
+    /// 0-based wire position inside the segment (wire ndx =
+    /// `ndx_start + wire_pos`): the wire position used by B4 for the
+    /// hardlink references (`first_hlink_ndx`, flist.c:507-510).
+    pub wire_pos: usize,
     /// The decoded entry, back-references still unresolved at codec level.
     pub entry: FileListEntry,
     /// ACL/xattr references resolved against the session tables.
@@ -92,6 +104,45 @@ pub struct TreeEntry {
     /// True for character/block devices, fifos and sockets: received and
     /// marked here, never refused at list level (D3).
     pub device_or_special: bool,
+}
+
+/// The sorted order of one segment's entries, `f_name_cmp` (flist.c:3204,
+/// confirmed from source by Falena Q7, NAS 3291): at the same level a
+/// `t_ITEM` (non-directory) beats a `t_PATH` (directory, flist.c:3256-3258),
+/// then the name bytes compare, `/` included for multi-component paths
+/// (flist.c:3260-3325); the basename "." (the implied top dir) always sorts
+/// first (flist.c:3221-3225). The sort is rsync's stable merge sort
+/// (flist.c:1738-1756), so `Vec::sort_by` (stable) is used, never
+/// `sort_unstable_by`. The sort runs per segment in inc recursion and once
+/// over the whole list in noinc (`flist_sort_and_clean`, flist.c:2968,
+/// :2980); the next segment's `ndx_start` is the previous one plus `used`
+/// plus 1 (flist.c:2918), so the gap is unchanged.
+pub fn tree_entry_cmp(a: &TreeEntry, b: &TreeEntry) -> std::cmp::Ordering {
+    flist_entry_cmp(&a.entry, &b.entry)
+}
+
+/// [`tree_entry_cmp`] over bare list entries, so tests can sort a decoded
+/// capture list with the same rule the driver applies.
+pub fn flist_entry_cmp(a: &FileListEntry, b: &FileListEntry) -> std::cmp::Ordering {
+    // flist.c:3221-3225: the basename "." always sorts first.
+    let dot_a = a.path == b".";
+    let dot_b = b.path == b".";
+    dot_b.cmp(&dot_a).then_with(|| {
+        tree_entry_key(&a.path, is_directory_mode(a.mode))
+            .cmp(&tree_entry_key(&b.path, is_directory_mode(b.mode)))
+    })
+}
+
+/// Sort key of one entry: every parent component maps to `(1, component)`
+/// (a parent component is always a directory), the last component to
+/// `(is_dir, name)`; keys compare lexicographically.
+fn tree_entry_key(path: &[u8], is_dir: bool) -> Vec<(u8, &[u8])> {
+    let parts: Vec<&[u8]> = path.split(|c| *c == b'/').collect();
+    let last = parts.last().copied().unwrap_or(&[][..]);
+    let parents = &parts[..parts.len().saturating_sub(1)];
+    let mut key: Vec<(u8, &[u8])> = parents.iter().map(|c| (1u8, *c)).collect();
+    key.push((u8::from(is_dir), last));
+    key
 }
 
 /// One file-list segment: the entries of one directory, starting at
@@ -110,7 +161,9 @@ pub struct DirSegment {
     /// `ndx_start - 1`: the numbering gap, used by the sender as the item
     /// ndx of the segment's directory (no data); B3.2 serves it.
     pub gap_ndx: i32,
-    /// The segment's entries in wire order, wire ndx kept on each.
+    /// The segment's entries in SORTED order ([`tree_entry_cmp`]): `ndx` is
+    /// the sorted ndx (`ndx_start +` position here), `wire_pos` the 0-based
+    /// wire position.
     pub entries: Vec<TreeEntry>,
 }
 
@@ -506,6 +559,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         is_device_mode(entry.mode) || is_special_mode(entry.mode);
                     entries.push(TreeEntry {
                         ndx: wire_ndx,
+                        wire_pos: (wire_ndx - ndx_start) as usize,
                         entry,
                         resolved,
                         device_or_special,
@@ -532,6 +586,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // C1: bytes past the end-of-list (possibly the next ndx) stay in
         // the state; nothing is read past the segment here.
         state.buffered = rest;
+        // NAS 3282 (Q-a): each segment is sorted on its own (a noinc
+        // session is one single segment) and `ndx` becomes the SORTED ndx;
+        // the wire position stays on `wire_pos`. The generator requests
+        // items at the sorted ndx, not at the wire ndx.
+        entries.sort_by(tree_entry_cmp);
+        for (pos, e) in entries.iter_mut().enumerate() {
+            e.ndx = ndx_start + pos as i32;
+        }
         // Advance past the segment's entries plus the numbering gap.
         state.next_ndx += 1;
         Ok(DirSegment {
@@ -699,6 +761,26 @@ mod tests {
         let mut ndx_state = NdxState::new();
         let (ndx, _) = decode_ndx(&start.state.buffered, &mut ndx_state).unwrap();
         assert_eq!(classify_tree_ndx(ndx), TreeNdx::Item(0));
+    }
+
+    /// flist.c:3221-3225 (NAS 3291, Q7): the basename "." (the implied top
+    /// dir) always sorts first. No frozen capture carries it, so this test
+    /// pins the rule.
+    #[test]
+    fn dot_basename_sorts_first() {
+        let mut dot = sample_entry(".");
+        dot.mode = 0o040_775;
+        let file = sample_entry("a.txt");
+        let mut zdir = sample_entry("z");
+        zdir.mode = 0o040_775;
+        assert_eq!(flist_entry_cmp(&dot, &file), std::cmp::Ordering::Less);
+        assert_eq!(flist_entry_cmp(&dot, &zdir), std::cmp::Ordering::Less);
+        assert_eq!(flist_entry_cmp(&file, &dot), std::cmp::Ordering::Greater);
+        let mut v = vec![zdir, file, dot];
+        v.sort_by(flist_entry_cmp);
+        assert_eq!(v[0].path, b".");
+        assert_eq!(v[1].path, b"a.txt");
+        assert_eq!(v[2].path, b"z");
     }
 
     /// Step 1: one test per refused name shape.

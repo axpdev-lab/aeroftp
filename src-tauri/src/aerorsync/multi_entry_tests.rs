@@ -2306,7 +2306,8 @@ mod b3_1 {
         );
         let counts: Vec<usize> = segments.iter().map(|s| s.entries.len()).collect();
         assert_eq!(counts, vec![1, 4, 2, 2, 1, 0]);
-        // wire ndx stay contiguous inside each segment
+        // entries are stored in SORTED order (NAS 3282, Q-a): ndx stays
+        // contiguous inside each segment, now as the sorted ndx
         for seg in &segments {
             for (i, e) in seg.entries.iter().enumerate() {
                 assert_eq!(e.ndx, seg.ndx_start + i as i32);
@@ -2316,21 +2317,48 @@ mod b3_1 {
             .iter()
             .flat_map(|s| s.entries.iter().map(|e| e.entry.path.as_slice()))
             .collect();
+        // sorted order per segment (was wire order before NAS 3282):
+        // non-directories first, then directories, names byte for byte
         assert_eq!(
             names,
             vec![
                 &b"r"[..],
                 b"r/top.txt",
                 b"r/d1",
-                b"r/d3",
                 b"r/d2",
+                b"r/d3",
                 b"r/d1/f1",
                 b"r/d1/f2",
-                b"r/d2/sub",
                 b"r/d2/f3",
+                b"r/d2/sub",
                 b"r/d2/sub/f4",
             ]
         );
+        // the wire positions survive the sort: the capture's wire order of
+        // segment dir_ndx=0 is top.txt, d1, d3, d2 (d3 before d2)
+        let seg0 = &segments[1];
+        let by_name = |n: &str| {
+            seg0.entries
+                .iter()
+                .find(|e| e.entry.path == n.as_bytes())
+                .unwrap()
+        };
+        assert_eq!(by_name("r/top.txt").wire_pos, 0);
+        assert_eq!(by_name("r/d1").wire_pos, 1);
+        assert_eq!(by_name("r/d3").wire_pos, 2);
+        assert_eq!(by_name("r/d2").wire_pos, 3);
+        // sorted ndx (old wire ndx in parentheses): d2 5 (6), d3 6 (5)
+        assert_eq!(by_name("r/d2").ndx, 5);
+        assert_eq!(by_name("r/d3").ndx, 6);
+        // Q-a witness: r/d2/f3 must come out 11 (wire ndx 12)
+        let seg2 = &segments[3];
+        let f3 = seg2
+            .entries
+            .iter()
+            .find(|e| e.entry.path == b"r/d2/f3")
+            .unwrap();
+        assert_eq!(f3.ndx, 11);
+        assert_eq!(f3.wire_pos, 1);
         assert!(saw_eof, "p9-dl-inc ends the list with NDX_FLIST_EOF");
         assert_eq!(first_item, None);
     }
@@ -2563,7 +2591,9 @@ mod b3_1 {
 
     /// 6. Neutralita': the single-file frozen path is untouched: the same
     /// capture the B1 oracles pin still decodes to the same entries
-    /// through the tree receiver, byte-identical names included.
+    /// through the tree receiver, byte-identical names included (in the
+    /// sorted order of NAS 3282 since then; the wire order is on
+    /// `wire_pos`).
     #[tokio::test]
     async fn b3_1_single_file_capture_still_decodes_through_the_tree_path() {
         let mut d = driver_for_capture("p9-dl-noinc", 3).await;
@@ -2581,13 +2611,27 @@ mod b3_1 {
             .iter()
             .map(|e| e.entry.path.as_slice())
             .collect();
-        let want: Vec<&[u8]> = reference
-            .entries
-            .iter()
-            .map(|e| e.path.as_slice())
-            .collect();
+        // sorted order (was the wire order r, top.txt, d1, d3, d2, f1, f2,
+        // sub, f3, f4 before NAS 3282): non-dirs first, then dirs, by name
+        let want: Vec<&[u8]> = vec![
+            &b"r"[..],
+            b"r/top.txt",
+            b"r/d1",
+            b"r/d1/f1",
+            b"r/d1/f2",
+            b"r/d2",
+            b"r/d2/f3",
+            b"r/d2/sub",
+            b"r/d2/sub/f4",
+            b"r/d3",
+        ];
         assert_eq!(got, want);
         assert_eq!(start.initial.entries.len(), reference.entries.len());
+        // every entry still decodes byte-identical, only the storage order
+        // changed: the wire positions reproduce the reference wire order
+        let mut wire_pos: Vec<usize> = start.initial.entries.iter().map(|e| e.wire_pos).collect();
+        wire_pos.sort_unstable();
+        assert_eq!(wire_pos, (0..reference.entries.len()).collect::<Vec<_>>());
     }
 }
 
