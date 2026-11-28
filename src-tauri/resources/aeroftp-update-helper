@@ -73,6 +73,13 @@ case "$FILE" in
         dpkg -i "$TMP_COPY"
         ;;
     *.rpm)
+        # The installed package ships the project key; import it so rpm
+        # verifies the update's signature (rpm 6 refuses unsigned or
+        # unverifiable packages). The key comes from the installed package,
+        # never from the download.
+        if [ -f /usr/lib/aeroftp/RPM-GPG-KEY-aeroftp.asc ]; then
+            rpm --import /usr/lib/aeroftp/RPM-GPG-KEY-aeroftp.asc
+        fi
         rpm -U "$TMP_COPY"
         ;;
     *)
