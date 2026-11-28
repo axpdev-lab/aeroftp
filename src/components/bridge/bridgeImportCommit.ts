@@ -3,7 +3,7 @@
 
 import { ServerProfile } from '../../types';
 import { makeSafe } from '../../utils/profileSecurity';
-import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { announceServersImported, readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 /** A profile as `import_bridge_config` returns it, credentials redacted. */
 export interface ImportedServer {
@@ -227,6 +227,9 @@ export async function commitImportedServers(
         };
     }
 
+    // The profiles are stored: tell the My Servers list an import landed, so
+    // it drops any active filter and shows them at once.
+    announceServersImported();
     return { added: added.length, updated: updated.length };
 }
 /**
