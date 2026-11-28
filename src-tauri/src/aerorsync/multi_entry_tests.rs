@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use crate::aerorsync::real_wire::{
     decode_file_list_entry, decode_id_list, decode_ndx, decode_varint, encode_file_list_entry,
     encode_file_list_terminator, encode_id_list, encode_varint, encode_varlong, is_directory_mode,
-    reassemble_msg_data, AclNamedEntry, AclPrincipal, AclWireEntry, FileListAcls,
+    is_regular_mode, reassemble_msg_data, AclNamedEntry, AclPrincipal, AclWireEntry, FileListAcls,
     FileListCodecState, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry,
     FileListStreamDecoder, IdNameList, MuxPoll, MuxStreamReader, NdxState, Rdev, RealWireError,
     RsyncAcl, XattrPair, XattrWireEntry, MAXPATHLEN, MAX_ACL_NAMED_ENTRIES, MAX_ACL_NAME_LEN,
@@ -2736,5 +2736,1043 @@ mod b3_1_coverage {
             "unexpected detail: {}",
             err.detail
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// B3.2 reactive replay (verdetto NAS 3179): the mock releases the capture's
+// sender events only when the generator's own outbound earns them.
+// ---------------------------------------------------------------------------
+
+mod b3_2_reactive {
+    use super::*;
+    use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+    use crate::aerorsync::events::CollectingSink;
+    use crate::aerorsync::native_driver::AerorsyncDriver;
+    use crate::aerorsync::real_wire::{
+        decode_item_flags, decode_sum_head, encode_server_preamble, MuxDemuxer, MuxHeader,
+        MuxTag, ServerPreamble, NDX_DEL_STATS, NDX_DONE,
+    };
+    use crate::aerorsync::remote_command::RemoteCommandSpec;
+    use crate::aerorsync::transport::{
+        BidirectionalByteStream, CancelHandle, RawByteStream, RawRemoteShellTransport,
+        RemoteCommandOutput, RemoteExecRequest, RemoteShellTransport, TransportProbe,
+    };
+    use crate::aerorsync::tree_driver::{TreeDownloadOptions, DEFAULT_MAX_TREE_ENTRIES};
+    use crate::aerorsync::types::{AerorsyncError, SessionRole};
+    use async_trait::async_trait;
+    use std::collections::{HashSet, VecDeque};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    const CF_INC_RECURSE: i64 = 1;
+    const CF_ID0_NAMES: i64 = 256;
+
+    /// NAS 3201 point 1: the delta grammar follows the negotiated
+    /// compression on both branches (raw int32 LE without `-z`, the shared
+    /// single-file decoder with `-z`).
+    #[test]
+    fn tree_delta_grammar_follows_negotiated_compression() {
+        use crate::aerorsync::native_driver::LiteralCompression;
+        use crate::aerorsync::tree_driver::{tree_delta_grammar, TreeDeltaGrammar};
+        assert_eq!(
+            tree_delta_grammar(&LiteralCompression::None),
+            TreeDeltaGrammar::Raw
+        );
+        assert_eq!(
+            tree_delta_grammar(&LiteralCompression::Zstd),
+            TreeDeltaGrammar::Compressed
+        );
+        assert_eq!(
+            tree_delta_grammar(&LiteralCompression::Deflate),
+            TreeDeltaGrammar::Compressed
+        );
+    }
+    /// Stall timeout of the reactive mock: when the generator waits for an
+    /// event the capture cannot release, the read fails with this error
+    /// instead of hanging the test.
+    const STALL: Duration = Duration::from_secs(10);
+
+    #[derive(Debug)]
+    enum ReplayEvent {
+        /// Initial list (+ id lists when non-incremental): released eagerly.
+        List(Vec<u8>),
+        /// NDX_FLIST_EOF / NDX_DEL_STATS list-stream markers: eager.
+        Marker(Vec<u8>),
+        /// One announced file-list segment: released when the driver has
+        /// sent at least as many NDX_DONE as echoes precede it in the
+        /// capture's sender stream (the lookahead model, NAS 3282 Q2).
+        Segment(Vec<u8>),
+        /// The sender's answer to the generator's request for ndx: released
+        /// only after our outbound carries that request.
+        ItemAnswer(i32, Vec<u8>),
+        /// One NDX_DONE echo: released after the k-th NDX_DONE we sent, never
+        /// at the capture's offset (NAS 3282).
+        Echo(Vec<u8>),
+        /// SummaryFrame: released after our S dir dones + 4 pre-stats markers.
+        Stats(Vec<u8>),
+        /// Final NDX_DONE: released after our ACK (the 5th phase marker).
+        FinalDone(Vec<u8>),
+    }
+
+    /// The client's (generator's) app stream from `capture_in.bin`.
+    fn generator_app_stream(run: &str) -> Vec<u8> {
+        let raw = capture_bytes(run, "capture_in.bin");
+        let (compat, _) = server_compat(run);
+        let negotiated = compat & CF_VARINT_FLIST_FLAGS != 0;
+        let command = String::from_utf8(capture_bytes(run, "remote_command.txt")).unwrap();
+        let compress = command
+            .split_whitespace()
+            .find(|a| a.starts_with('-') && !a.starts_with("--"))
+            .is_some_and(|b| b.split('.').next().unwrap_or("").contains('z'));
+        let mut at = 4usize;
+        if negotiated {
+            for _ in 0..if compress { 2 } else { 1 } {
+                at += 1 + raw[at] as usize;
+            }
+        }
+        reassemble_msg_data(&raw[at..])
+            .expect("generator stream demultiplexes")
+            .app_stream
+    }
+
+    /// Parse the generator's requests: ordered ndx list + sum_head count per
+    /// data request + total NDX_DONE count.
+    fn parse_generator_requests(
+        gen_app: &[u8],
+    ) -> (Vec<i32>, Vec<i32>, std::collections::HashMap<i32, i32>) {
+        let mut pos = 0usize;
+        let mut state = NdxState::default();
+        let mut requests = Vec::new();
+        let mut dones = Vec::new();
+        let mut counts = std::collections::HashMap::new();
+        while pos < gen_app.len() {
+            let (ndx, c) = decode_ndx(&gen_app[pos..], &mut state).expect("gen ndx");
+            pos += c;
+            if ndx == NDX_DONE {
+                dones.push(ndx);
+                continue;
+            }
+            let (iflags, c2) = decode_item_flags(&gen_app[pos..]).expect("gen iflags");
+            pos += c2;
+            if iflags & 0x0100 != 0 {
+                // ITEM_REPORT_XATTR: the generator's request section is a
+                // run of skip varints closed by varint 0 (p10-dl), before
+                // any sum_head.
+                loop {
+                    let (skip, c3) = decode_varint(&gen_app[pos..]).expect("gen xattr skip");
+                    pos += c3;
+                    if skip == 0 {
+                        break;
+                    }
+                }
+            }
+            if iflags & 0x8000 != 0 {
+                let (head, c3) = decode_sum_head(&gen_app[pos..]).expect("gen sum_head");
+                pos += c3 + (head.count as usize) * (4 + head.checksum_length as usize);
+                counts.insert(ndx, head.count);
+            }
+            requests.push(ndx);
+        }
+        (requests, dones, counts)
+    }
+
+    /// The client's filter list leads the generator's app stream (one int32
+    /// length per rule, closed by a zero length); the request stream starts
+    /// right after it.
+    fn skip_client_filter_list(app: &[u8]) -> &[u8] {
+        let mut pos = 0usize;
+        loop {
+            if pos + 4 > app.len() {
+                return &app[pos..];
+            }
+            let len = i32::from_le_bytes(app[pos..pos + 4].try_into().unwrap());
+            pos += 4;
+            if len == 0 {
+                return &app[pos..];
+            }
+            pos += len as usize;
+        }
+    }
+
+    /// One request of a generator stream: ndx, iflags, and the sum_head
+    /// count when ITEM_TRANSFER is set.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct GenRequest {
+        ndx: i32,
+        iflags: u16,
+        sum_count: Option<i32>,
+    }
+
+    /// One event of our own outbound app stream.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum OutEvent {
+        Req(GenRequest),
+        Done,
+    }
+
+    /// Parse a request stream (the capture's generator stream after the
+    /// filter list, or our own outbound app stream) into ordered events.
+    /// A truncated tail (mid-write capture of our outbound) just stops.
+    fn parse_events_seq(app: &[u8]) -> Vec<OutEvent> {
+        let mut events = Vec::new();
+        let mut pos = 0usize;
+        let mut state = NdxState::default();
+        while pos < app.len() {
+            let Ok((ndx, c)) = decode_ndx(&app[pos..], &mut state) else {
+                break;
+            };
+            pos += c;
+            if ndx == NDX_DONE {
+                events.push(OutEvent::Done);
+                continue;
+            }
+            let Ok((iflags, c2)) = decode_item_flags(&app[pos..]) else {
+                break;
+            };
+            pos += c2;
+            if iflags & 0x0100 != 0 {
+                loop {
+                    let Ok((skip, c3)) = decode_varint(&app[pos..]) else {
+                        break;
+                    };
+                    pos += c3;
+                    if skip == 0 {
+                        break;
+                    }
+                }
+            }
+            let mut sum_count = None;
+            if iflags & 0x8000 != 0 {
+                match decode_sum_head(&app[pos..]) {
+                    Ok((head, c3)) => {
+                        pos += c3 + (head.count as usize) * (4 + head.checksum_length as usize);
+                        sum_count = Some(head.count);
+                    }
+                    Err(_) => break,
+                }
+            }
+            events.push(OutEvent::Req(GenRequest {
+                ndx,
+                iflags,
+                sum_count,
+            }));
+        }
+        events
+    }
+
+    /// Requests and NDX_DONE count of a request stream, in order.
+    fn parse_requests_seq(app: &[u8]) -> (Vec<GenRequest>, usize) {
+        let mut reqs = Vec::new();
+        let mut dones = 0usize;
+        for ev in parse_events_seq(app) {
+            match ev {
+                OutEvent::Req(r) => reqs.push(r),
+                OutEvent::Done => dones += 1,
+            }
+        }
+        (reqs, dones)
+    }
+
+    /// Parse our own captured outbound raw stream into ordered events.
+    fn parse_outbound_events(raw: &[u8]) -> Vec<OutEvent> {
+        if raw.len() <= 4 {
+            return Vec::new();
+        }
+        let Some(at) = app_stream_offset(raw) else {
+            return Vec::new();
+        };
+        // Demux only the complete frames: while the driver is mid-write the
+        // outbound ends inside a mux frame, and that partial tail must not
+        // hide the requests already sent.
+        let mut app = Vec::new();
+        for frame in MuxDemuxer::new(&raw[at..]) {
+            match frame {
+                Ok((header, payload)) => {
+                    if header.tag == MuxTag::Data {
+                        app.extend_from_slice(payload);
+                    }
+                }
+                Err(_) => break, // truncated trailing frame: ignore it
+            }
+        }
+        parse_events_seq(&app)
+    }
+
+    /// Split the sender's app stream into replay events, guided by the
+    /// generator's request list (an item answer exists only for a request).
+    /// Also returns the session's list ranges as (ndx_start, entry count) in
+    /// arrival order, for the NDX_DONE placement checks.
+    /// The parsed sender stream: replay events, the total echo count, the
+    /// list ranges (ndx_start, entry count) and each list's entries in wire
+    /// order.
+    struct ParsedSender {
+        events: Vec<ReplayEvent>,
+        echo_total: usize,
+        lists: Vec<(i32, usize)>,
+        entries: Vec<Vec<FileListEntry>>,
+    }
+
+    fn parse_sender_events(run: &str) -> ParsedSender {
+        let app = sender_app_stream(run);
+        let (compat, _) = server_compat(run);
+        let inc = compat & CF_INC_RECURSE != 0;
+        let (opts, _) = options_from_capture(run);
+        let gen_app = generator_app_stream(run);
+        let (gen_requests, _, _) = parse_generator_requests(&gen_app);
+        let mut unanswered: Vec<i32> = gen_requests.clone();
+        let mut events: Vec<ReplayEvent> = Vec::new();
+        let mut ndx_state = NdxState::default();
+        let mut codec = FileListCodecState::new();
+        // Initial list (and the id lists of a non-incremental session).
+        let mut dec = FileListStreamDecoder::new(opts, codec, DEFAULT_MAX_TREE_ENTRIES);
+        dec.feed(&app);
+        let mut initial_entries: Vec<FileListEntry> = Vec::new();
+        while !dec.is_finished() {
+            match dec.next_outcome() {
+                Ok(Some(FileListDecodeOutcome::Entry(e))) => initial_entries.push(e),
+                Ok(Some(_)) => {}
+                Ok(None) => panic!("capture list truncated"),
+                Err(e) => panic!("capture list decode: {e}"),
+            }
+        }
+        let ndx_start0 = if inc { 1 } else { 0 };
+        let n_entries = initial_entries.len();
+        let mut lists: Vec<(i32, usize)> = vec![(ndx_start0, n_entries)];
+        let mut all_entries: Vec<Vec<FileListEntry>> = vec![initial_entries];
+        let mut next_start = ndx_start0 + n_entries as i32 + 1;
+        let consumed = app.len() - dec.buffered();
+        let mut list_bytes = app[..consumed].to_vec();
+        let mut pos = consumed;
+        codec = dec.into_parts().0;
+        if !inc {
+            // C4: id lists follow a non-incremental list when uid/gid (or
+            // ACL) preservation is on and --numeric-ids is off. With
+            // CF_ID0_NAMES each list ends with the id-0 name after the
+            // terminating zero varint.
+            let id0_names = compat & CF_ID0_NAMES != 0;
+            let want_uids = opts.preserve_uid || opts.preserve_acls;
+            let want_gids = opts.preserve_gid || opts.preserve_acls;
+            if want_uids {
+                if let Ok((_, c)) = decode_id_list(&app[pos..], id0_names) {
+                    list_bytes.extend_from_slice(&app[pos..pos + c]);
+                    pos += c;
+                }
+            }
+            if want_gids {
+                if let Ok((_, c)) = decode_id_list(&app[pos..], id0_names) {
+                    list_bytes.extend_from_slice(&app[pos..pos + c]);
+                    pos += c;
+                }
+            }
+        }
+        events.push(ReplayEvent::List(list_bytes));
+
+        // Falena's table: a download sender stream carries exactly S+3
+        // NDX_DONE echoes (S = extra segments), then the SummaryFrame, then
+        // one final NDX_DONE. The trailing echoes and the stats frame's
+        // leading 0x00 are byte-identical, so the tail is split by COUNT,
+        // never by trying to parse the summary frame mid-run.
+        let mut echoes_seen = 0usize;
+        let tail = |events: &mut Vec<ReplayEvent>, pos: usize, app: &[u8]| {
+            assert!(
+                app.len() >= 1 && app[app.len() - 1] == 0x00,
+                "capture ends with NDX_DONE"
+            );
+            events.push(ReplayEvent::Stats(app[pos..app.len() - 1].to_vec()));
+            events.push(ReplayEvent::FinalDone(app[app.len() - 1..].to_vec()));
+        };
+        loop {
+            if pos >= app.len() {
+                break;
+            }
+            if unanswered.is_empty() && echoes_seen == (lists.len() - 1) + 3 {
+                tail(&mut events, pos, &app);
+                let echo_total = events
+                    .iter()
+                    .filter(|e| matches!(e, ReplayEvent::Echo(_)))
+                    .count();
+                return ParsedSender {
+                    events,
+                    echo_total,
+                    lists,
+                    entries: all_entries,
+                };
+            }
+            let Ok((ndx, c)) = decode_ndx(&app[pos..], &mut ndx_state) else {
+                break;
+            };
+            if ndx == NDX_DONE {
+                echoes_seen += 1;
+                events.push(ReplayEvent::Echo(app[pos..pos + c].to_vec()));
+                pos += c;
+                continue;
+            }
+            if ndx == NDX_FLIST_EOF || ndx == NDX_DEL_STATS {
+                events.push(ReplayEvent::Marker(app[pos..pos + c].to_vec()));
+                pos += c;
+                continue;
+            }
+            if ndx >= 0 {
+                if !unanswered.contains(&ndx) {
+                    break; // past the answers: stats + final marker
+                }
+                unanswered.retain(|x| *x != ndx);
+                let (iflags, c2) = decode_item_flags(&app[pos + c..]).expect("answer iflags");
+                let mut end = pos + c + c2;
+                if iflags & 0x0100 != 0 {
+                    // ITEM_REPORT_XATTR: the sender's out-of-band xattr datum
+                    // section (skip varints, each with len+datum, closed by
+                    // varint 0) sits before any sum_head (p10-dl).
+                    loop {
+                        let (skip, c3) = decode_varint(&app[end..]).expect("answer oob skip");
+                        end += c3;
+                        if skip == 0 {
+                            break;
+                        }
+                        let (ln, c4) = decode_varint(&app[end..]).expect("answer oob len");
+                        end += c4 + ln as usize;
+                    }
+                }
+                if iflags & 0x8000 != 0 {
+                    // the sender echoes its own sum_head before the delta
+                    let (_, csh) = decode_sum_head(&app[end..]).expect("answer sum_head");
+                    end += csh;
+                    // no-`-z` captures use int32 LE tokens: 0 end, >0 literal, <0 match
+                    loop {
+                        assert!(end + 4 <= app.len(), "raw token truncated");
+                        let tag = i32::from_le_bytes(app[end..end + 4].try_into().unwrap());
+                        end += 4;
+                        if tag == 0 {
+                            break;
+                        }
+                        if tag > 0 {
+                            end += tag as usize;
+                        }
+                    }
+                    end += 16; // whole-file checksum (xxh128)
+                }
+                events.push(ReplayEvent::ItemAnswer(ndx, app[pos..end].to_vec()));
+                pos = end;
+                continue;
+            }
+            if ndx <= NDX_FLIST_OFFSET {
+                // Segment marker: the body runs to the next end-of-list.
+                let mut dec = FileListStreamDecoder::new(opts, codec, DEFAULT_MAX_TREE_ENTRIES);
+                dec.feed(&app[pos + c..]);
+                let mut ok = false;
+                let mut seg_entry_list: Vec<FileListEntry> = Vec::new();
+                loop {
+                    if dec.is_finished() {
+                        ok = true;
+                        break;
+                    }
+                    match dec.next_outcome() {
+                        Ok(Some(FileListDecodeOutcome::Entry(e))) => seg_entry_list.push(e),
+                        Ok(Some(_)) => {}
+                        Ok(None) => break,
+                        Err(_) => break,
+                    }
+                }
+                if !ok {
+                    break;
+                }
+                let seg_consumed = (app.len() - pos - c) - dec.buffered();
+                let end = pos + c + seg_consumed;
+                lists.push((next_start, seg_entry_list.len()));
+                next_start += seg_entry_list.len() as i32 + 1;
+                all_entries.push(seg_entry_list);
+                events.push(ReplayEvent::Segment(app[pos..end].to_vec()));
+                pos = end;
+                codec = dec.into_parts().0;
+                continue;
+            }
+            break;
+        }
+        // Tail: SummaryFrame + one final NDX_DONE (Falena's table), split by
+        // the echo count, not by parsing the frame mid-run.
+        tail(&mut events, pos, &app);
+        let echo_total = events
+            .iter()
+            .filter(|e| matches!(e, ReplayEvent::Echo(_)))
+            .count();
+        ParsedSender {
+            events,
+            echo_total,
+            lists,
+            entries: all_entries,
+        }
+    }
+
+    /// Parse our own captured outbound app stream: requested item ndx set and
+    /// NDX_DONE count.
+    /// Offset where the mux-framed app stream starts in a client-side raw
+    /// stream: after the 4-byte protocol version and the client's negotiated
+    /// strings (one or two, depending on whether compression was negotiated).
+    /// A mux frame header has its tag in the high byte and a length that
+    /// fits the buffer, which distinguishes it from a string's bytes.
+    fn app_stream_offset(raw: &[u8]) -> Option<usize> {
+        let mut at = 4usize;
+        while at + 4 <= raw.len() {
+            let hdr = u32::from_le_bytes(raw[at..at + 4].try_into().unwrap());
+            let len = (hdr & 0x00FF_FFFF) as usize;
+            let tag = (hdr >> 24) as u8;
+            if tag >= 7 && at + 4 + len <= raw.len() {
+                return Some(at);
+            }
+            at += 1 + raw[at] as usize;
+        }
+        None
+    }
+
+    fn parse_outbound(raw: &[u8], run: &str) -> (HashSet<i32>, i32) {
+        let _ = run;
+        let mut requested = HashSet::new();
+        let mut dones = 0i32;
+        for ev in parse_outbound_events(raw) {
+            match ev {
+                OutEvent::Req(r) => {
+                    requested.insert(r.ndx);
+                }
+                OutEvent::Done => dones += 1,
+            }
+        }
+        (requested, dones)
+    }
+
+    type SharedOutbound = Arc<Mutex<Vec<u8>>>;
+
+    struct ReactiveStream {
+        rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+        pending: VecDeque<u8>,
+        outbound: SharedOutbound,
+    }
+
+    #[async_trait]
+    impl RawByteStream for ReactiveStream {
+        async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, AerorsyncError> {
+            if self.pending.is_empty() {
+                match tokio::time::timeout(STALL, self.rx.recv()).await {
+                    Ok(Some(bytes)) => self.pending.extend(bytes),
+                    Ok(None) => {
+                        return Err(AerorsyncError::transport_clean_eof(
+                            "reactive mock feeder finished",
+                        ))
+                    }
+                    Err(_) => {
+                        return Err(AerorsyncError::transport(
+                            "REACTIVE MOCK STALL: the generator waited for an event the \
+                             capture cannot release (no matching request or marker on \
+                             the outbound)",
+                        ))
+                    }
+                }
+            }
+            let take = max.min(self.pending.len());
+            Ok(self.pending.drain(..take).collect())
+        }
+        async fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), AerorsyncError> {
+            self.outbound
+                .lock()
+                .map_err(|_| AerorsyncError::transport("outbound mutex poisoned"))?
+                .extend_from_slice(bytes);
+            Ok(())
+        }
+        async fn shutdown(&mut self) -> Result<(), AerorsyncError> {
+            Ok(())
+        }
+    }
+
+    struct DummyStream;
+    #[async_trait]
+    impl BidirectionalByteStream for DummyStream {
+        async fn write_frame(&mut self, _frame: &[u8]) -> Result<(), AerorsyncError> {
+            Err(AerorsyncError::transport("dummy stream: unused"))
+        }
+        async fn read_frame(&mut self) -> Result<Vec<u8>, AerorsyncError> {
+            Err(AerorsyncError::transport("dummy stream: unused"))
+        }
+        async fn shutdown(&mut self) -> Result<(), AerorsyncError> {
+            Ok(())
+        }
+    }
+
+    struct ReactiveTransport {
+        rx: Arc<Mutex<Option<tokio::sync::mpsc::Receiver<Vec<u8>>>>>,
+        outbound: SharedOutbound,
+    }
+
+    #[async_trait]
+    impl RemoteShellTransport for ReactiveTransport {
+        type Stream = DummyStream;
+        async fn probe(&self) -> Result<TransportProbe, AerorsyncError> {
+            Err(AerorsyncError::transport("probe unused in reactive mock"))
+        }
+        async fn exec(
+            &self,
+            _request: RemoteExecRequest,
+        ) -> Result<RemoteCommandOutput, AerorsyncError> {
+            Err(AerorsyncError::transport("exec unused in reactive mock"))
+        }
+        async fn open_stream(
+            &self,
+            _request: RemoteExecRequest,
+        ) -> Result<Self::Stream, AerorsyncError> {
+            Err(AerorsyncError::transport(
+                "open_stream unused in reactive mock",
+            ))
+        }
+        async fn cancel(&self) -> Result<(), AerorsyncError> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl RawRemoteShellTransport for ReactiveTransport {
+        type RawStream = ReactiveStream;
+        async fn open_raw_stream(
+            &self,
+            _request: RemoteExecRequest,
+        ) -> Result<Self::RawStream, AerorsyncError> {
+            let rx = self
+                .rx
+                .lock()
+                .unwrap()
+                .take()
+                .expect("open_raw_stream called once");
+            Ok(ReactiveStream {
+                rx,
+                pending: VecDeque::new(),
+                outbound: self.outbound.clone(),
+            })
+        }
+    }
+
+    /// The feeder: releases the preamble, then every event in capture order,
+    /// gated on the generator's outbound actions (NAS 3282): the k-th echo
+    /// unlocks at our k-th NDX_DONE (never at the capture's offset), and a
+    /// segment unlocks when we have sent at least as many NDX_DONE as echoes
+    /// precede it in the capture's sender stream (the lookahead model, Q2).
+    async fn run_feeder(
+        tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+        preamble: Vec<u8>,
+        events: Vec<ReplayEvent>,
+        echo_total: usize,
+        outbound: SharedOutbound,
+        run: &'static str,
+    ) {
+        let _ = tx.send(preamble).await;
+        // echoes preceding each event in the capture's sender stream
+        let mut echo_before = Vec::with_capacity(events.len());
+        let mut echos = 0usize;
+        for ev in &events {
+            echo_before.push(echos);
+            if matches!(ev, ReplayEvent::Echo(_)) {
+                echos += 1;
+            }
+        }
+        let mut echo_idx = 0usize;
+        for (i, ev) in events.into_iter().enumerate() {
+            match ev {
+                ReplayEvent::List(bytes) | ReplayEvent::Marker(bytes) => {
+                    let _ = tx.send(mux_frame_pub(&bytes)).await;
+                }
+                ReplayEvent::Segment(bytes) => {
+                    let need = echo_before[i];
+                    wait_for(&outbound, run, |_, dones| dones >= need as i32).await;
+                    let _ = tx.send(mux_frame_pub(&bytes)).await;
+                }
+                ReplayEvent::ItemAnswer(n, bytes) => {
+                    wait_for(&outbound, run, |req, _| req.contains(&n)).await;
+                    let _ = tx.send(mux_frame_pub(&bytes)).await;
+                }
+                ReplayEvent::Echo(bytes) => {
+                    echo_idx += 1;
+                    let k = echo_idx;
+                    wait_for(&outbound, run, |_, dones| dones >= k as i32).await;
+                    let _ = tx.send(mux_frame_pub(&bytes)).await;
+                }
+                ReplayEvent::Stats(bytes) => {
+                    // our S dir_flist dones + 4 pre-stats markers = S+4
+                    let need = echo_total + 1; // echo_total = S+3
+                    wait_for(&outbound, run, |_, dones| dones >= need as i32).await;
+                    let _ = tx.send(mux_frame_pub(&bytes)).await;
+                }
+                ReplayEvent::FinalDone(bytes) => {
+                    // our ACK (the 5th phase marker) after the summary: S+5
+                    let need = echo_total + 2;
+                    wait_for(&outbound, run, |_, dones| dones >= need as i32).await;
+                    let _ = tx.send(mux_frame_pub(&bytes)).await;
+                }
+            }
+        }
+    }
+
+    async fn wait_for(
+        outbound: &SharedOutbound,
+        run: &'static str,
+        cond: impl Fn(&HashSet<i32>, i32) -> bool,
+    ) {
+        loop {
+            {
+                let raw = outbound.lock().unwrap().clone();
+                if !raw.is_empty() {
+                    let (req, dones) = parse_outbound(&raw, run);
+                    if cond(&req, dones) {
+                        return;
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    fn mux_frame_pub(payload: &[u8]) -> Vec<u8> {
+        let header = MuxHeader {
+            tag: MuxTag::Data,
+            length: payload.len() as u32,
+        };
+        let mut out = Vec::with_capacity(4 + payload.len());
+        out.extend_from_slice(&header.encode());
+        out.extend_from_slice(payload);
+        out
+    }
+
+    fn preamble_bytes(run: &str) -> Vec<u8> {
+        let (compat, _) = server_compat(run);
+        encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: compat as i32,
+            checksum_algos: "xxh128".to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0,
+            consumed: 0,
+        })
+    }
+
+    /// B32R1/B32R2/B32R3: drive_download_tree against the capture with the
+    /// reactive mock. The mock can never release an item answer before a
+    /// request exists; after the rewrite the run must complete and the
+    /// outbound must satisfy the structural checks of NAS 3282 (the DONE
+    /// offset is receiver-speed dependent, so it is NOT compared).
+    #[tokio::test]
+    async fn b3_2_reactive_replay_p9_dl_inc() {
+        replay_run("p9-dl-inc").await;
+    }
+
+    #[tokio::test]
+    async fn b3_2_reactive_replay_p9_dl_noinc() {
+        replay_run("p9-dl-noinc").await;
+    }
+
+    #[tokio::test]
+    async fn b3_2_reactive_replay_p9big_dl_inc() {
+        replay_run("p9big-dl-inc").await;
+    }
+
+    /// NAS 3282 point 4: the p10-dl replay (cherry-picked capture), point
+    /// (d): xattr written as per the list, the shared reference included,
+    /// the 80-byte value complete.
+    #[tokio::test]
+    async fn b3_2_reactive_replay_p10_dl() {
+        replay_run("p10-dl").await;
+    }
+
+    /// NAS 3282 point 1, test (i): for every regular file of the four
+    /// captures, the sorted ndx assigned by `flist_entry_cmp` equals the ndx
+    /// the capture's generator requests (the ndx the sender delivers the
+    /// content at). `r/d2/f3` must come out 11.
+    #[test]
+    fn b3_2_sorted_ndx_matches_capture_delivery() {
+        use crate::aerorsync::tree_driver::flist_entry_cmp;
+        for run in ["p9-dl-inc", "p9-dl-noinc", "p9big-dl-inc", "p10-dl"] {
+            assert!(
+                file_ndx_sets_conform(run, flist_entry_cmp),
+                "{run}: the sorted ndx of every regular file must be the capture's delivery ndx"
+            );
+        }
+        assert_eq!(
+            sorted_ndx_of("p9-dl-inc", b"r/d2/f3", flist_entry_cmp),
+            Some(11),
+            "the Q-a witness: r/d2/f3 must come out 11"
+        );
+    }
+
+    /// NAS 3282 point 1, test (ii): a dirs-first comparator and the wire
+    /// order (identity) must fail the conformance check of (i).
+    #[test]
+    fn b3_2_sorted_ndx_mutations_fail() {
+        use crate::aerorsync::tree_driver::flist_entry_cmp;
+        use std::cmp::Ordering;
+        let dirs_first = |a: &FileListEntry, b: &FileListEntry| {
+            is_directory_mode(b.mode)
+                .cmp(&is_directory_mode(a.mode))
+                .then_with(|| a.path.cmp(&b.path))
+        };
+        let identity = |_a: &FileListEntry, _b: &FileListEntry| Ordering::Equal;
+        let runs = ["p9-dl-inc", "p9-dl-noinc", "p9big-dl-inc", "p10-dl"];
+        for run in runs {
+            assert!(
+                file_ndx_sets_conform(run, flist_entry_cmp),
+                "{run}: the real comparator must conform"
+            );
+        }
+        // The mutations must fail the conformance check of (i) overall; a
+        // segment of only files (or only dirs) cannot distinguish them, so
+        // the mixed segments of p9-dl-inc / p9-dl-noinc are the witnesses.
+        assert!(
+            runs.iter().any(|r| !file_ndx_sets_conform(r, dirs_first)),
+            "a dirs-first comparator must NOT conform (witnessed by a mixed segment)"
+        );
+        assert!(
+            runs.iter().any(|r| !file_ndx_sets_conform(r, identity)),
+            "the wire order must NOT conform"
+        );
+        assert!(
+            !file_ndx_sets_conform("p9-dl-inc", dirs_first),
+            "p9-dl-inc: dirs-first must NOT conform (seg0 mixes top.txt with d1/d2/d3)"
+        );
+        assert!(
+            !file_ndx_sets_conform("p9-dl-inc", identity),
+            "p9-dl-inc: wire order must NOT conform (r/d2/f3 wire 12, sorted 11)"
+        );
+    }
+
+    /// The sorted ndx the comparator under test assigns to one path.
+    fn sorted_ndx_of(
+        run: &str,
+        path: &[u8],
+        cmp: fn(&FileListEntry, &FileListEntry) -> std::cmp::Ordering,
+    ) -> Option<i32> {
+        let parsed = parse_sender_events(run);
+        let (compat, _) = server_compat(run);
+        let inc = compat & CF_INC_RECURSE != 0;
+        let mut ndx_start = if inc { 1 } else { 0 };
+        for entries in &parsed.entries {
+            let mut es = entries.clone();
+            es.sort_by(cmp);
+            if let Some(pos) = es.iter().position(|e| e.path == path) {
+                return Some(ndx_start + pos as i32);
+            }
+            ndx_start += entries.len() as i32 + 1;
+        }
+        None
+    }
+
+    /// True when the set of sorted ndx assigned to the regular files equals
+    /// the set of file-request (ITEM_TRANSFER) ndx of the capture's
+    /// generator stream.
+    fn file_ndx_sets_conform(
+        run: &str,
+        cmp: fn(&FileListEntry, &FileListEntry) -> std::cmp::Ordering,
+    ) -> bool {
+        let parsed = parse_sender_events(run);
+        let (compat, _) = server_compat(run);
+        let inc = compat & CF_INC_RECURSE != 0;
+        let gen_app_raw = generator_app_stream(run);
+        let gen_app = skip_client_filter_list(&gen_app_raw);
+        let (reqs, _) = parse_requests_seq(gen_app);
+        let capture_file_reqs: HashSet<i32> = reqs
+            .iter()
+            .filter(|r| r.iflags & 0x8000 != 0)
+            .map(|r| r.ndx)
+            .collect();
+        let mut ndx_start = if inc { 1 } else { 0 };
+        let mut assigned = HashSet::new();
+        for entries in &parsed.entries {
+            let mut es = entries.clone();
+            es.sort_by(cmp);
+            for (pos, e) in es.iter().enumerate() {
+                if is_regular_mode(e.mode) {
+                    assigned.insert(ndx_start + pos as i32);
+                }
+            }
+            ndx_start += entries.len() as i32 + 1;
+        }
+        assigned == capture_file_reqs
+    }
+
+    /// NAS 3282: the replay checks the NDX_DONE placement structurally, not
+    /// by offset: total S+5, each dir_flist done after the last request of
+    /// the list it closes, the 5 phase markers after the last item request.
+    fn check_done_placement(events: &[OutEvent], lists: &[(i32, usize)]) {
+        let s = lists.len().saturating_sub(1); // extra segments
+        let done_idx: Vec<usize> = events
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| matches!(e, OutEvent::Done))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(done_idx.len(), s + 5, "total NDX_DONE must be S+5");
+        let last_req_idx = events
+            .iter()
+            .rposition(|e| matches!(e, OutEvent::Req(_)))
+            .expect("at least one request");
+        assert!(
+            done_idx[s] > last_req_idx,
+            "the 5 phase markers must follow the last item request"
+        );
+        for k in 0..s {
+            let (start, len) = lists[k];
+            let last_of_list = events
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| match e {
+                    OutEvent::Req(r) => r.ndx >= start && r.ndx < start + len as i32,
+                    _ => false,
+                })
+                .map(|(i, _)| i)
+                .max();
+            if let Some(li) = last_of_list {
+                assert!(
+                    done_idx[k] > li,
+                    "dir done {k} must come after the last request of its list"
+                );
+            }
+        }
+    }
+
+    /// p10-dl point (d): the xattrs on disk match the list: the shared set on
+    /// both f1 and f2, the full 80-byte user.long on f3, none on f4.
+    fn check_p10_xattrs(dest: &std::path::Path) {
+        use crate::aerorsync::real_wire::XattrPair;
+        use crate::aerorsync::xattr_fs::read_user_xattrs;
+        let as_map = |pairs: &[XattrPair]| -> Vec<(String, Vec<u8>)> {
+            let mut v: Vec<(String, Vec<u8>)> = pairs
+                .iter()
+                .map(|p| (p.name.clone(), p.datum.bytes().unwrap_or(&[]).to_vec()))
+                .collect();
+            v.sort();
+            v
+        };
+        let read = |rel: &str| read_user_xattrs(&dest.join(rel));
+        let f1 = read("xm/d1/f1").unwrap_or_default();
+        let f2 = read("xm/d1/f2").unwrap_or_default();
+        let want_shared = vec![
+            ("user.color".to_string(), b"blue".to_vec()),
+            ("user.tag".to_string(), b"x".to_vec()),
+        ];
+        assert_eq!(as_map(&f1), want_shared, "f1 carries the literal set");
+        assert_eq!(
+            as_map(&f2),
+            want_shared,
+            "f2 carries the SAME set via the list reference"
+        );
+        let f3 = read("xm/d2/f3").unwrap_or_default();
+        assert_eq!(
+            as_map(&f3),
+            vec![("user.long".to_string(), vec![b'L'; 80])],
+            "f3's 80-byte value must arrive complete via the OOB section"
+        );
+        let f4 = read("xm/d2/f4");
+        assert!(
+            f4.as_ref().is_none_or(|p| p.is_empty()),
+            "f4 carries no xattrs"
+        );
+    }
+
+    fn events_summary(events: &[ReplayEvent]) -> Vec<String> {
+        events
+            .iter()
+            .map(|e| match e {
+                ReplayEvent::List(b) => format!("List({})", b.len()),
+                ReplayEvent::Marker(b) => format!("Marker({})", b.len()),
+                ReplayEvent::Segment(b) => format!("Segment({})", b.len()),
+                ReplayEvent::ItemAnswer(n, b) => format!("Item({n},{})", b.len()),
+                ReplayEvent::Echo(_) => "Echo".to_string(),
+                ReplayEvent::Stats(b) => format!("Stats({})", b.len()),
+                ReplayEvent::FinalDone(_) => "FinalDone".to_string(),
+            })
+            .collect()
+    }
+
+    async fn replay_run(run: &'static str) {
+        let parsed = parse_sender_events(run);
+        let echo_total = parsed.echo_total;
+        let lists = parsed.lists;
+        let events = parsed.events;
+        let gen_app_raw = generator_app_stream(run);
+        let gen_app = skip_client_filter_list(&gen_app_raw);
+        let (gen_reqs, gen_dones) = parse_requests_seq(gen_app);
+        let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+        let outbound: SharedOutbound = Arc::new(Mutex::new(Vec::new()));
+        let feeder_outbound = outbound.clone();
+        let preamble = preamble_bytes(run);
+        let events_dbg = events_summary(&events);
+        eprintln!("events: {:?}", events_dbg);
+        tokio::spawn(async move {
+            run_feeder(tx, preamble, events, echo_total, feeder_outbound, run).await;
+        });
+        let transport = ReactiveTransport {
+            rx: Arc::new(Mutex::new(Some(rx))),
+            outbound: outbound.clone(),
+        };
+        let mut d = AerorsyncDriver::new(transport, CancelHandle::inert());
+        d.session_role = Some(SessionRole::Receiver);
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_download("/remote/target"))
+            .await
+            .unwrap();
+        d.perform_preamble_exchange(31, "xxh128", "none")
+            .await
+            .unwrap();
+        let (opts, _) = options_from_capture(run);
+        d.file_list_checksum_enabled = opts.always_checksum;
+        // the metadata flags of the capture's own argv (p10-dl carries -X)
+        d.effective_metadata.preserve_xattrs = opts.preserve_xattrs;
+        d.effective_metadata.preserve_acls = opts.preserve_acls;
+        d.negotiated_xattrs = opts.preserve_xattrs;
+        let dest = tempfile::tempdir().unwrap();
+        let dl_opts = TreeDownloadOptions {
+            preserve_xattrs: opts.preserve_xattrs,
+            preserve_acls: opts.preserve_acls,
+            preserve_uid: opts.preserve_uid,
+            preserve_gid: opts.preserve_gid,
+            ..Default::default()
+        };
+        let mut sink = CollectingSink::default();
+        let res = d
+            .drive_download_tree(dest.path(), dl_opts, &CurrentDeltaSyncBridge, &mut sink)
+            .await;
+        let outcome = match res {
+            Ok(o) => o,
+            Err(e) => {
+                let raw = outbound.lock().unwrap().clone();
+                let (req, dones) = parse_outbound(&raw, run);
+                panic!(
+                    "drive failed: {e:?}; outbound requests={req:?} dones={dones}; events={:?}",
+                    events_dbg
+                );
+            }
+        };
+        assert!(!outcome.results.is_empty(), "at least one entry served");
+        // NAS 3282: structural checks, NOT the byte offset (the real
+        // generator's DONE position depends on receiver speed, Q8).
+        let raw = outbound.lock().unwrap().clone();
+        let events_out = parse_outbound_events(&raw);
+        let our_reqs: Vec<GenRequest> = events_out
+            .iter()
+            .filter_map(|e| match e {
+                OutEvent::Req(r) => Some(*r),
+                _ => None,
+            })
+            .collect();
+        let our_dones = events_out
+            .iter()
+            .filter(|e| matches!(e, OutEvent::Done))
+            .count();
+        // (a) the request sequence equals the capture's generator stream:
+        // same ndx (sorted, Q-a), same iflags (dir items Q-c, the xattr
+        // report bit), same sum_head counts, same order.
+        assert_eq!(
+            our_reqs, gen_reqs,
+            "the request sequence must match the capture's generator stream"
+        );
+        // (b) total NDX_DONE = S+5, and the placement rules.
+        assert_eq!(our_dones, gen_dones, "total NDX_DONE must be S+5");
+        check_done_placement(&events_out, &lists);
+        // p10-dl point (d): the xattrs on disk.
+        if run == "p10-dl" {
+            check_p10_xattrs(dest.path());
+        }
     }
 }
