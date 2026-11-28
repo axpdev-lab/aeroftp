@@ -4790,27 +4790,6 @@ pub fn decompress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<u8>, Rea
     Ok(out)
 }
 
-/// Decompress a sequence of compressed literal payloads in wire order
-/// and return one `Vec<u8>` **per input payload** (preserving the
-/// boundaries between them). Uses the same session-wide `DCtx` as
-/// `decompress_zstd_literal_stream`, so the decompressed bytes are
-/// identical; the only difference is the output shape.
-///
-/// Intended use: the native rsync driver's download path needs to know
-/// which decompressed bytes belong to which `DeltaOp::Literal` in order
-/// to interleave them with `CopyRun` ops when building the
-/// `EngineDeltaOp` stream for the delta engine. The flat-concatenated
-/// shape of `decompress_zstd_literal_stream` loses that mapping.
-///
-/// Empty input payloads produce empty `Vec<u8>` outputs (retaining the
-/// 1:1 input/output mapping for tidy indexing).
-pub fn decompress_zstd_literal_stream_boundaries(
-    payloads: &[&[u8]],
-) -> Result<Vec<Vec<u8>>, RealWireError> {
-    let mut session = ZstdSessionDecoder::new();
-    session.decompress_boundaries(payloads)
-}
-
 /// Session-wide zstd decompressor for the download path. Stock rsync
 /// (`token.c::send_zstd_token`) compresses the whole session's token
 /// stream into ONE streaming zstd frame and emits it as successive
@@ -4832,8 +4811,12 @@ impl ZstdSessionDecoder {
         Self(zstd::zstd_safe::DCtx::create())
     }
 
-    /// Decompress `payloads` in order through the session context,
-    /// returning one output per payload (empty in, empty out).
+    /// Decompress a sequence of compressed literal payloads in wire order
+    /// through the session context and return one `Vec<u8>` **per input
+    /// payload** (preserving the boundaries between them), so the driver
+    /// knows which decompressed bytes belong to which `DeltaOp::Literal`
+    /// when interleaving them with `CopyRun` ops. Empty input payloads
+    /// produce empty outputs (1:1 mapping for tidy indexing).
     pub(crate) fn decompress_boundaries(
         &mut self,
         payloads: &[&[u8]],
