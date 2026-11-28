@@ -230,7 +230,7 @@ class DecoderTests(unittest.TestCase):
 
     def test_every_frozen_campaign_capture_decodes(self):
         runs = sorted(p for p in (FROZEN / "b0c0").iterdir() if p.is_dir())
-        self.assertEqual(len(runs), 37)
+        self.assertEqual(len(runs), 38)
         for run in runs:
             extra = ["--files-from"] if run.name == "c11-dl" else []
             if run.name.startswith(("p8", "p9big")):
@@ -238,6 +238,14 @@ class DecoderTests(unittest.TestCase):
             with self.subTest(run=run.name):
                 r = self.decode(run, *extra)
                 self.assertEqual(r.returncode, 0, r.stdout[-300:])
+
+    def test_p9z_compressed_download_decodes_to_the_end(self):
+        # p9z-dl-inc is p9-dl-inc with -az: the sender stream carries a
+        # session-wide zstd CCtx, and the decode must reach the stats tail.
+        r = self.decode(FROZEN / "b0c0" / "p9z-dl-inc")
+        self.assertEqual(r.returncode, 0, r.stdout[-400:])
+        self.assertIn("zstd, session CCtx", r.stdout)
+        self.assertIn("closing sequence complete", r.stdout)
 
     def test_every_frozen_b1_capture_decodes(self):
         # The B1 addendum (b1_wire_campaign.py): devices, specials, a symlink

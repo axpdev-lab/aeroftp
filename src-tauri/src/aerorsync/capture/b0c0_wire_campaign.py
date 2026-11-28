@@ -214,6 +214,7 @@ RUNS = [
     ("p9-dl-inc", 9, "p9", "dl", "r", ["-a"], []),
     ("p9-up-noinc", 9, "p9", "up", "r", ["-a", NOINC], []),
     ("p9-dl-noinc", 9, "p9", "dl", "r", ["-a", NOINC], []),
+    ("p9z-dl-inc", 9, "p9", "dl", "r", ["-az"], []),
     ("p9big-up-inc", 9, "p9big", "up", "w", ["-a"], ["--max-entries", "4", "--max-items", "3"]),
     ("p9big-dl-inc", 9, "p9big", "dl", "w", ["-a"], ["--max-entries", "4", "--max-items", "3"]),
     ("p10-up", 10, "p10", "up", "xm", ["-aX"], []),
@@ -300,7 +301,7 @@ def build_argv(run, key: Path, dest: Path) -> list:
     opts = [o.replace("@LIST@", str(dest / "files-from.txt")) for o in opts]
     # The frozen corpus is protocol 31. Hosts whose rsync defaults to 32
     # (3.4.x) must be pinned; older runs keep their recorded argv untouched.
-    if rid.startswith("p10-"):
+    if rid.startswith(("p10-", "p9z-")):
         opts = ["--protocol=31", *opts]
     remote = "testuser@127.0.0.1:/workspace/b0c0"
     if direction == "up":
