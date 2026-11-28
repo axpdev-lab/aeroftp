@@ -48,6 +48,11 @@ const ALLOWED: &[(&str, usize, &str)] = &[
         "the `expires` of a Dropbox shared link, checked against the deadline sent: not a file time",
     ),
     (
+        "providers/onedrive.rs",
+        1,
+        "the `expirationDateTime` Graph reports for a share link, checked against the one asked for: not a file time",
+    ),
+    (
         "providers/drime_cloud.rs",
         2,
         "producer: Drime `updated_at` to `modified`",
