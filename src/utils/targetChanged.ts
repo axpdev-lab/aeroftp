@@ -5,7 +5,7 @@
 export const TARGET_CHANGED_MARKER = 'CONNECTION_CHANGED:';
 
 /** Words an operation or the window puts in front of an error: `upload failed: `, `Error: `. */
-const WRAPPERS_ONLY = /^\s*(?:[A-Za-z0-9 ]+: )*$/;
+export const WRAPPERS_ONLY = /^\s*(?:[A-Za-z0-9 ]+: )*$/;
 
 /**
  * Whether a rendered error is the backend's refusal for a changed target.

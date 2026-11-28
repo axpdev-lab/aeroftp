@@ -500,6 +500,14 @@ fn plain_text_reason(body: &str) -> Option<&str> {
 /// Shared scrub of a server reason: fully decode, strip the sent secrets,
 /// replace the base path and the saved query values, sanitize.
 fn scrubbed(message: &str, body_len: usize, base_url: &str, sent: &[String]) -> String {
+    super::sanitize_plain_error(&scrubbed_whole(message, body_len, base_url, sent))
+}
+
+/// `scrubbed` without its last step: every line at full length, with the
+/// sent secrets, the base path and the saved query values already removed.
+/// A refusal is classified on this; it is shown only through
+/// `sanitize_plain_error`.
+fn scrubbed_whole(message: &str, body_len: usize, base_url: &str, sent: &[String]) -> String {
     // Fully decoded before scrubbing, so an entity-escaped path or query
     // value (`AB&amp;CD` for `AB%26CD`) matches.
     let Some(decoded) = super::fully_unescaped(message) else {
@@ -578,7 +586,7 @@ fn scrubbed(message: &str, body_len: usize, base_url: &str, sent: &[String]) -> 
             }
         }
     }
-    super::sanitize_plain_error(&shown)
+    shown
 }
 
 /// What an error may show of a WebDAV server's reply: its message element
@@ -598,13 +606,16 @@ fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     }
 }
 
-/// The server's own reason from an error reply, sanitized exactly as
-/// `server_message` does, or `None` when the reply carries neither a message
-/// element nor a short plain-text reason.
+/// The server's own reason from an error reply, scrubbed as `server_message`
+/// does but kept whole (every line, any length), or `None` when the reply
+/// carries neither a message element nor a short plain-text reason. Kept
+/// whole because the refusal is classified on it: a decisive phrase past the
+/// 200 bytes an error shows still counts. Never shown as it is:
+/// `upload_failure_error` quotes it through `sanitize_plain_error`.
 fn server_reason(body: &str, base_url: &str, sent: &[String]) -> Option<String> {
     message_element(body)
         .or_else(|| plain_text_reason(body))
-        .map(|message| scrubbed(message, body.len(), base_url, sent))
+        .map(|message| scrubbed_whole(message, body.len(), base_url, sent))
 }
 
 /// Largest error reply the upload paths read for the server's reason. A
@@ -8002,11 +8013,12 @@ fn whole_object_total_from_content_range(headers: &reqwest::header::HeaderMap) -
 /// `413` and a `403` whose server reason names a size limit become the typed,
 /// non-retried `FileTooLarge`; a `413` whose reason says the account storage
 /// is full, and `507`, become the typed, non-retried `QuotaExceeded`. All
-/// name the plan limit and quote the server's own reason, which `reason`
-/// carries already sanitized by `server_reason`.
+/// name the plan limit and quote the server's own reason; `reason` comes
+/// whole from `server_reason`: the classification reads all of it, and the
+/// error quotes its first line, shortened and sanitized.
 fn upload_failure_error(status: StatusCode, reason: Option<&str>) -> ProviderError {
     let says = reason
-        .map(|reason| format!(" Server says: {reason}"))
+        .map(|reason| format!(" Server says: {}", super::sanitize_plain_error(reason)))
         .unwrap_or_default();
     match status {
         StatusCode::CONFLICT | StatusCode::NOT_FOUND => ProviderError::InvalidPath(
@@ -11107,7 +11119,7 @@ exit 1
     ) -> (String, tokio::task::JoinHandle<()>) {
         let app = axum::Router::new().route(
             "/up",
-            axum::routing::put(move || {
+            axum::routing::put(move |_upload: axum::body::Bytes| {
                 let body = body.clone();
                 async move { (status, body) }
             }),
@@ -11201,7 +11213,7 @@ exit 1
         use axum::response::IntoResponse;
         let app = axum::Router::new().route(
             "/up",
-            axum::routing::put(|| async {
+            axum::routing::put(|_upload: axum::body::Bytes| async {
                 let body = padded_sabre_refusal("Quota full", REFUSAL_BODY_CAP + 1).into_bytes();
                 let (first, rest) = body.split_at(64);
                 let stream = futures_util::stream::iter([
@@ -11275,7 +11287,7 @@ exit 1
         use futures_util::StreamExt;
         let app = axum::Router::new().route(
             "/up",
-            axum::routing::put(|| async {
+            axum::routing::put(|_upload: axum::body::Bytes| async {
                 // One chunk, then the stream never ends: the read must give
                 // up on its own deadline instead of waiting for EOF.
                 let stalled = futures_util::stream::once(async {
@@ -11312,6 +11324,82 @@ exit 1
             }
             other => panic!("expected FileTooLarge, got {other:?}"),
         }
+    }
+
+    /// A Sabre message whose decisive phrase starts past byte 200.
+    fn late_phrase(phrase: &str) -> String {
+        format!("{} {phrase}", "Upload rejected by policy.".repeat(9))
+    }
+
+    #[tokio::test]
+    async fn put_413_storage_phrase_past_200_bytes_is_quota() {
+        let message = late_phrase("Storage limit reached");
+        assert!(message.find("Storage limit").unwrap() > 200);
+        let (base, server) = serve_put_refusal(
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+            padded_sabre_refusal(&message, 600),
+        )
+        .await;
+        let outcome = put_to_refusal(&base).await;
+        server.abort();
+        match outcome.expect_err("413 must fail") {
+            ProviderError::QuotaExceeded(msg) => {
+                assert!(msg.contains("HTTP 413"), "msg: {msg}");
+                // The quote is shortened: the phrase past 200 bytes decided
+                // the kind without being shown.
+                assert!(msg.contains("Server says: Upload rejected"), "msg: {msg}");
+                assert!(!msg.contains("Storage limit reached"), "msg: {msg}");
+            }
+            other => panic!("expected QuotaExceeded, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn put_403_size_phrase_past_200_bytes_is_file_too_large() {
+        let message = late_phrase("File too large for this plan");
+        assert!(message.find("File too large").unwrap() > 200);
+        let (base, server) = serve_put_refusal(
+            axum::http::StatusCode::FORBIDDEN,
+            padded_sabre_refusal(&message, 600),
+        )
+        .await;
+        let outcome = put_to_refusal(&base).await;
+        server.abort();
+        match outcome.expect_err("403 must fail") {
+            ProviderError::FileTooLarge(msg) => {
+                assert!(msg.contains("HTTP 403"), "msg: {msg}");
+                assert!(!msg.contains("File too large for this plan"), "msg: {msg}");
+            }
+            other => panic!("expected FileTooLarge, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn put_long_reasons_without_a_phrase_keep_the_status_mapping() {
+        // Controls: a long reason with no decisive phrase changes nothing.
+        let message = late_phrase("Contact your administrator");
+        let (base, server) = serve_put_refusal(
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+            padded_sabre_refusal(&message, 600),
+        )
+        .await;
+        let outcome = put_to_refusal(&base).await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::FileTooLarge(_))),
+            "{outcome:?}"
+        );
+        let (base, server) = serve_put_refusal(
+            axum::http::StatusCode::FORBIDDEN,
+            padded_sabre_refusal(&message, 600),
+        )
+        .await;
+        let outcome = put_to_refusal(&base).await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::TransferFailed(_))),
+            "{outcome:?}"
+        );
     }
 
     #[tokio::test]

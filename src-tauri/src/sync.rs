@@ -5917,6 +5917,27 @@ pub fn classify_ipc_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
     }
 }
 
+/// The plan-limit kind that a typed `ProviderError` label names where the
+/// text starts or behind wrappers only (`upload failed: File too large:
+/// ...`). The label is ours and decides: the server reason quoted after it
+/// can name the other limit ("over quota" inside a file-size refusal), and
+/// the substring checks below would then stop the whole batch for one file.
+/// Read on the text as given, like the changed-target marker: removing the
+/// caller's path first could remove the label. Twin: `typedLimitKind` in
+/// `src/utils/transferErrorClassifier.ts`.
+fn typed_limit_kind(raw: &str) -> Option<SyncErrorKind> {
+    let lower = raw.to_lowercase();
+    [
+        ("file too large: ", SyncErrorKind::FileTooLarge),
+        ("storage quota exceeded: ", SyncErrorKind::QuotaExceeded),
+    ]
+    .into_iter()
+    .filter_map(|(label, kind)| lower.find(label).map(|at| (at, kind)))
+    .min_by_key(|(at, _)| *at)
+    .filter(|(at, _)| crate::providers::types::is_wrappers_only(&lower[..*at]))
+    .map(|(_, kind)| kind)
+}
+
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
     // A changed target is decided by its marker, on the text as given and
     // before anything is taken out of it: the caller's path is removed below
@@ -5945,7 +5966,9 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     // hold "(os error N)" too.
     let by_os_code = crate::providers::types::os_error_kind(&lower).and_then(sync_error_of_os_kind);
 
-    let (kind, retryable) = if let Some(classified) = by_os_code {
+    let (kind, retryable) = if let Some(kind) = typed_limit_kind(raw) {
+        (kind, false)
+    } else if let Some(classified) = by_os_code {
         classified
     } else if lower.contains("timeout") || lower.contains("timed out") {
         (SyncErrorKind::Timeout, true)
@@ -10489,6 +10512,39 @@ mod tests {
         );
         assert_eq!(err.kind, SyncErrorKind::FileTooLarge);
         assert!(!err.retryable);
+    }
+
+    #[test]
+    fn typed_file_too_large_stays_per_file_when_its_reason_says_quota() {
+        // The label decides over the quoted reason: one oversized file must
+        // not open the circuit breaker for the batch.
+        for raw in [
+            "File too large: the server refused this file as larger than it accepts, often a per-file limit of the account plan (HTTP 413). Server says: over quota for this folder",
+            "upload failed: File too large: the server refused this file (HTTP 403). Server says: Storage full",
+        ] {
+            let info = classify_sync_error(raw, None);
+            assert_eq!(info.kind, SyncErrorKind::FileTooLarge, "{raw}");
+            assert!(!info.retryable, "{raw}");
+        }
+    }
+
+    #[test]
+    fn typed_quota_stays_fatal_when_its_reason_says_file_too_large() {
+        let raw = "Storage quota exceeded: the account is full or has reached its storage limit (HTTP 413). Server says: file too large for the remaining space";
+        let info = classify_sync_error(raw, None);
+        assert_eq!(info.kind, SyncErrorKind::QuotaExceeded);
+        assert!(!info.retryable);
+    }
+
+    #[test]
+    fn a_label_inside_a_named_path_does_not_decide() {
+        // Behind a path, not behind wrappers: the label is part of what the
+        // error names, so the substring checks classify the text as before.
+        let raw = "/docs/a.txt: File too large: Server says: quota reached";
+        assert_eq!(
+            classify_sync_error(raw, None).kind,
+            SyncErrorKind::QuotaExceeded
+        );
     }
 
     /// Zoho WorkDrive refused a 287 MB upload with 413 and an HTML body, and

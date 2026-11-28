@@ -9,6 +9,27 @@
  */
 
 import type { SyncErrorInfo, SyncErrorKind } from '../types';
+import { WRAPPERS_ONLY } from './targetChanged';
+
+/**
+ * The plan-limit kind that a typed ProviderError label names where the text
+ * starts or behind wrappers only (`Upload failed: File too large: ...`).
+ * The label is ours and decides: the server reason quoted after it can name
+ * the other limit. Twin of sync.rs `typed_limit_kind`.
+ */
+const TYPED_LIMIT_LABELS: ReadonlyArray<readonly [string, SyncErrorKind]> = [
+  ['file too large: ', 'file_too_large'],
+  ['storage quota exceeded: ', 'quota_exceeded'],
+];
+
+function typedLimitKind(lower: string): SyncErrorKind | null {
+  let first: { at: number; kind: SyncErrorKind } | null = null;
+  for (const [label, kind] of TYPED_LIMIT_LABELS) {
+    const at = lower.indexOf(label);
+    if (at >= 0 && (first === null || at < first.at)) first = { at, kind };
+  }
+  return first !== null && WRAPPERS_ONLY.test(lower.slice(0, first.at)) ? first.kind : null;
+}
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -55,9 +76,12 @@ export async function classifyTransferFailure(
 export function classifyErrorFast(rawError: string): { kind: SyncErrorKind; retryable: boolean } {
   const lower = rawError.toLowerCase();
 
-  // Quota / storage full (FTP 552): NOT retryable. Checked before the
-  // file-size phrases, matching sync.rs: a quota error may quote a server
-  // reason that mentions a file size limit.
+  const typed = typedLimitKind(lower);
+  if (typed !== null) {
+    return { kind: typed, retryable: false };
+  }
+
+  // Untyped text: checked before the file-size phrases, matching sync.rs.
   if (lower.includes('quota') || lower.includes('storage full') || lower.includes('insufficient storage') || lower.includes('552 ')) {
     return { kind: 'quota_exceeded', retryable: false };
   }

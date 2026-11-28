@@ -44,4 +44,35 @@ describe('classifyErrorFast: a file over the destination limit', () => {
             ),
         ).toEqual({ kind: 'quota_exceeded', retryable: false });
     });
+
+    it('lets a typed FileTooLarge label decide over a reason that says quota', () => {
+        // The label is ours and decides: one oversized file must not open the
+        // circuit breaker for the batch.
+        expect(
+            classifyErrorFast(
+                'File too large: the server refused this file as larger than it accepts, often a per-file limit of the account plan (HTTP 413). Server says: over quota for this folder',
+            ),
+        ).toEqual({ kind: 'file_too_large', retryable: false });
+        expect(
+            classifyErrorFast(
+                'upload failed: File too large: the server refused this file (HTTP 403). Server says: Storage full',
+            ),
+        ).toEqual({ kind: 'file_too_large', retryable: false });
+    });
+
+    it('lets a typed QuotaExceeded label decide over a reason that says file too large', () => {
+        expect(
+            classifyErrorFast(
+                'Storage quota exceeded: the account is full or has reached its storage limit (HTTP 413). Server says: file too large for the remaining space',
+            ),
+        ).toEqual({ kind: 'quota_exceeded', retryable: false });
+    });
+
+    it('ignores a label inside a named path', () => {
+        // Behind a path, not behind wrappers: the substring checks classify
+        // the text as before.
+        expect(
+            classifyErrorFast('/docs/a.txt: File too large: Server says: quota reached'),
+        ).toEqual({ kind: 'quota_exceeded', retryable: false });
+    });
 });

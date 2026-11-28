@@ -2666,7 +2666,8 @@ pub fn is_target_changed_text(raw: &str) -> bool {
 }
 
 /// Whether what stands in front of the marker is nothing, or wrappers only.
-fn is_wrappers_only(prefix: &str) -> bool {
+/// Also used by `sync::typed_limit_kind`.
+pub(crate) fn is_wrappers_only(prefix: &str) -> bool {
     let prefix = prefix.trim_start();
     if prefix.is_empty() {
         return true;
