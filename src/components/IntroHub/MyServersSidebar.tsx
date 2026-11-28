@@ -17,9 +17,12 @@ const FILTER_ICON: Record<MyServersFilterBy, LucideIcon> = {
     favorites: Star,
     encrypted: ShieldCheck,
     active: Activity,
-    ftp: Globe,
+    // Shapes come from the shared CONNECTION_METHOD_GLYPH map (#347): FTP is
+    // Server, WebDAV is Globe. Hand-picking them here had them swapped, so the
+    // chips disagreed with the My Servers rows and the list badges.
+    ftp: Server,
     s3: Bucket,
-    webdav: Server,
+    webdav: Globe,
     cloud: Cloud,
     media: Image,
     dev: Code,

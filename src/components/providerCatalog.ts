@@ -169,6 +169,14 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Blomp', logoId: 'blomp', countryCode: 'US', freeStorageGb: 40,
       freeNote: '+40 GB per referral',
       protocols: [{ label: 'Swift', protocol: 'swift', providerId: 'blomp', category: 'cloud-storage' }] },
+    // Generic OpenStack Swift: not a company with a free tier, but the
+    // self-hosted / any-Keystone entry point for the swift protocol. No
+    // providerId, so Quick Connect opens the plain Swift form (auth URL,
+    // account, password/key; the container is discovered per account).
+    { company: 'OpenStack Swift', logoId: 'swift', countryCode: '', freeStorageGb: null,
+      freeNote: 'self-hosted / any Keystone cloud',
+      searchAliases: ['openstack', 'swift', 'keystone', 'object storage'],
+      protocols: [{ label: 'Swift', protocol: 'swift', category: 'object-storage' }] },
     { company: 'Storj', logoId: 'storj', countryCode: 'US', freeStorageGb: null,
       freeNote: '30-day trial',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'storj', category: 'object-storage', paid: true }] },
@@ -478,6 +486,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'neon', icon: 'neon.png', docsPath: 'providers/neon' },
     { logoId: 'coritan', icon: 'coritan.png', docsPath: 'providers/aws-s3' },
     { logoId: 'minio', icon: 'minio.png', docsPath: 'providers/minio' },
+    { logoId: 'swift', icon: 'openstack-swift.svg', docsPath: 'protocols/swift', label: 'OpenStack Swift' },
     { logoId: 'yandex-storage', icon: 'yandexcloud.png', docsPath: 'providers/yandex-object-storage' },
     { logoId: 's3drive', icon: 's3drive.png', docsPath: 'providers/s3drive' },
     { logoId: 'quotaless-s3', icon: 'quotaless.png', docsPath: 'providers/quotaless' },

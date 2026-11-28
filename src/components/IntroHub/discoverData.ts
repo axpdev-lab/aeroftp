@@ -105,6 +105,10 @@ const PROTOCOL_ITEMS: DiscoverItem[] = [
 /** Object storage items defined at protocol level (not in provider registry) */
 const OBJECT_STORAGE_ITEMS: DiscoverItem[] = [
     { id: 'azure-generic', name: 'Azure Blob', description: 'Azure Blob Storage', protocol: 'azure', badge: 'HMAC', isGeneric: true, healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration', source: 'protocol' },
+    // Generic OpenStack Swift: self-hosted Keystone or any Swift cloud. No
+    // providerId, so the Quick Connect Swift form opens blank (auth URL,
+    // account, password/key; the container is discovered per account).
+    { id: 'swift-generic', name: 'OpenStack Swift', description: 'OpenStack Swift object storage (self-hosted Keystone or any Swift cloud)', protocol: 'swift', badge: 'Swift', isGeneric: true, source: 'protocol', searchAliases: ['openstack', 'swift', 'keystone', 'object storage'] },
 ];
 
 const DEVELOPER_ITEMS: DiscoverItem[] = [
@@ -282,7 +286,7 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
         .sort((a, b) => {
             const priority: Record<string, number> = {
                 // Row 1: generic + self-hosted + decentralized
-                'custom-s3': 0, 'minio': 1, 'storj': 2,
+                'custom-s3': 0, 'swift-generic': 0, 'minio': 1, 'storj': 2,
                 // Row 2: major cloud providers
                 'amazon-s3': 3, 'google-cloud-storage': 4, 'cloudflare-r2': 5, 'azure-generic': 6,
                 // Row 3: mid-tier providers

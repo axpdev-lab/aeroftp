@@ -41,6 +41,49 @@ export const S3BucketLogo: React.FC<LogoProps> = ({ size = 16 }) => (
     </svg>
 );
 
+// Generic WebDAV: the shared `Globe` glyph (connectionMethodIcons WebDAV), so a
+// generic WebDAV profile in My Servers wears the same shape as the sidebar
+// WebDAV category and the list badge. Stroke-based like S3BucketLogo, so it
+// inherits `currentColor` on every surface.
+export const WebDavLogo: React.FC<LogoProps> = ({ size = 16 }) => (
+    <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+    >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M2 12h20" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+);
+
+// Generic OpenStack Swift: three stacked containers in OpenStack red, echoing
+// the shared `Boxes` glyph Swift uses in Quick Connect badges (#347). The red
+// tells it apart from Blomp's purple preset logo; Blomp keeps its own entry.
+export const OpenStackSwiftLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#DA4E31"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+    >
+        <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+        <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+        <rect x="8.25" y="13.5" width="7.5" height="7.5" rx="1.5" />
+    </svg>
+);
+
 // MEGA: red circle with white "M"
 export const MegaLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 512 512">
@@ -640,6 +683,13 @@ export const LifetimeCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
 
 /** Map of provider ID → logo component */
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
+    // Generic (non-preset) protocols get a category glyph here, so a saved
+    // profile without a preset providerId wears the same mark as its sidebar
+    // category and list badge. Presets keep their brand logos via their own
+    // providerId keys below.
+    's3': S3BucketLogo,
+    'webdav': WebDavLogo,
+    'swift': OpenStackSwiftLogo,
     'amazon-s3': AwsLogo,
     'mega': MegaLogo,
     'mega-s4': MegaLogo,

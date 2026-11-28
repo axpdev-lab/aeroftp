@@ -46,6 +46,16 @@ describe('Proton Drive protocol class and mode badge', () => {
         }
     });
 
+    it('classifies OpenStack Swift as its own Swift class, not a generic API', () => {
+        // Quick Connect badges already label swift "Swift"; the My Servers
+        // badge and the filters must agree instead of showing a generic API.
+        expect(getProtocolClass('swift')).toBe('Swift');
+        expect(getProfileProtocolClass({ protocol: 'swift' })).toBe('Swift');
+        // Other native API providers keep the API class.
+        expect(getProtocolClass('immich')).toBe('API');
+        expect(getProtocolClass('github')).toBe('API');
+    });
+
     it('back-fills the provider id of a saved Proton profile', () => {
         expect(NATIVE_PROVIDER_PROTOCOLS.has('proton')).toBe(true);
     });

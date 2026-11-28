@@ -60,6 +60,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Neon Object Storage | US | 5 GB (per project) | S3 |
 | Nextcloud | - | self-hosted | WebDAV |
 | OpenDrive | US | 5 GB | API, WebDAV |
+| OpenStack Swift | - | self-hosted / any Keystone cloud | Swift |
 | Oracle Cloud | US | 20 GB (always-free, card req.) | S3* |
 | pCloud Drive | CH | 10 GB | OAuth, WebDAV* |
 | PixelUnion | EU | 16 GB (managed Immich) | API |
@@ -80,7 +81,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>62 providers, 76 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>63 providers, 77 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 

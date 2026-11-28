@@ -122,6 +122,25 @@
     ]
   },
   {
+    "company": "OpenStack Swift",
+    "logoId": "swift",
+    "country": "",
+    "freeGb": null,
+    "freeNote": "self-hosted / any Keystone cloud",
+    "freeRequiresCard": false,
+    "regions": [],
+    "protocols": [
+      {
+        "label": "Swift",
+        "protocol": "swift",
+        "providerId": null,
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "Storj",
     "logoId": "storj",
     "country": "US",

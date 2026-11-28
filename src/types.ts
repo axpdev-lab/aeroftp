@@ -99,11 +99,11 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
 export const isSshProtocol = (protocol?: string | null): boolean =>
   protocol === "sftp" || protocol === "scp";
 
-// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / SCP / S3 / Azure / MTP)
+// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / SCP / S3 / Swift / Azure / MTP)
 // "Crypt" is a profile-level class (not a transport): a saved profile with an
 // enabled crypt overlay reads as "Crypt" regardless of its backend. See
 // getProfileProtocolClass.
-export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "SCP" | "S3" | "Azure" | "AeroCloud" | "Crypt" | "MTP";
+export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "SCP" | "S3" | "Swift" | "Azure" | "AeroCloud" | "Crypt" | "MTP";
 
 export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (isOAuthProvider(type) || isFourSharedProvider(type)) return "OAuth";
@@ -118,10 +118,14 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (type === "sftp") return "SFTP";
   if (type === "scp") return "SCP";
   if (type === "s3") return "S3";
+  // OpenStack Swift is its own object-storage class, not a generic native
+  // API: Quick Connect badges already label it "Swift", so the My Servers
+  // badge and the sidebar filters agree with it.
+  if (type === "swift") return "Swift";
   if (type === "azure") return "Azure";
   // Portable USB MTP/WPD (not an HTTP "API" cloud).
   if (type === "mtp") return "MTP";
-  // Native API providers (Koofr, Jottacloud, OpenDrive, kDrive, Drime, FileLu, Yandex, GitHub, GitLab, Swift, Immich)
+  // Native API providers (Koofr, Jottacloud, OpenDrive, kDrive, Drime, FileLu, Yandex, GitHub, GitLab, Immich)
   return "API";
 };
 
