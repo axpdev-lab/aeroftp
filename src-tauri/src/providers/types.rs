@@ -2666,7 +2666,8 @@ pub fn is_target_changed_text(raw: &str) -> bool {
 }
 
 /// Whether what stands in front of the marker is nothing, or wrappers only.
-fn is_wrappers_only(prefix: &str) -> bool {
+/// Also used by `sync::typed_limit_kind`.
+pub(crate) fn is_wrappers_only(prefix: &str) -> bool {
     let prefix = prefix.trim_start();
     if prefix.is_empty() {
         return true;
@@ -2730,6 +2731,14 @@ pub enum ProviderError {
     /// and non-retryable: the same oversized file always fails.
     #[error("File too large: {0}")]
     FileTooLarge(String),
+
+    /// The provider refused the write because the account is full or has
+    /// reached a plan limit (storage quota, maximum number of files), as a
+    /// WebDAV 507 Insufficient Storage says. Distinct from FileTooLarge (this
+    /// file alone is not the problem). Deterministic until the user frees
+    /// space or upgrades: never retried.
+    #[error("Storage quota exceeded: {0}")]
+    QuotaExceeded(String),
 
     #[error("Path already exists: {0}")]
     AlreadyExists(String),

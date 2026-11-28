@@ -214,6 +214,7 @@ impl TransferError {
             ProviderError::NotFound(_) => TransferErrorKind::NotFound,
             ProviderError::PermissionDenied(_) => TransferErrorKind::PermissionDenied,
             ProviderError::FileTooLarge(_) => TransferErrorKind::FileTooLarge,
+            ProviderError::QuotaExceeded(_) => TransferErrorKind::QuotaExceeded,
             ProviderError::RestrictedChar { .. } => TransferErrorKind::PermissionDenied,
             ProviderError::ReadOnly(_) => TransferErrorKind::PermissionDenied,
             ProviderError::InvalidPath(_) | ProviderError::InvalidConfig(_) => {
