@@ -323,8 +323,14 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
      */
     const handleChooseImportFile = async () => {
         // Before the picker opens: the user may stay in it longer than the
-        // close scheduled by a previous success.
+        // close scheduled by a previous success. The success overlay is
+        // cleared here too (before the await): cancelScheduledClose() does
+        // not cancel the overlay's own timer, and a picker left open past
+        // IMPORT_SUCCESS_CLOSE_DELAY_MS would let that timer close the dialog
+        // (CodeRabbit Minor on #1641). Clearing it unmounts the overlay, and
+        // its unmount cleanup clears the timer.
         cancelScheduledClose();
+        setImportSummary(null);
         const filePath = await pickFile({
             title: t('settings.importServers'),
             filters: [
@@ -337,7 +343,6 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setError(null);
         setSuccess(null);
         setImportWarning(null);
-        setImportSummary(null);
         setPassword('');
         setImportFilePath(filePath);
     };

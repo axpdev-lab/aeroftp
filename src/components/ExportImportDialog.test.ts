@@ -38,7 +38,9 @@ let host: HTMLDivElement;
 
 beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    // clearTimeout is faked too, so a component cleanup can really cancel a
+    // pending fake timer (a real clearTimeout cannot).
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -383,6 +385,30 @@ describe('ExportImportDialog import success overlay and list refresh', () => {
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
         });
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    // CodeRabbit Minor on #1641: while the success overlay is up, keyboard
+    // navigation can still activate the Change button underneath. The
+    // overlay's own timer is not cancelled by cancelScheduledClose(), so a
+    // file picker left open past IMPORT_SUCCESS_CLOSE_DELAY_MS would let it
+    // close the dialog. The fix clears the overlay before the picker opens.
+    it('clears the success overlay before the picker opens, so a picker left open past the pause cannot close the dialog', async () => {
+        vi.mocked(invoke).mockResolvedValue(cleanImportResult);
+        const { pickFile } = await import('../utils/pickPath');
+        const onClose = vi.fn();
+        await openImport(vi.fn(), onClose);
+        await runImport('skip');
+        // Success: the overlay is up with its close timer armed.
+        expect(host.querySelector('[data-testid="import-success-overlay"]')).not.toBeNull();
+        // A second Change keeps the picker pending forever (one-shot, so the
+        // default resolving picker stays in place for the next test).
+        vi.mocked(pickFile).mockImplementationOnce(() => new Promise<string>(() => {}));
+        await click(button(b => b.textContent?.includes('settings.importChangeFile') ?? false));
+        // The overlay is gone at once: its unmount cleanup cleared the timer.
+        expect(host.querySelector('[data-testid="import-success-overlay"]')).toBeNull();
+        // The picker stays open well past the pause: the dialog must not close.
+        await act(async () => { vi.advanceTimersByTime(IMPORT_SUCCESS_CLOSE_DELAY_MS + 5000); });
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it('a warned import keeps the dialog open and shows no overlay', async () => {
