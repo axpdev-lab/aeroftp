@@ -121,6 +121,8 @@ export type Options = {
   policy?: 'skip' | 'overwrite' | 'rename' | 'ask' | 'resume';
   /** What the folder question answers. */
   folderAction?: 'merge_overwrite' | 'skip';
+  /** Toast notifications on/off (App's showToastNotifications). */
+  toastNotifications?: boolean;
   /** '' is a session without a protocol: the legacy folder commands. */
   protocol?: 'webdav' | 'github' | 'opendrive' | 'fourshared' | '';
   /** The error a single-file or folder write answers with, by command and
@@ -250,7 +252,11 @@ export function fixture(options: Options = {}) {
   const stopCountRef = { current: 0 };
   const deleteGesturesRef = { current: [] as string[] };
   const retryCallbacksRef = { current: new Map<string, () => Promise<void>>() };
-  const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() };
+  const toastError = vi.fn();
+  const showToastNotifications = options.toastNotifications ?? true;
+  // Mirrors App's notify.errorToastOnly: toast only when notifications are on.
+  const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn(), errorToastOnly: vi.fn((title: string, msg?: string) => (showToastNotifications ? toastError(title, msg) : null)) };
+  const withoutErrorTag = (s: string) => s;
   const humanLog = { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), logSuccess: vi.fn(), updateEntry: vi.fn() };
   const checkFolderOverwrite = vi.fn(async (..._args: unknown[]) => ({ action: options.folderAction ?? 'merge_overwrite', applyToAll: false }));
   const refreshLocalPanelForPath = vi.fn(async () => undefined);
@@ -290,7 +296,7 @@ export function fixture(options: Options = {}) {
     liveConnectionParams, aeroVaultOverlaySession: vaultSession, aeroVaultSessionRef: { current: vaultSession }, isConnected: true, isSameConnection, isTargetChangedRefusal, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
-    humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, deleteGesturesRef, isDeletionCancelled, cancelLevelRef,
+    humanLog, pendingFileLogIds: { current: new Map() }, pendingFileTargetPaths: { current: new Map() }, batchCancelledRef, stopCountRef, deleteGesturesRef, isDeletionCancelled, cancelLevelRef,
     batchOpInFlightRef: { current: false }, batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, batchOperationPendingRef: { current: null }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
     circuitBreaker: options.breaker ?? {
       reset: vi.fn(), recordSuccess: vi.fn(), recordFailure: () => ({ isFatal: false, retryable: false, shouldPause: false }),
@@ -309,7 +315,7 @@ export function fixture(options: Options = {}) {
     effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,
     downloadSegments: 0, sftpDownloadPreset: 'balanced', supportsFtpTransferPresets: false,
     buildSftpDownloadPresetPayload: () => ({}), resolveFtpDownloadSegments: () => 0,
-    formatBytes: (size: number) => String(size), t: (key: string) => key, notify,
+    formatBytes: (size: number) => String(size), t: (key: string) => key, notify, toastError, showToastNotifications, withoutErrorTag,
     refreshLocalPanelForPath, loadRemoteFiles, loadLocalFiles, crossPanelDropRef, setScanningState: vi.fn(), INITIAL_SCANNING_STATE,
     requestGitHubBatchCommitMessage, setGitHubSyncWarning: vi.fn(),
     fileClipboardRef: { current: null as null | { files: ClipboardFiles; isRemote: boolean; sourceDir: string; operation: 'cut' | 'copy' } },
@@ -357,5 +363,5 @@ export function fixture(options: Options = {}) {
   const switchServer = (change: Partial<ConnectionParams> = { server: 'b.example' }) => {
     live.params = { ...live.params, ...change };
   };
-  return { hardStop, nativeCancel, switchVault, aeroVaultSessionRef: context.aeroVaultSessionRef, switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, uncertain: context.backendUncertainRef, confirmations: context.backendConfirmationsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { hardStop, nativeCancel, switchVault, aeroVaultSessionRef: context.aeroVaultSessionRef, switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, uncertain: context.backendUncertainRef, confirmations: context.backendConfirmationsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, toastError, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

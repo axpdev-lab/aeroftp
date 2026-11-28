@@ -97,7 +97,9 @@ describe.each(['download', 'upload'] as const)('App actual %s destination', dire
     expect(await single(f, direction)).toBe(false);
     expect(f.writers()).toHaveLength(0);
     expect(f.checkOverwrite).not.toHaveBeenCalled();
-    expect(f.notify.error).toHaveBeenCalled();
+    // The failure line is already in the Activity Log: toast only, no notify mirror.
+    expect(f.notify.errorToastOnly).toHaveBeenCalledWith(`toast.${direction}Failed`, expect.any(String));
+    expect(f.notify.error).not.toHaveBeenCalled();
   });
 });
 

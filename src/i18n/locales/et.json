@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Taastati {count} edastus(t). Jätkamine ühendub vajadusel salvestatud serveriga ja käivitab need seejärel uuesti. Hülgamine eemaldab need.",
             "resumeRestoredAll": "Jätka kõiki",
             "discardRestored": "Loobu",
-            "resumeConnectConfirm": "Ühenduda serveriga „{name}“ ja jätkata {count} edastus(t)?",
             "connectAndResume": "Ühenda ja jätka",
             "resumeNeedsConnection": "Ühenduge esmalt serveriga ja jätkake seejärel seda edastust.",
             "resumeNoProfile": "Sellel edastusel pole salvestatud serveriprofiili. Ühenduge käsitsi ja jätkake seejärel.",
@@ -771,7 +770,9 @@
             "failedCount": "Ebaõnnestunud: {count}",
             "queuedForAnotherServer": "Pole alustatud: see ülekanne oli järjekorras teise serveri või konto jaoks. Minge tagasi selle vahekaardile ja proovige uuesti.",
             "queuedOverlayChanged": "Pole alustatud: krüptitud overlay, mille all see ülekanne järjekorda pandi, on lukus või ei kata enam seda kausta. Avage see lukust sellel serveril ja proovige uuesti.",
-            "pasteFromAnotherServer": "Pole kleebitud: need failid lõigati või kopeeriti serveris, kontol või krüpteeritud kihil, mis pole praegu aktiivne. Minge tagasi selle vahekaardile ja kleepige uuesti."
+            "pasteFromAnotherServer": "Pole kleebitud: need failid lõigati või kopeeriti serveris, kontol või krüpteeritud kihil, mis pole praegu aktiivne. Minge tagasi selle vahekaardile ja kleepige uuesti.",
+            "resumeConnectConfirm_one": "Ühenda teenusega \"{name}\" ja jätka {count} ülekannet?",
+            "resumeConnectConfirm_many": "Ühenda teenusega \"{name}\" ja jätka {count} ülekannet?"
         },
         "settings": {
             "title": "Seaded",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (kasvas {percent}%)",
             "extract_details": "{input} → {output} (lahti pakitud)",
             "download_details": "({size} {seconds} s jooksul)",
-            "transfer_details": "({size} ajaga {time})"
+            "transfer_details": "({size} ajaga {time})",
+            "download_error_reason": "Faili {filename} allalaadimine ebaõnnestus: {reason}",
+            "upload_error_reason": "Faili {filename} üleslaadimine ebaõnnestus: {reason}"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",

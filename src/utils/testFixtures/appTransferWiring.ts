@@ -54,7 +54,7 @@ const { code: overwriteCode } = await transformWithOxc(
 export type Direction = 'upload' | 'download';
 export type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
 export const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-export function fixture(options: { hold?: { holdFileCompletions: (ids: readonly string[]) => () => void; registerFileBatchRows: (batchId: string, queueIds: readonly string[]) => void }; queue?: Record<string, unknown>; privacyError?: string; staged?: boolean; epoch?: () => number | Promise<number>; direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' | 'opendrive' | 'fourshared' }) {
+export function fixture(options: { hold?: { holdFileCompletions: (ids: readonly string[]) => () => void; registerFileBatchRows: (batchId: string, queueIds: readonly string[]) => void }; queue?: Record<string, unknown>; privacyError?: string; staged?: boolean; epoch?: () => number | Promise<number>; direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; toastNotifications?: boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' | 'opendrive' | 'fourshared' }) {
   const direction = options.direction;
   const protocol = options.protocol || 'webdav';
   const destination = options.destination ?? [file('a.bin')];
@@ -93,7 +93,11 @@ export function fixture(options: { hold?: { holdFileCompletions: (ids: readonly 
     // A test that follows real rows replaces the settle functions.
     ...options.queue,
   };
-  const notify = { info: vi.fn(), error: vi.fn() };
+  const toastError = vi.fn();
+  const showToastNotifications = options.toastNotifications ?? true;
+  // Mirrors App's notify.errorToastOnly: toast only when notifications are on.
+  const notify = { info: vi.fn(), error: vi.fn(), errorToastOnly: vi.fn((title: string, msg?: string) => (showToastNotifications ? toastError(title, msg) : null)) };
+  const withoutErrorTag = (s: string) => s;
   const resetOverwriteSettings = vi.fn();
   const context = {
     invoke, checkOverwrite, loadOverwriteDestination: resolveDestination, resetOverwriteSettings,
@@ -108,7 +112,7 @@ export function fixture(options: { hold?: { holdFileCompletions: (ids: readonly 
     localFiles2: options.panel2 ?? [], sortedLocalFiles2: options.panel2 ?? [],
     remoteFiles: direction === 'download' ? [file('a.bin', 100)] : panel,
     humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
-    stopCountRef: { current: 0 }, pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+    stopCountRef: { current: 0 }, pendingFileLogIds: { current: new Map() }, pendingFileTargetPaths: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
     circuitBreaker: { reset: vi.fn() }, retryCallbacksRef, withTransferGeneration: <T,>(fn: T) => fn,
     registerTransferCallback: (id: string, cb: () => unknown) => { retryCallbacksRef.current.set(id, cb); }, queueItemsRef, transferQueue,
     recordQueueDescriptor: vi.fn(),
@@ -127,12 +131,12 @@ export function fixture(options: { hold?: { holdFileCompletions: (ids: readonly 
     effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,
     downloadSegments: 0, sftpDownloadPreset: 'balanced', supportsFtpTransferPresets: false,
     buildSftpDownloadPresetPayload: () => ({}), resolveFtpDownloadSegments: () => 0,
-    formatBytes: (size: number) => String(size), t: (key: string) => key, notify,
+    formatBytes: (size: number) => String(size), t: (key: string) => key, notify, toastError, showToastNotifications, withoutErrorTag,
     // Outside React, a function from useLatestCallback is the function itself.
     useLatestCallback: <F,>(fn: F) => fn,
   };
   const runtime = new Function(...Object.keys(context), `${code}; return { downloadFile, uploadFile, runFileBatch };`)(...Object.values(context));
   const writers = () => invoke.mock.calls.filter(([name]) => /provider_(upload|download)_(file|files_batch|folder)$/.test(name));
   const listings = () => invoke.mock.calls.filter(([name]) => ['get_local_files', 'provider_list_files'].includes(name));
-  return { runtime, invoke, checkOverwrite, resolveDestination, notify, transferQueue, listings, writers, resetOverwriteSettings, retryCallbacks: context.retryCallbacksRef.current, stop: () => { context.stopCountRef.current++; context.batchCancelledRef.current = true; } };
+  return { runtime, invoke, checkOverwrite, resolveDestination, notify, toastError, transferQueue, listings, writers, resetOverwriteSettings, retryCallbacks: context.retryCallbacksRef.current, stop: () => { context.stopCountRef.current++; context.batchCancelledRef.current = true; } };
 }

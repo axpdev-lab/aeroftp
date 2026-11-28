@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} aktarım geri yüklendi. Sürdür, gerekirse kayıtlı sunucuya bağlanır, ardından bunları yeniden çalıştırır. At, bunları kaldırır.",
             "resumeRestoredAll": "Tümünü devam ettir",
             "discardRestored": "İptal et",
-            "resumeConnectConfirm": "\"{name}\" sunucusuna bağlanıp {count} aktarımı sürdürelim mi?",
             "connectAndResume": "Bağlan ve Sürdür",
             "resumeNeedsConnection": "Önce bir sunucuya bağlanın, ardından bu aktarımı sürdürün.",
             "resumeNoProfile": "Bu aktarımın kayıtlı sunucu profili yok. Elle bağlanın, ardından sürdürün.",
@@ -771,7 +770,9 @@
             "failedCount": "Başarısız: {count}",
             "queuedForAnotherServer": "Başlatılmadı: bu aktarım başka bir sunucu veya hesap için kuyruğa alınmıştı. Sekmesine geri dönün, ardından yeniden deneyin.",
             "queuedOverlayChanged": "Başlatılmadı: bu aktarımın kuyruğa alındığı şifreli overlay kilitli veya artık bu klasörü kapsamıyor. Onu o sunucuda kilidini açın, ardından tekrar deneyin.",
-            "pasteFromAnotherServer": "Yapıştırılmadı: bu dosyalar şu anda etkin olmayan bir sunucuda, hesapta veya şifreli katmanda kesildi ya da kopyalandı. Sekmesine geri dönün, ardından yeniden yapıştırın."
+            "pasteFromAnotherServer": "Yapıştırılmadı: bu dosyalar şu anda etkin olmayan bir sunucuda, hesapta veya şifreli katmanda kesildi ya da kopyalandı. Sekmesine geri dönün, ardından yeniden yapıştırın.",
+            "resumeConnectConfirm_one": "\"{name}\" adresine bağlan ve {count} aktarımı sürdür?",
+            "resumeConnectConfirm_many": "\"{name}\" adresine bağlan ve {count} aktarımı sürdür?"
         },
         "settings": {
             "title": "Ayarlar",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (%{percent} büyüdü)",
             "extract_details": "{input} → {output} (açıldı)",
             "download_details": "({size}, {seconds} sn'de)",
-            "transfer_details": "({time} içinde {size})"
+            "transfer_details": "({time} içinde {size})",
+            "download_error_reason": "{filename} indirilemedi: {reason}",
+            "upload_error_reason": "{filename} yüklenemedi: {reason}"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",

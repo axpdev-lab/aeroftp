@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Обновени се {count} пренос(и). Продолжувањето се поврзува со зачуваниот сервер ако е потребно, па повторно ги извршува. Отфрли ги отстранува.",
             "resumeRestoredAll": "Продолжи ги сите",
             "discardRestored": "Отфрли",
-            "resumeConnectConfirm": "Поврзи се со „{name}“ и продолжи {count} пренос(и)?",
             "connectAndResume": "Поврзи и продолжи",
             "resumeNeedsConnection": "Прво поврзете се со сервер, потоа продолжете го овој пренос.",
             "resumeNoProfile": "Овој пренос нема зачуван профил на сервер. Поврзете се рачно, потоа продолжете.",
@@ -771,7 +770,9 @@
             "failedCount": "Неуспешни: {count}",
             "queuedForAnotherServer": "Не е започнато: овој пренос беше во редица за друг сервер или сметка. Вратете се на неговиот таб и обидете се повторно.",
             "queuedOverlayChanged": "Не е започнато: шифрираниот overlay под кој овој пренос беше ставен во редица е заклучен или повеќе не ја покрива оваа папка. Отклучете го на тој сервер, па обидете се повторно.",
-            "pasteFromAnotherServer": "Не е залепено: овие датотеки беа исечени или копирани на сервер, сметка или шифриран слој што моментално не е активен. Вратете се на неговиот таб и залепете повторно."
+            "pasteFromAnotherServer": "Не е залепено: овие датотеки беа исечени или копирани на сервер, сметка или шифриран слој што моментално не е активен. Вратете се на неговиот таб и залепете повторно.",
+            "resumeConnectConfirm_one": "Поврзи се со „{name}\" и продолжи {count} пренос?",
+            "resumeConnectConfirm_many": "Поврзи се со „{name}\" и продолжи {count} преноси?"
         },
         "settings": {
             "title": "Поставки",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (зголемено {percent}%)",
             "extract_details": "{input} → {output} (распакувано)",
             "download_details": "({size} за {seconds} с)",
-            "transfer_details": "({size} за {time})"
+            "transfer_details": "({size} за {time})",
+            "download_error_reason": "Неуспешно преземање на {filename}: {reason}",
+            "upload_error_reason": "Неуспешно поставување на {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",

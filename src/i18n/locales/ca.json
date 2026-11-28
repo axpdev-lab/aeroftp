@@ -703,7 +703,6 @@
             "restoredQueueDescription": "S'han restaurat {count} transferència(es). Reprendre es connecta al servidor desat si cal i després les torna a executar. Descarta les elimina.",
             "resumeRestoredAll": "Reprèn-ho tot",
             "discardRestored": "Descarta",
-            "resumeConnectConfirm": "Connectar a «{name}» i reprendre {count} transferència(es)?",
             "connectAndResume": "Connecta i reprèn",
             "resumeNeedsConnection": "Connecti's primer a un servidor i després reprengui aquesta transferència.",
             "resumeNoProfile": "Aquesta transferència no té cap perfil de servidor desat. Connecti's manualment i després reprengui.",
@@ -771,7 +770,9 @@
             "failedCount": "Fallits: {count}",
             "queuedForAnotherServer": "No iniciat: aquesta transferència estava a la cua per a un altre servidor o compte. Torna a la seva pestanya i reintenta.",
             "queuedOverlayChanged": "No s'ha iniciat: l'overlay xifrat sota el qual es va posar en cua aquesta transferència està bloquejat o ja no cobreix aquesta carpeta. Desbloqueja'l en aquell servidor i torna-ho a provar.",
-            "pasteFromAnotherServer": "No enganxat: aquests fitxers es van retallar o copiar en un servidor, compte o superposició xifrada que ara no és actiu. Torna a la seva pestanya i enganxa de nou."
+            "pasteFromAnotherServer": "No enganxat: aquests fitxers es van retallar o copiar en un servidor, compte o superposició xifrada que ara no és actiu. Torna a la seva pestanya i enganxa de nou.",
+            "resumeConnectConfirm_one": "Connecta't a \"{name}\" i reprèn {count} transferència?",
+            "resumeConnectConfirm_many": "Connecta't a \"{name}\" i reprèn {count} transferències?"
         },
         "settings": {
             "title": "Configuració",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (ha crescut {percent}%)",
             "extract_details": "{input} → {output} (expandit)",
             "download_details": "({size} en {seconds} s)",
-            "transfer_details": "({size} en {time})"
+            "transfer_details": "({size} en {time})",
+            "download_error_reason": "La baixada de {filename} ha fallat: {reason}",
+            "upload_error_reason": "La pujada de {filename} ha fallat: {reason}"
         },
         "protocol": {
             "selectProtocol": "Seleccioni protocol...",

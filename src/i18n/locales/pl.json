@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Przywrócone transfery: {count}. Wznów w razie potrzeby łączy się z zapisanym serwerem, a następnie uruchamia je ponownie. Odrzuć usuwa je.",
             "resumeRestoredAll": "Wznów wszystkie",
             "discardRestored": "Odrzuć",
-            "resumeConnectConfirm": "Połączyć z „{name}” i wznowić transfery ({count})?",
             "connectAndResume": "Połącz i wznów",
             "resumeNeedsConnection": "Najpierw połącz się z serwerem, a następnie wznów ten transfer.",
             "resumeNoProfile": "Ten transfer nie ma zapisanego profilu serwera. Połącz się ręcznie, a następnie wznów.",
@@ -771,7 +770,9 @@
             "failedCount": "Nieudane: {count}",
             "queuedForAnotherServer": "Nie rozpoczęto: ten transfer czekał w kolejce dla innego serwera lub konta. Wróć do jego karty i spróbuj ponownie.",
             "queuedOverlayChanged": "Nie rozpoczęto: zaszyfrowany overlay, pod którym ten transfer został umieszczony w kolejce, jest zablokowany lub nie obejmuje już tego folderu. Odblokuj go na tym serwerze, a następnie spróbuj ponownie.",
-            "pasteFromAnotherServer": "Nie wklejono: te pliki zostały wycięte lub skopiowane na serwerze, koncie lub zaszyfrowanej nakładce, które nie są teraz aktywne. Wróć do jego karty i wklej ponownie."
+            "pasteFromAnotherServer": "Nie wklejono: te pliki zostały wycięte lub skopiowane na serwerze, koncie lub zaszyfrowanej nakładce, które nie są teraz aktywne. Wróć do jego karty i wklej ponownie.",
+            "resumeConnectConfirm_one": "Połącz z „{name}\" i wznów {count} transfer?",
+            "resumeConnectConfirm_many": "Połącz z „{name}\" i wznów {count} transferów?"
         },
         "settings": {
             "title": "Ustawienia",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (wzrost o {percent}%)",
             "extract_details": "{input} → {output} (rozpakowano)",
             "download_details": "({size} w {seconds} s)",
-            "transfer_details": "({size} w {time})"
+            "transfer_details": "({size} w {time})",
+            "download_error_reason": "Nie udało się pobrać {filename}: {reason}",
+            "upload_error_reason": "Nie udało się przesłać {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",

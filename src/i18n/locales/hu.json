@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} átvitel helyreállítva. A folytatás szükség esetén csatlakozik a mentett kiszolgálóhoz, majd újrafuttatja őket. Az elvetés eltávolítja őket.",
             "resumeRestoredAll": "Összes folytatása",
             "discardRestored": "Elvetés",
-            "resumeConnectConfirm": "Csatlakozás a(z) „{name}” kiszolgálóhoz és {count} átvitel folytatása?",
             "connectAndResume": "Csatlakozás és folytatás",
             "resumeNeedsConnection": "Először csatlakozzon egy kiszolgálóhoz, majd folytassa ezt az átvitelt.",
             "resumeNoProfile": "Ehhez az átvitelhez nincs mentett kiszolgálóprofil. Csatlakozzon manuálisan, majd folytassa.",
@@ -771,7 +770,9 @@
             "failedCount": "Sikertelen: {count}",
             "queuedForAnotherServer": "Nem indult el: ez az átvitel egy másik szerverhez vagy fiókhoz volt sorba állítva. Váltson vissza a lapjára, majd próbálja újra.",
             "queuedOverlayChanged": "Nem indult el: a titkosított overlay, amely alatt ezt az átvitelt sorba állították, zárolva van, vagy már nem fedi le ezt a mappát. Oldja fel azon a szerveren, majd próbálja újra.",
-            "pasteFromAnotherServer": "Nincs beillesztve: ezeket a fájlokat egy most nem aktív szerveren, fiókban vagy titkosított rétegen vágták ki vagy másolták. Váltson vissza a lapjára, majd illessze be újra."
+            "pasteFromAnotherServer": "Nincs beillesztve: ezeket a fájlokat egy most nem aktív szerveren, fiókban vagy titkosított rétegen vágták ki vagy másolták. Váltson vissza a lapjára, majd illessze be újra.",
+            "resumeConnectConfirm_one": "Csatlakozás a következőhöz: \"{name}\", és {count} átvitel folytatása?",
+            "resumeConnectConfirm_many": "Csatlakozás a következőhöz: \"{name}\", és {count} átvitel folytatása?"
         },
         "settings": {
             "title": "Beállítások",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} ({percent}% növekedés)",
             "extract_details": "{input} → {output} (kibontva)",
             "download_details": "({size}, {seconds} mp alatt)",
-            "transfer_details": "({size}, {time} alatt)"
+            "transfer_details": "({size}, {time} alatt)",
+            "download_error_reason": "{filename} letöltése sikertelen: {reason}",
+            "upload_error_reason": "{filename} feltöltése sikertelen: {reason}"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",

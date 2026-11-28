@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Uhamishaji {count} umerejeshwa. Endelea inaunganisha kwenye seva iliyohifadhiwa inapohitajika, kisha inazitekeleza tena. Tupa inaziondoa.",
             "resumeRestoredAll": "Endelea yote",
             "discardRestored": "Batilisha",
-            "resumeConnectConfirm": "Unganisha kwenye \"{name}\" na uendelee na uhamishaji {count}?",
             "connectAndResume": "Unganisha na Endelea",
             "resumeNeedsConnection": "Unganisha kwenye seva kwanza, kisha uendelee na uhamishaji huu.",
             "resumeNoProfile": "Uhamishaji huu hauna wasifu wa seva uliohifadhiwa. Unganisha kwa mikono, kisha uendelee.",
@@ -771,7 +770,9 @@
             "failedCount": "Zilizoshindwa: {count}",
             "queuedForAnotherServer": "Haijaanza: uhamishaji huu uliwekwa kwenye foleni kwa seva au akaunti nyingine. Rudi kwenye kichupo chake, kisha jaribu tena.",
             "queuedOverlayChanged": "Haijaanza: overlay iliyosimbwa ambayo uhamishaji huu uliwekwa kwenye foleni chini yake imefungwa au haifuniki tena folda hii. Ifungue kwenye seva hiyo, kisha jaribu tena.",
-            "pasteFromAnotherServer": "Haijabandikwa: faili hizi zilikatwa au kunakiliwa kwenye seva, akaunti au tabaka lililosimbwa ambalo halitumiki sasa. Rudi kwenye kichupo chake, kisha bandika tena."
+            "pasteFromAnotherServer": "Haijabandikwa: faili hizi zilikatwa au kunakiliwa kwenye seva, akaunti au tabaka lililosimbwa ambalo halitumiki sasa. Rudi kwenye kichupo chake, kisha bandika tena.",
+            "resumeConnectConfirm_one": "Unganisha na \"{name}\" na uendelee kuhamisha {count}?",
+            "resumeConnectConfirm_many": "Unganisha na \"{name}\" na uendelee kuhamisha {count}?"
         },
         "settings": {
             "title": "Mipangilio",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (imeongezeka {percent}%)",
             "extract_details": "{input} → {output} (imefunguliwa)",
             "download_details": "({size} kwa sekunde {seconds})",
-            "transfer_details": "({size} kwa {time})"
+            "transfer_details": "({size} kwa {time})",
+            "download_error_reason": "Imeshindikana kupakua {filename}: {reason}",
+            "upload_error_reason": "Imeshindikana kupakia {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",

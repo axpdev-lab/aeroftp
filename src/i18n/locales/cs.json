@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Obnovené přenosy: {count}. Obnovení se v případě potřeby připojí k uloženému serveru a poté je znovu spustí. Zahození je odstraní.",
             "resumeRestoredAll": "Obnovit vše",
             "discardRestored": "Zahodit",
-            "resumeConnectConfirm": "Připojit k „{name}“ a obnovit přenosy ({count})?",
             "connectAndResume": "Připojit a obnovit",
             "resumeNeedsConnection": "Nejprve se připojte k serveru a poté obnovte tento přenos.",
             "resumeNoProfile": "Tento přenos nemá uložený profil serveru. Připojte se ručně a poté obnovte.",
@@ -771,7 +770,9 @@
             "failedCount": "Selhalo: {count}",
             "queuedForAnotherServer": "Nespuštěno: tento přenos byl zařazen do fronty pro jiný server nebo účet. Vraťte se na jeho kartu a zkuste to znovu.",
             "queuedOverlayChanged": "Nespuštěno: šifrovaný overlay, pod kterým byl tento přenos zařazen do fronty, je zamčený nebo už tuto složku nepokrývá. Odemkněte jej na onom serveru a zkuste to znovu.",
-            "pasteFromAnotherServer": "Nevloženo: tyto soubory byly vyjmuty nebo zkopírovány na serveru, účtu nebo šifrované vrstvě, která teď není aktivní. Vraťte se na její kartu a vložte je znovu."
+            "pasteFromAnotherServer": "Nevloženo: tyto soubory byly vyjmuty nebo zkopírovány na serveru, účtu nebo šifrované vrstvě, která teď není aktivní. Vraťte se na její kartu a vložte je znovu.",
+            "resumeConnectConfirm_one": "Připojit se k \"{name}\" a obnovit {count} přenos?",
+            "resumeConnectConfirm_many": "Připojit se k \"{name}\" a obnovit {count} přenosů?"
         },
         "settings": {
             "title": "Nastavení",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (zvětšeno o {percent}%)",
             "extract_details": "{input} → {output} (rozbaleno)",
             "download_details": "({size} za {seconds} s)",
-            "transfer_details": "({size} za {time})"
+            "transfer_details": "({size} za {time})",
+            "download_error_reason": "Stažení {filename} selhalo: {reason}",
+            "upload_error_reason": "Nahrání {filename} selhalo: {reason}"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",

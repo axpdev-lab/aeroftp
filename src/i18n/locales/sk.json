@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Obnovené prenosy: {count}. Obnovenie sa v prípade potreby pripojí k uloženému serveru a potom ich znova spustí. Zahodenie ich odstráni.",
             "resumeRestoredAll": "Obnoviť všetko",
             "discardRestored": "Zahodiť",
-            "resumeConnectConfirm": "Pripojiť k „{name}“ a obnoviť prenosy ({count})?",
             "connectAndResume": "Pripojiť a obnoviť",
             "resumeNeedsConnection": "Najprv sa pripojte k serveru a potom obnovte tento prenos.",
             "resumeNoProfile": "Tento prenos nemá uložený profil servera. Pripojte sa ručne a potom obnovte.",
@@ -771,7 +770,9 @@
             "failedCount": "Zlyhalo: {count}",
             "queuedForAnotherServer": "Nespustené: tento prenos bol zaradený do frontu pre iný server alebo účet. Vráťte sa na jeho kartu a skúste to znova.",
             "queuedOverlayChanged": "Nespustené: šifrovaný overlay, pod ktorým bol tento prenos zaradený do frontu, je zamknutý alebo už túto priečinok nepokrýva. Odomknite ho na tom serveri a skúste to znova.",
-            "pasteFromAnotherServer": "Nevložené: tieto súbory boli vystrihnuté alebo skopírované na serveri, účte alebo šifrovanej vrstve, ktoré teraz nie sú aktívne. Vráťte sa na jeho kartu a vložte ich znova."
+            "pasteFromAnotherServer": "Nevložené: tieto súbory boli vystrihnuté alebo skopírované na serveri, účte alebo šifrovanej vrstve, ktoré teraz nie sú aktívne. Vráťte sa na jeho kartu a vložte ich znova.",
+            "resumeConnectConfirm_one": "Pripojiť sa k \"{name}\" a obnoviť {count} prenos?",
+            "resumeConnectConfirm_many": "Pripojiť sa k \"{name}\" a obnoviť {count} prenosov?"
         },
         "settings": {
             "title": "Nastavenia",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (zväčšené o {percent}%)",
             "extract_details": "{input} → {output} (rozbalené)",
             "download_details": "({size} za {seconds} s)",
-            "transfer_details": "({size} za {time})"
+            "transfer_details": "({size} za {time})",
+            "download_error_reason": "Stiahnutie {filename} zlyhalo: {reason}",
+            "upload_error_reason": "Nahratie {filename} zlyhalo: {reason}"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",

@@ -2724,6 +2724,13 @@ const App: React.FC = () => {
       if (message) console.error(`[ERROR] ${title}: ${message}`);
       return showToastNotifications ? toastError(title, message) : null;
     },
+    // Toast + Debug panel only, NO Activity Log line: for failures whose log
+    // line was already written, so the log keeps exactly one entry per failure.
+    errorToastOnly: (title: string, rawMessage?: string): string | null => {
+      const message = rawMessage === undefined ? undefined : withoutErrorTag(rawMessage);
+      if (message) console.error(`[ERROR] ${title}: ${message}`);
+      return showToastNotifications ? toastError(title, message) : null;
+    },
     info: (title: string, message?: string): string | null => {
       logActivity('INFO', message ? `${title}: ${message}` : title, 'success');
       return showToastNotifications ? toastInfo(title, message) : null;
@@ -7540,8 +7547,9 @@ const App: React.FC = () => {
   // Transfer Queue footer bar climbs on real bytes (folder queue items enqueue
   // lazily on file_start, so an item-count wave pegs the bar near 100%). #364.
   const [activeBatchSnapshot, setActiveBatchSnapshot] = useState<BatchProgressSnapshot | null>(null);
-  const { pendingFileLogIds, registerFileBatchRows, holdFileCompletions } = useTransferEvents({
+  const { pendingFileLogIds, pendingFileTargetPaths, registerFileBatchRows, holdFileCompletions } = useTransferEvents({
     t, activityLog, humanLog, transferQueue, notify,
+    toastErrorOnly: (title, message) => notify.errorToastOnly(title, message),
     setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
     remoteRefreshStartedAt: () => remoteRefreshStartedAtRef.current,
     currentRemotePath,
@@ -11807,6 +11815,9 @@ const App: React.FC = () => {
   const downloadFile = useLatestCallback(withTransferGeneration(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }, onTarget?: () => void, targetEpoch?: number): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
+    // Real local target once known: the failure line names it, never a path
+    // rebuilt from the current folder (wrong on a resume/retry).
+    let realLocalPath = fileName;
     const startTime = Date.now();
 
     // Check if we're using a Provider (protocol of the live connection)
@@ -11837,6 +11848,8 @@ const App: React.FC = () => {
         const downloadPath = destinationPath || await pickFile({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
           const folderPath = remoteDownloadTarget(downloadPath, fileName);
+          realLocalPath = folderPath;
+          pendingFileTargetPaths.current.set(fileName, folderPath);
           // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
           const folderAction = fileExistsAction === 'ask' ? '' : fileExistsAction;
           assertOwnership();
@@ -11916,6 +11929,8 @@ const App: React.FC = () => {
 
           assertOwnership();
           const localFilePath = remoteDownloadTarget(downloadPath, targetName);
+          realLocalPath = localFilePath;
+          pendingFileTargetPaths.current.set(fileName, localFilePath);
           const remoteModified = remoteFileInfo?.modified || undefined;
           if (isAeroVaultOverlay) {
             await invoke<string>('aerovault_overlay_extract_entry', {
@@ -11967,11 +11982,18 @@ const App: React.FC = () => {
           ));
         }
       }
-      humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
+      // One owner per failure: update this file's own entry in place (never a
+      // second line), name the real local target and carry the reason.
+      const downloadReason = withoutErrorTag(String(error));
+      const downloadErrKey = downloadReason ? 'activity.download_error_reason' : 'activity.download_error';
+      const downloadErrParams: Record<string, string | number> = downloadReason ? { filename: realLocalPath, reason: downloadReason } : { filename: realLocalPath };
+      humanLog.updateEntry(logId, { status: 'error', message: t(downloadErrKey, downloadErrParams) });
+      pendingFileLogIds.current.delete(fileName);
+      pendingFileTargetPaths.current.delete(fileName);
       if (throwsTransferError(onError, error)) throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
       // Don't spam toasts when batch was cancelled: one summary toast is enough
       if (!batchCancelledRef.current) {
-        notify.error(t('toast.downloadFailed'), String(error));
+        notify.errorToastOnly(t('toast.downloadFailed'), String(error));
       }
     }
     return completed;
@@ -11998,6 +12020,11 @@ const App: React.FC = () => {
     const startTime = Date.now();
     // True only when the file or folder actually landed (see downloadFile).
     let completed = false;
+    // The entry opened by logStart owns the failure line; realTargetPath is
+    // the real remote target (journal descriptor on a resume), never a path
+    // rebuilt from the current folder.
+    let logId = '';
+    let realTargetPath = fileName;
     const checkTarget = onTarget ?? queuedTargetGuard(snapshotQueuedTarget());
     const assertOwnership = () => {
       checkTarget();
@@ -12021,10 +12048,12 @@ const App: React.FC = () => {
         if (isAeroVaultOverlay) {
           throw new Error('AeroVault overlay: folder upload not yet supported in main browser');
         }
-        const logId = humanLog.logStart('UPLOAD', { filename: fileName });
+        logId = humanLog.logStart('UPLOAD', { filename: fileName });
         pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
         if (isProvider) {
           const remoteRootForFolder = joinRemotePath(remoteBase, fileName);
+          realTargetPath = remoteRootForFolder;
+          pendingFileTargetPaths.current.set(fileName, remoteRootForFolder);
           setScanningState({ active: true, folderName: fileName, message: t('activity.upload_start', { filename: fileName }) || `Uploading ${fileName}...`, operation: 'upload' });
           let providerFolderResult: FolderTransferOutcome;
           try {
@@ -12139,6 +12168,8 @@ const App: React.FC = () => {
 
         assertOwnership();
         const remotePath = joinRemotePath(remoteBase, targetName);
+        realTargetPath = remotePath;
+        pendingFileTargetPaths.current.set(fileName, remotePath);
 
         if (isGitHubRepoMode && !commitMessage && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown') {
           setGitHubCommitDialog({
@@ -12156,7 +12187,7 @@ const App: React.FC = () => {
           return false;
         }
 
-        const logId = humanLog.logStart('UPLOAD', { filename: fileName });
+        logId = humanLog.logStart('UPLOAD', { filename: fileName });
         pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
 
         if (isAeroVaultOverlay) {
@@ -12211,10 +12242,18 @@ const App: React.FC = () => {
           ));
         }
       }
-      humanLog.logRaw('activity.upload_error', 'UPLOAD', { filename: fileName }, 'error');
+      // One owner per failure: update this file's own entry in place (never a
+      // second line), name the real remote target and carry the reason.
+      const uploadReason = withoutErrorTag(String(error));
+      const uploadErrKey = uploadReason ? 'activity.upload_error_reason' : 'activity.upload_error';
+      const uploadErrParams: Record<string, string | number> = uploadReason ? { filename: realTargetPath, reason: uploadReason } : { filename: realTargetPath };
+      if (logId) humanLog.updateEntry(logId, { status: 'error', message: t(uploadErrKey, uploadErrParams) });
+      else humanLog.logRaw(uploadErrKey, 'UPLOAD', uploadErrParams, 'error');
+      pendingFileLogIds.current.delete(fileName);
+      pendingFileTargetPaths.current.delete(fileName);
       if (throwsTransferError(onError, error)) throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
       if (!batchCancelledRef.current) {
-        notify.error(t('toast.uploadFailed'), String(error));
+        notify.errorToastOnly(t('toast.uploadFailed'), String(error));
       }
     }
     return completed;
@@ -12289,7 +12328,9 @@ const App: React.FC = () => {
         transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
       } else {
         transferQueue.failTransfer(id, String(error));
-        notify.error(t(direction === 'download' ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
+        // The failure line is already in the Activity Log (one entry per
+        // file): toast only, do not log a second INFO-typed copy.
+        notify.errorToastOnly(t(direction === 'download' ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
       }
     }
   });
@@ -12873,9 +12914,9 @@ const App: React.FC = () => {
       // Confirm before auto-connect so the user can cancel.
       const confirmed = await new Promise<boolean>((resolve) => {
         setConfirmDialog({
-          message: t('transfer.resumeConnectConfirm', {
+          message: t(groupIds.length === 1 ? 'transfer.resumeConnectConfirm_one' : 'transfer.resumeConnectConfirm_many', {
             name: profile.name,
-            count: String(groupIds.length),
+            count: groupIds.length,
           }),
           confirmLabel: t('transfer.connectAndResume'),
           confirmColor: 'blue',
@@ -15655,7 +15696,8 @@ const App: React.FC = () => {
                 transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
               } else {
                 transferQueue.failTransfer(id, String(error));
-                notify.error(t('toast.uploadFailed'), String(error));
+                // The failure line is already in the Activity Log: toast only.
+                notify.errorToastOnly(t('toast.uploadFailed'), String(error));
               }
             }
           }));
@@ -16013,7 +16055,8 @@ const App: React.FC = () => {
               transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
             } else {
               transferQueue.failTransfer(id, String(error));
-              notify.error(t('toast.uploadFailed'), String(error));
+              // The failure line is already in the Activity Log: toast only.
+              notify.errorToastOnly(t('toast.uploadFailed'), String(error));
             }
           }
         }));
@@ -16257,7 +16300,8 @@ const App: React.FC = () => {
               transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
             } else {
               transferQueue.failTransfer(id, String(error));
-              notify.error(t('toast.downloadFailed'), String(error));
+              // The failure line is already in the Activity Log: toast only.
+              notify.errorToastOnly(t('toast.downloadFailed'), String(error));
             }
           }
         }));

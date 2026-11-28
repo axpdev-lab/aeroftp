@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Obnovljeni prenosi: {count}. Nadaljevanje se po potrebi poveže s shranjenim strežnikom in jih nato znova zažene. Zavrži jih odstrani.",
             "resumeRestoredAll": "Nadaljuj vse",
             "discardRestored": "Zavrzi",
-            "resumeConnectConfirm": "Povezati se s »{name}« in nadaljevati prenose ({count})?",
             "connectAndResume": "Poveži in nadaljuj",
             "resumeNeedsConnection": "Najprej se povežite s strežnikom, nato nadaljujte ta prenos.",
             "resumeNoProfile": "Ta prenos nima shranjenega profila strežnika. Povežite se ročno, nato nadaljujte.",
@@ -771,7 +770,9 @@
             "failedCount": "Neuspešno: {count}",
             "queuedForAnotherServer": "Ni zagnano: ta prenos je bil v čakalni vrsti za drug strežnik ali račun. Vrnite se na njegov zavihek in poskusite znova.",
             "queuedOverlayChanged": "Ni zagnano: šifrirani overlay, pod katerim je bil ta prenos postavljen v čakalno vrsto, je zaklenjen ali te mape ne pokriva več. Odklenite ga na tem strežniku in poskusite znova.",
-            "pasteFromAnotherServer": "Ni prilepljeno: te datoteke so bile izrezane ali kopirane na strežniku, računu ali šifriranem sloju, ki trenutno ni aktiven. Vrnite se na njegov zavihek in prilepite znova."
+            "pasteFromAnotherServer": "Ni prilepljeno: te datoteke so bile izrezane ali kopirane na strežniku, računu ali šifriranem sloju, ki trenutno ni aktiven. Vrnite se na njegov zavihek in prilepite znova.",
+            "resumeConnectConfirm_one": "Poveži se z \"{name}\" in nadaljuj {count} prenos?",
+            "resumeConnectConfirm_many": "Poveži se z \"{name}\" in nadaljuj {count} prenosov?"
         },
         "settings": {
             "title": "Nastavitve",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (povečano za {percent}%)",
             "extract_details": "{input} → {output} (razširjeno)",
             "download_details": "({size} v {seconds} s)",
-            "transfer_details": "({size} v {time})"
+            "transfer_details": "({size} v {time})",
+            "download_error_reason": "Prenos {filename} ni uspel: {reason}",
+            "upload_error_reason": "Nalaganje {filename} ni uspelo: {reason}"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",

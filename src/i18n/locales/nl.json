@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} overdracht(en) zijn hersteld. Hervatten maakt indien nodig verbinding met de opgeslagen server en voert ze daarna opnieuw uit. Verwerpen verwijdert ze.",
             "resumeRestoredAll": "Alles hervatten",
             "discardRestored": "Verwerpen",
-            "resumeConnectConfirm": "Verbinden met \"{name}\" en {count} overdracht(en) hervatten?",
             "connectAndResume": "Verbinden en hervatten",
             "resumeNeedsConnection": "Maak eerst verbinding met een server en hervat daarna deze overdracht.",
             "resumeNoProfile": "Deze overdracht heeft geen opgeslagen serverprofiel. Maak handmatig verbinding en hervat daarna.",
@@ -771,7 +770,9 @@
             "failedCount": "Mislukt: {count}",
             "queuedForAnotherServer": "Niet gestart: deze overdracht stond in de wachtrij voor een andere server of een ander account. Ga terug naar het tabblad ervan en probeer het opnieuw.",
             "queuedOverlayChanged": "Niet gestart: de versleutelde overlay waaronder deze overdracht in de wachtrij was gezet, is vergrendeld of dekt deze map niet meer. Ontgrendel hem op die server en probeer het opnieuw.",
-            "pasteFromAnotherServer": "Niet geplakt: deze bestanden zijn geknipt of gekopieerd op een server, account of versleutelde overlay die nu niet actief is. Ga terug naar het tabblad ervan en plak opnieuw."
+            "pasteFromAnotherServer": "Niet geplakt: deze bestanden zijn geknipt of gekopieerd op een server, account of versleutelde overlay die nu niet actief is. Ga terug naar het tabblad ervan en plak opnieuw.",
+            "resumeConnectConfirm_one": "Verbinden met \"{name}\" en {count} overdracht hervatten?",
+            "resumeConnectConfirm_many": "Verbinden met \"{name}\" en {count} overdrachten hervatten?"
         },
         "settings": {
             "title": "Instellingen",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} ({percent}% gegroeid)",
             "extract_details": "{input} → {output} (uitgepakt)",
             "download_details": "({size} in {seconds} s)",
-            "transfer_details": "({size} in {time})"
+            "transfer_details": "({size} in {time})",
+            "download_error_reason": "Downloaden van {filename} mislukt: {reason}",
+            "upload_error_reason": "Uploaden van {filename} mislukt: {reason}"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",

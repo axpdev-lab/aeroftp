@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} 件の転送が復元されました。再開すると必要に応じて保存済みサーバーに接続し、再実行します。破棄すると削除されます。",
             "resumeRestoredAll": "すべて再開",
             "discardRestored": "破棄",
-            "resumeConnectConfirm": "「{name}」に接続して {count} 件の転送を再開しますか？",
             "connectAndResume": "接続して再開",
             "resumeNeedsConnection": "先にサーバーに接続してから、この転送を再開してください。",
             "resumeNoProfile": "この転送には保存済みのサーバープロファイルがありません。手動で接続してから再開してください。",
@@ -771,7 +770,9 @@
             "failedCount": "{count} 件失敗",
             "queuedForAnotherServer": "開始されませんでした: この転送は別のサーバーまたはアカウント向けにキューに入っていました。そのタブに戻ってから、もう一度お試しください。",
             "queuedOverlayChanged": "開始されませんでした: この転送がキューに入れられたときの暗号化オーバーレイがロックされているか、このフォルダーをカバーしなくなりました。そのサーバーでロックを解除してから、もう一度お試しください。",
-            "pasteFromAnotherServer": "貼り付けられませんでした: これらのファイルは、現在アクティブではないサーバー、アカウント、または暗号化オーバーレイで切り取りまたはコピーされました。そのタブに戻ってから、もう一度貼り付けてください。"
+            "pasteFromAnotherServer": "貼り付けられませんでした: これらのファイルは、現在アクティブではないサーバー、アカウント、または暗号化オーバーレイで切り取りまたはコピーされました。そのタブに戻ってから、もう一度貼り付けてください。",
+            "resumeConnectConfirm_one": "「{name}」に接続して {count} 件の転送を再開しますか？",
+            "resumeConnectConfirm_many": "「{name}」に接続して {count} 件の転送を再開しますか？"
         },
         "settings": {
             "title": "設定",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} ({percent}% 増加)",
             "extract_details": "{input} → {output} (展開済み)",
             "download_details": "({size}、{seconds}秒)",
-            "transfer_details": "({time}で{size})"
+            "transfer_details": "({time}で{size})",
+            "download_error_reason": "{filename} のダウンロードに失敗しました: {reason}",
+            "upload_error_reason": "{filename} のアップロードに失敗しました: {reason}"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",

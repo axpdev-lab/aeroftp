@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} transfert(s) ont été restaurés. Reprendre se connecte au serveur enregistré si nécessaire, puis les relance. Ignorer les supprime.",
             "resumeRestoredAll": "Tout reprendre",
             "discardRestored": "Ignorer",
-            "resumeConnectConfirm": "Se connecter à « {name} » et reprendre {count} transfert(s) ?",
             "connectAndResume": "Connecter et reprendre",
             "resumeNeedsConnection": "Connectez-vous d'abord à un serveur, puis reprenez ce transfert.",
             "resumeNoProfile": "Ce transfert n'a pas de profil de serveur enregistré. Connectez-vous manuellement, puis reprenez.",
@@ -771,7 +770,9 @@
             "failedCount": "Échecs : {count}",
             "queuedForAnotherServer": "Non démarré : ce transfert était en file d'attente pour un autre serveur ou compte. Revenez à son onglet, puis réessayez.",
             "queuedOverlayChanged": "Non démarré : l'overlay chiffré sous lequel ce transfert a été mis en file d'attente est verrouillé ou ne couvre plus ce dossier. Déverrouillez-le sur ce serveur, puis réessayez.",
-            "pasteFromAnotherServer": "Non collé : ces fichiers ont été coupés ou copiés sur un serveur, compte ou surcouche chiffrée qui n'est pas actif actuellement. Revenez à son onglet, puis collez à nouveau."
+            "pasteFromAnotherServer": "Non collé : ces fichiers ont été coupés ou copiés sur un serveur, compte ou surcouche chiffrée qui n'est pas actif actuellement. Revenez à son onglet, puis collez à nouveau.",
+            "resumeConnectConfirm_one": "Se connecter à « {name} » et reprendre {count} transfert ?",
+            "resumeConnectConfirm_many": "Se connecter à « {name} » et reprendre {count} transferts ?"
         },
         "settings": {
             "title": "Paramètres",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (+{percent} %)",
             "extract_details": "{input} → {output} (décompressé)",
             "download_details": "({size} en {seconds} s)",
-            "transfer_details": "({size} en {time})"
+            "transfer_details": "({size} en {time})",
+            "download_error_reason": "Échec du téléchargement de {filename} : {reason}",
+            "upload_error_reason": "Échec de l’envoi de {filename} : {reason}"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",

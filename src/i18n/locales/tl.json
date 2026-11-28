@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} (na) transfer ang naibalik. Kapag ipinagpatuloy, kumokonekta sa naka-save na server kung kailangan, pagkatapos ay pinapatakbo ulit ang mga ito. Tinatanggal ng Discard ang mga ito.",
             "resumeRestoredAll": "Ipagpatuloy lahat",
             "discardRestored": "Itapon",
-            "resumeConnectConfirm": "Kumonekta sa \"{name}\" at ipagpatuloy ang {count} (na) transfer?",
             "connectAndResume": "Kumonekta at Ipagpatuloy",
             "resumeNeedsConnection": "Kumonekta muna sa isang server, pagkatapos ay ipagpatuloy ang transfer na ito.",
             "resumeNoProfile": "Walang naka-save na server profile ang transfer na ito. Manu-manong kumonekta, pagkatapos ay ipagpatuloy.",
@@ -771,7 +770,9 @@
             "failedCount": "Nabigo: {count}",
             "queuedForAnotherServer": "Hindi nasimulan: ang paglilipat na ito ay naka-queue para sa ibang server o account. Bumalik sa tab nito, pagkatapos subukan muli.",
             "queuedOverlayChanged": "Hindi nasimulan: ang naka-encrypt na overlay kung saan na-queue ang paglilipat na ito ay naka-lock o hindi na sumasaklaw sa folder na ito. I-unlock ito sa server na iyon, pagkatapos ay subukan muli.",
-            "pasteFromAnotherServer": "Hindi na-paste: ang mga file na ito ay na-cut o nakopya sa isang server, account o naka-encrypt na overlay na hindi aktibo ngayon. Bumalik sa tab nito, pagkatapos mag-paste muli."
+            "pasteFromAnotherServer": "Hindi na-paste: ang mga file na ito ay na-cut o nakopya sa isang server, account o naka-encrypt na overlay na hindi aktibo ngayon. Bumalik sa tab nito, pagkatapos mag-paste muli.",
+            "resumeConnectConfirm_one": "Kumonekta sa \"{name}\" at ipagpatuloy ang {count} paglilipat?",
+            "resumeConnectConfirm_many": "Kumonekta sa \"{name}\" at ipagpatuloy ang {count} paglilipat?"
         },
         "settings": {
             "title": "Mga Setting",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (lumaki ng {percent}%)",
             "extract_details": "{input} → {output} (na-extract)",
             "download_details": "({size} sa loob ng {seconds} seg)",
-            "transfer_details": "({size} sa loob ng {time})"
+            "transfer_details": "({size} sa loob ng {time})",
+            "download_error_reason": "Hindi na-download ang {filename}: {reason}",
+            "upload_error_reason": "Hindi na-upload ang {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",

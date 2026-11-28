@@ -703,7 +703,6 @@
             "restoredQueueDescription": "{count} transferentzia leheneratu dira. Berrekin behar izanez gero gordetako zerbitzarira konektatzen da, eta ondoren berriro exekutatzen ditu. Baztertu haiek kentzen ditu.",
             "resumeRestoredAll": "Berrekin denak",
             "discardRestored": "Baztertu",
-            "resumeConnectConfirm": "\"{name}\"-ra konektatu eta {count} transferentzia berrekin?",
             "connectAndResume": "Konektatu eta berrekin",
             "resumeNeedsConnection": "Konektatu lehenik zerbitzari batera, eta ondoren berrekin transferentzia hau.",
             "resumeNoProfile": "Transferentzia honek ez du gordetako zerbitzari-profilik. Konektatu eskuz, eta ondoren berrekin.",
@@ -771,7 +770,9 @@
             "failedCount": "Huts eginda: {count}",
             "queuedForAnotherServer": "Ez da hasi: transferentzia hau beste zerbitzari edo kontu baterako ilaran zegoen. Itzuli bere fitxara eta saiatu berriro.",
             "queuedOverlayChanged": "Ez da hasi: transferentzia hau ilaran jarri zen overlay zifratua blokeatuta dago edo ez du karpeta hau estaltzen jada. Desblokeatu zerbitzari horretan, eta saiatu berriro.",
-            "pasteFromAnotherServer": "Ez da itsatsi: fitxategi hauek orain aktibo ez dagoen zerbitzari, kontu edo geruza zifratu batean ebaki edo kopiatu ziren. Itzuli bere fitxara eta itsatsi berriro."
+            "pasteFromAnotherServer": "Ez da itsatsi: fitxategi hauek orain aktibo ez dagoen zerbitzari, kontu edo geruza zifratu batean ebaki edo kopiatu ziren. Itzuli bere fitxara eta itsatsi berriro.",
+            "resumeConnectConfirm_one": "Konektatu \"{name}\"-ra eta berreskuratu {count} transferentzia?",
+            "resumeConnectConfirm_many": "Konektatu \"{name}\"-ra eta berreskuratu {count} transferentzia?"
         },
         "settings": {
             "title": "Ezarpenak",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (%{percent} handitu da)",
             "extract_details": "{input} → {output} (zabalduta)",
             "download_details": "({size} {seconds} s-tan)",
-            "transfer_details": "({size} {time} denboran)"
+            "transfer_details": "({size} {time} denboran)",
+            "download_error_reason": "{filename} deskargatzeak huts egin du: {reason}",
+            "upload_error_reason": "{filename} igotzeak huts egin du: {reason}"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",

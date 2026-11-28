@@ -703,7 +703,6 @@
             "restoredQueueDescription": "Враћени преноси: {count}. Наставак се по потреби повезује са сачуваним сервером, а затим их поново покреће. Одбаци их уклања.",
             "resumeRestoredAll": "Настави све",
             "discardRestored": "Одбаци",
-            "resumeConnectConfirm": "Повезати се са „{name}“ и наставити преносе ({count})?",
             "connectAndResume": "Повежи и настави",
             "resumeNeedsConnection": "Прво се повежите са сервером, затим наставите овај пренос.",
             "resumeNoProfile": "Овај пренос нема сачувани профил сервера. Повежите се ручно, затим наставите.",
@@ -771,7 +770,9 @@
             "failedCount": "Неуспешно: {count}",
             "queuedForAnotherServer": "Није покренуто: овај пренос је био у реду за други сервер или налог. Вратите се на његов језичак и покушајте поново.",
             "queuedOverlayChanged": "Није покренуто: шифровани overlay под којим је овај пренос стављен у ред закључан је или више не покрива ову фасциклу. Откључајте га на том серверу, па покушајте поново.",
-            "pasteFromAnotherServer": "Није налепљено: ове датотеке су исечене или копиране на серверу, налогу или шифрованом слоју који тренутно није активан. Вратите се на његов језичак и налепите поново."
+            "pasteFromAnotherServer": "Није налепљено: ове датотеке су исечене или копиране на серверу, налогу или шифрованом слоју који тренутно није активан. Вратите се на његов језичак и налепите поново.",
+            "resumeConnectConfirm_one": "Повежи се на „{name}\" и настави {count} пренос?",
+            "resumeConnectConfirm_many": "Повежи се на „{name}\" и настави {count} преноса?"
         },
         "settings": {
             "title": "Подешавања",
@@ -2140,7 +2141,9 @@
             "compress_details_grew": "{input} → {output} (повећано {percent}%)",
             "extract_details": "{input} → {output} (распаковано)",
             "download_details": "({size} за {seconds} с)",
-            "transfer_details": "({size} за {time})"
+            "transfer_details": "({size} за {time})",
+            "download_error_reason": "Неуспешно преузимање {filename}: {reason}",
+            "upload_error_reason": "Неуспешно отпремање {filename}: {reason}"
         },
         "protocol": {
             "selectProtocol": "Изабери протокол...",
