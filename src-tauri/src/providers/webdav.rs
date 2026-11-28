@@ -641,6 +641,16 @@ async fn bounded_refusal_body(mut response: reqwest::Response) -> Option<String>
         .flatten()
 }
 
+/// The server's message from a refusal body read through
+/// `bounded_refusal_body`, or a fixed phrase when the body was not read
+/// (longer than the cap, slower than the deadline, or unreadable).
+fn bounded_server_message(body: Option<&str>, base_url: &str, sent: &[String]) -> String {
+    match body {
+        Some(body) => server_message(body, base_url, sent),
+        None => "a reply too long or too slow to read".to_string(),
+    }
+}
+
 /// The value of a response header as the download diagnostic logs it. A
 /// `Location` or `Content-Location` names a URL whose path or query can carry
 /// a secret (the MEGAcmd path token), so only its origin is kept; a
@@ -7461,12 +7471,12 @@ impl StorageProvider for WebDavProvider {
                 Err(upload_failure_error(status, reason.as_deref()))
             }
             status => {
-                let body = response.text().await.unwrap_or_default();
+                let body = bounded_refusal_body(response).await;
                 Err(ProviderError::TransferFailed(format!(
                     "Nextcloud chunk {} upload failed: {} {}",
                     part_number,
                     status,
-                    server_message(&body, &self.config.url, &self.sent_secrets())
+                    bounded_server_message(body.as_deref(), &self.config.url, &self.sent_secrets())
                 )))
             }
         }
@@ -7545,8 +7555,8 @@ impl StorageProvider for WebDavProvider {
                     Err(ProviderError::TransferFailed(format!(
                         "Nextcloud assemble failed: {} {}",
                         StatusCode::FORBIDDEN,
-                        server_message(
-                            body.as_deref().unwrap_or(""),
+                        bounded_server_message(
+                            body.as_deref(),
                             &self.config.url,
                             &self.sent_secrets()
                         )
@@ -7554,11 +7564,11 @@ impl StorageProvider for WebDavProvider {
                 }
             }
             status => {
-                let body = response.text().await.unwrap_or_default();
+                let body = bounded_refusal_body(response).await;
                 Err(ProviderError::TransferFailed(format!(
                     "Nextcloud assemble failed: {} {}",
                     status,
-                    server_message(&body, &self.config.url, &self.sent_secrets())
+                    bounded_server_message(body.as_deref(), &self.config.url, &self.sent_secrets())
                 )))
             }
         }
@@ -11119,16 +11129,20 @@ exit 1
         provider.upload(file.to_str().unwrap(), "/up", None).await
     }
 
-    /// A server whose PUT and MOVE answers carry `body` with status 403 and
-    /// every other method gets 201 Created, so begin_multipart_upload works.
-    async fn serve_403_on_put_and_move(body: String) -> (String, tokio::task::JoinHandle<()>) {
+    /// A server whose PUT and MOVE answers carry `status` with the body from
+    /// `body`, and every other method gets 201 Created, so
+    /// begin_multipart_upload works.
+    async fn serve_on_put_and_move(
+        status: axum::http::StatusCode,
+        body: impl Fn() -> axum::body::Body + Clone + Send + Sync + 'static,
+    ) -> (String, tokio::task::JoinHandle<()>) {
         use axum::response::IntoResponse;
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let body = body.clone();
                 async move {
                     if req.method() == axum::http::Method::PUT || req.method().as_str() == "MOVE" {
-                        (axum::http::StatusCode::FORBIDDEN, body).into_response()
+                        (status, body()).into_response()
                     } else {
                         axum::http::StatusCode::CREATED.into_response()
                     }
@@ -11140,6 +11154,16 @@ exit 1
             axum::serve(listener, app).await.ok();
         });
         (base, server)
+    }
+
+    /// A chunked body with no Content-Length: `text` split in two chunks.
+    fn streamed_body(text: String) -> axum::body::Body {
+        let bytes = text.into_bytes();
+        let (first, rest) = bytes.split_at(64.min(bytes.len()));
+        axum::body::Body::from_stream(futures_util::stream::iter([
+            Ok::<_, std::io::Error>(bytes::Bytes::copy_from_slice(first)),
+            Ok(bytes::Bytes::copy_from_slice(rest)),
+        ]))
     }
 
     async fn nextcloud_provider(base: &str) -> WebDavProvider {
@@ -11292,8 +11316,10 @@ exit 1
 
     #[tokio::test]
     async fn nextcloud_chunk_403_quotes_a_size_limit_but_a_plain_403_stays_permission_denied() {
-        let (base, server) =
-            serve_403_on_put_and_move("File too large. Max 50MB on Free.".to_string()).await;
+        let (base, server) = serve_on_put_and_move(axum::http::StatusCode::FORBIDDEN, || {
+            axum::body::Body::from("File too large. Max 50MB on Free.")
+        })
+        .await;
         let mut p = nextcloud_provider(&base).await;
         let handle = p
             .begin_multipart_upload("/f.bin", 3, None, None)
@@ -11306,7 +11332,10 @@ exit 1
         );
         server.abort();
 
-        let (base, server) = serve_403_on_put_and_move("Forbidden".to_string()).await;
+        let (base, server) = serve_on_put_and_move(axum::http::StatusCode::FORBIDDEN, || {
+            axum::body::Body::from("Forbidden")
+        })
+        .await;
         let mut p = nextcloud_provider(&base).await;
         let handle = p
             .begin_multipart_upload("/f.bin", 3, None, None)
@@ -11322,8 +11351,10 @@ exit 1
 
     #[tokio::test]
     async fn nextcloud_assemble_403_quotes_a_size_limit_but_a_plain_403_stays_transfer_failed() {
-        let (base, server) =
-            serve_403_on_put_and_move("File too large. Max 50MB on Free.".to_string()).await;
+        let (base, server) = serve_on_put_and_move(axum::http::StatusCode::FORBIDDEN, || {
+            axum::body::Body::from("File too large. Max 50MB on Free.")
+        })
+        .await;
         let mut p = nextcloud_provider(&base).await;
         let handle = p
             .begin_multipart_upload("/f.bin", 3, None, None)
@@ -11336,7 +11367,10 @@ exit 1
         );
         server.abort();
 
-        let (base, server) = serve_403_on_put_and_move("Forbidden".to_string()).await;
+        let (base, server) = serve_on_put_and_move(axum::http::StatusCode::FORBIDDEN, || {
+            axum::body::Body::from("Forbidden")
+        })
+        .await;
         let mut p = nextcloud_provider(&base).await;
         let handle = p
             .begin_multipart_upload("/f.bin", 3, None, None)
@@ -11345,6 +11379,83 @@ exit 1
         let done = p.complete_multipart_upload(handle, Vec::new()).await;
         assert!(
             matches!(&done, Err(ProviderError::TransferFailed(m)) if m.contains("Nextcloud assemble failed: 403")),
+            "{done:?}"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn nextcloud_chunk_fallback_reads_a_bounded_body() {
+        // Oversized streamed 423 with no Content-Length: the body is not read,
+        // and the error says so instead of quoting "Locked by test".
+        let oversized = padded_sabre_refusal("Locked by test", REFUSAL_BODY_CAP + 1);
+        let (base, server) = serve_on_put_and_move(axum::http::StatusCode::LOCKED, move || {
+            streamed_body(oversized.clone())
+        })
+        .await;
+        let mut p = nextcloud_provider(&base).await;
+        let handle = p
+            .begin_multipart_upload("/f.bin", 3, None, None)
+            .await
+            .expect("begin");
+        let part = p.upload_part(&handle, 1, b"abc".to_vec()).await;
+        assert!(
+            matches!(&part, Err(ProviderError::TransferFailed(m)) if m.contains("Nextcloud chunk 1 upload failed: 423") && m.contains("too long or too slow to read") && !m.contains("Locked by test")),
+            "{part:?}"
+        );
+        server.abort();
+
+        // Control: a short 423 body IS read and quoted.
+        let (base, server) = serve_on_put_and_move(axum::http::StatusCode::LOCKED, || {
+            axum::body::Body::from(padded_sabre_refusal("Locked by test", 300))
+        })
+        .await;
+        let mut p = nextcloud_provider(&base).await;
+        let handle = p
+            .begin_multipart_upload("/f.bin", 3, None, None)
+            .await
+            .expect("begin");
+        let part = p.upload_part(&handle, 1, b"abc".to_vec()).await;
+        assert!(
+            matches!(&part, Err(ProviderError::TransferFailed(m)) if m.contains("Nextcloud chunk 1 upload failed: 423") && m.contains("Locked by test")),
+            "{part:?}"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn nextcloud_assemble_fallback_reads_a_bounded_body() {
+        // Oversized streamed 423 with no Content-Length on the assemble MOVE.
+        let oversized = padded_sabre_refusal("Locked by test", REFUSAL_BODY_CAP + 1);
+        let (base, server) = serve_on_put_and_move(axum::http::StatusCode::LOCKED, move || {
+            streamed_body(oversized.clone())
+        })
+        .await;
+        let mut p = nextcloud_provider(&base).await;
+        let handle = p
+            .begin_multipart_upload("/f.bin", 3, None, None)
+            .await
+            .expect("begin");
+        let done = p.complete_multipart_upload(handle, Vec::new()).await;
+        assert!(
+            matches!(&done, Err(ProviderError::TransferFailed(m)) if m.contains("Nextcloud assemble failed: 423") && m.contains("too long or too slow to read") && !m.contains("Locked by test")),
+            "{done:?}"
+        );
+        server.abort();
+
+        // Control: a short 423 body IS read and quoted.
+        let (base, server) = serve_on_put_and_move(axum::http::StatusCode::LOCKED, || {
+            axum::body::Body::from(padded_sabre_refusal("Locked by test", 300))
+        })
+        .await;
+        let mut p = nextcloud_provider(&base).await;
+        let handle = p
+            .begin_multipart_upload("/f.bin", 3, None, None)
+            .await
+            .expect("begin");
+        let done = p.complete_multipart_upload(handle, Vec::new()).await;
+        assert!(
+            matches!(&done, Err(ProviderError::TransferFailed(m)) if m.contains("Nextcloud assemble failed: 423") && m.contains("Locked by test")),
             "{done:?}"
         );
         server.abort();
