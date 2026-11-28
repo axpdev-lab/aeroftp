@@ -42,12 +42,11 @@ use crate::aerorsync::native_driver::{
     ITEM_REPORT_XATTR,
 };
 use crate::aerorsync::real_wire::{
-    decode_delta_stream, decode_id_list, decode_ndx, decode_varint, encode_item_flags,
-    encode_ndx, encode_varint, is_device_mode, is_directory_mode, is_regular_mode,
-    is_special_mode, is_symlink_mode, resolve_xattr_datum_section, FileListCodecState,
-    FileListDecodeOutcome, FileListEntry, FileListStreamDecoder, IdNameList, RealWireError,
-    XattrPair, MAX_FILE_LIST_ENTRY_BYTES, NDX_DEL_STATS, NDX_DONE, NDX_FLIST_EOF,
-    NDX_FLIST_OFFSET,
+    decode_delta_stream, decode_id_list, decode_ndx, decode_varint, encode_item_flags, encode_ndx,
+    encode_varint, is_device_mode, is_directory_mode, is_regular_mode, is_special_mode,
+    is_symlink_mode, resolve_xattr_datum_section, FileListCodecState, FileListDecodeOutcome,
+    FileListEntry, FileListStreamDecoder, IdNameList, RealWireError, XattrPair,
+    MAX_FILE_LIST_ENTRY_BYTES, NDX_DEL_STATS, NDX_DONE, NDX_FLIST_EOF, NDX_FLIST_OFFSET,
 };
 use crate::aerorsync::session_state::{ResolvedMetadata, SessionTables};
 use crate::aerorsync::transport::RawRemoteShellTransport;
@@ -1096,8 +1095,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // set, 0xa000 for f4 whose set is empty), and the request section
         // rides between the iflags and the sum_head.
         let xattr_pairs: Option<&[XattrPair]> = entry.resolved.xattrs.as_deref();
-        let report_xattr =
-            self.negotiated_xattrs && xattr_pairs.is_some_and(|p| !p.is_empty());
+        let report_xattr = self.negotiated_xattrs && xattr_pairs.is_some_and(|p| !p.is_empty());
         let iflags = if report_xattr {
             TREE_ITEM_IFLAGS | ITEM_REPORT_XATTR
         } else {
@@ -1308,9 +1306,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                                 break;
                             }
                             Err(RealWireError::TruncatedBuffer { .. }) => {}
-                            Err(e) => {
-                                return Err(map_realwire_error(e, "tree file xattr oob"))
-                            }
+                            Err(e) => return Err(map_realwire_error(e, "tree file xattr oob")),
                         }
                     }
                     let p = self.next_data_frame(sink).await?;
@@ -1333,8 +1329,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                                 match decode_varint(&state.buffered[c..]) {
                                     Ok((len, c2))
                                         if len >= 0
-                                            && state.buffered.len()
-                                                >= c + c2 + len as usize =>
+                                            && state.buffered.len() >= c + c2 + len as usize =>
                                     {
                                         state.buffered.drain(..c + c2 + len as usize);
                                     }

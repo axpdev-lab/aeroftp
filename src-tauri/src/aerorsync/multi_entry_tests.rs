@@ -18,16 +18,16 @@ use std::path::PathBuf;
 
 use crate::aerorsync::real_wire::{
     decode_delta_stream, decode_file_list_entry, decode_id_list, decode_ndx, decode_varint,
-    encode_file_list_entry,
-    encode_file_list_terminator, encode_id_list, encode_varint, encode_varlong, is_directory_mode,
-    is_regular_mode, reassemble_msg_data, AclNamedEntry, AclPrincipal, AclWireEntry, FileListAcls,
-    FileListCodecState, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry,
-    FileListStreamDecoder, IdNameList, MuxPoll, MuxStreamReader, NdxState, Rdev, RealWireError,
-    RsyncAcl, XattrPair, XattrWireEntry, MAXPATHLEN, MAX_ACL_NAMED_ENTRIES, MAX_ACL_NAME_LEN,
-    MAX_FILE_LIST_ENTRY_BYTES, MAX_FULL_DATUM, MAX_XATTR_NAME_LEN, MAX_XATTR_PAIRS, NDX_FLIST_EOF,
-    NDX_FLIST_OFFSET, XMIT_EXTENDED_FLAGS, XMIT_GROUP_NAME_FOLLOWS, XMIT_LONG_NAME, XMIT_MOD_NSEC,
-    XMIT_SAME_GID, XMIT_SAME_MODE, XMIT_SAME_NAME, XMIT_SAME_RDEV_MAJOR, XMIT_SAME_TIME,
-    XMIT_SAME_UID, XMIT_TOP_DIR, XMIT_USER_NAME_FOLLOWS,
+    encode_file_list_entry, encode_file_list_terminator, encode_id_list, encode_varint,
+    encode_varlong, is_directory_mode, is_regular_mode, reassemble_msg_data, AclNamedEntry,
+    AclPrincipal, AclWireEntry, FileListAcls, FileListCodecState, FileListDecodeOptions,
+    FileListDecodeOutcome, FileListEntry, FileListStreamDecoder, IdNameList, MuxPoll,
+    MuxStreamReader, NdxState, Rdev, RealWireError, RsyncAcl, XattrPair, XattrWireEntry,
+    MAXPATHLEN, MAX_ACL_NAMED_ENTRIES, MAX_ACL_NAME_LEN, MAX_FILE_LIST_ENTRY_BYTES, MAX_FULL_DATUM,
+    MAX_XATTR_NAME_LEN, MAX_XATTR_PAIRS, NDX_FLIST_EOF, NDX_FLIST_OFFSET, XMIT_EXTENDED_FLAGS,
+    XMIT_GROUP_NAME_FOLLOWS, XMIT_LONG_NAME, XMIT_MOD_NSEC, XMIT_SAME_GID, XMIT_SAME_MODE,
+    XMIT_SAME_NAME, XMIT_SAME_RDEV_MAJOR, XMIT_SAME_TIME, XMIT_SAME_UID, XMIT_TOP_DIR,
+    XMIT_USER_NAME_FOLLOWS,
 };
 use crate::aerorsync::session_state::{
     AclTable, SessionTable, SessionTableError, SessionTables, MAX_SESSION_ACLS,
@@ -2760,8 +2760,8 @@ mod b3_2_reactive {
     use crate::aerorsync::events::CollectingSink;
     use crate::aerorsync::native_driver::AerorsyncDriver;
     use crate::aerorsync::real_wire::{
-        decode_item_flags, decode_sum_head, encode_server_preamble, MuxDemuxer, MuxHeader,
-        MuxTag, ServerPreamble, NDX_DEL_STATS, NDX_DONE,
+        decode_item_flags, decode_sum_head, encode_server_preamble, MuxDemuxer, MuxHeader, MuxTag,
+        ServerPreamble, NDX_DEL_STATS, NDX_DONE,
     };
     use crate::aerorsync::remote_command::RemoteCommandSpec;
     use crate::aerorsync::transport::{
@@ -3524,7 +3524,13 @@ mod b3_2_reactive {
     #[test]
     fn b3_2_sorted_ndx_matches_capture_delivery() {
         use crate::aerorsync::tree_driver::flist_entry_cmp;
-        for run in ["p9-dl-inc", "p9-dl-noinc", "p9big-dl-inc", "p10-dl", "p9z-dl-inc"] {
+        for run in [
+            "p9-dl-inc",
+            "p9-dl-noinc",
+            "p9big-dl-inc",
+            "p10-dl",
+            "p9z-dl-inc",
+        ] {
             assert!(
                 file_ndx_sets_conform(run, flist_entry_cmp),
                 "{run}: the sorted ndx of every regular file must be the capture's delivery ndx"
@@ -3549,7 +3555,13 @@ mod b3_2_reactive {
                 .then_with(|| a.path.cmp(&b.path))
         };
         let identity = |_a: &FileListEntry, _b: &FileListEntry| Ordering::Equal;
-        let runs = ["p9-dl-inc", "p9-dl-noinc", "p9big-dl-inc", "p10-dl", "p9z-dl-inc"];
+        let runs = [
+            "p9-dl-inc",
+            "p9-dl-noinc",
+            "p9big-dl-inc",
+            "p10-dl",
+            "p9z-dl-inc",
+        ];
         for run in runs {
             assert!(
                 file_ndx_sets_conform(run, flist_entry_cmp),
@@ -3745,9 +3757,7 @@ mod b3_2_reactive {
         }
     }
 
-    async fn replay_run(
-        run: &'static str,
-    ) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+    async fn replay_run(run: &'static str) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
         let parsed = parse_sender_events(run);
         let echo_total = parsed.echo_total;
         let lists = parsed.lists;
@@ -3773,7 +3783,11 @@ mod b3_2_reactive {
         d.open_raw_stream_internal(&RemoteCommandSpec::capture_download("/remote/target"))
             .await
             .unwrap();
-        let compression = if capture_compressed(run) { "zstd" } else { "none" };
+        let compression = if capture_compressed(run) {
+            "zstd"
+        } else {
+            "none"
+        };
         d.perform_preamble_exchange(31, "xxh128", compression)
             .await
             .unwrap();
