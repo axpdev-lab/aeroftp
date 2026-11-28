@@ -138,7 +138,7 @@ fn sum_head_remainder(file_size: u64, block_length: i32) -> i32 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FileChecksumKind {
+pub(crate) enum FileChecksumKind {
     Xxh128,
     Xxh3,
     Xxh64,
@@ -175,7 +175,7 @@ impl FileChecksumKind {
     /// and name negotiation can never select those), and `file_checksum`
     /// never seeds. Per-block digests seed via [`BlockStrongAlgo`]
     /// instead: that asymmetry is the B3-12 pin.
-    fn digest(self, data: &[u8]) -> Vec<u8> {
+    pub(super) fn digest(self, data: &[u8]) -> Vec<u8> {
         match self {
             Self::Xxh128 => compute_xxh128_wire(data),
             Self::Xxh3 => xxh3_64(data).to_le_bytes().to_vec(),
@@ -428,7 +428,7 @@ const ITEM_REPORT_CHANGE: u16 = 0x0002;
 /// in `06-xattr-oob-wire-evidence.md` §3: with `-X` on, a file with no
 /// attribute emits `a0` and no section, a file with even a single small
 /// attribute emits `a1` and a section consisting of the lone terminator.
-const ITEM_REPORT_XATTR: u16 = 0x0100;
+pub(super) const ITEM_REPORT_XATTR: u16 = 0x0100;
 /// iflags emitted by the driver in the download path, replicating the
 /// frozen oracle's client→server first-file signature shape.
 const A2_2_DOWNLOAD_IFLAGS: u16 = ITEM_TRANSFER | ITEM_REPORT_CHANGE;
@@ -436,7 +436,7 @@ const A2_2_DOWNLOAD_IFLAGS: u16 = ITEM_TRANSFER | ITEM_REPORT_CHANGE;
 /// the download path. Two bytes matches the frozen oracle's 256 KiB
 /// profile. Kept as a driver-level constant for A2.2: S8j will revisit
 /// when the delta engine can evaluate the impact on the matching rate.
-const A2_2_DOWNLOAD_S2LENGTH: i32 = 2;
+pub(crate) const A2_2_DOWNLOAD_S2LENGTH: i32 = 2;
 /// The per-file ndx the driver expects/emits in the single-file A2.2
 /// scope. First file of the list, baseline `-1` → diff `+2` → `+1`.
 const A2_2_FIRST_FILE_NDX: i32 = 1;
@@ -526,7 +526,7 @@ pub enum AerorsyncSessionPhase {
 /// but cannot drive is a case the compiler forces every caller to handle,
 /// rather than something that quietly reads as "no compression".
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum LiteralCompression {
+pub(crate) enum LiteralCompression {
     /// zstd, the modern default (rsync 3.2.0 and later).
     Zstd,
     /// `zlibx`: raw deflate, `Z_SYNC_FLUSH` per record, no matched-data
@@ -855,7 +855,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// (`xattr_datum_section_bytes`). They used to be wired independently
     /// and only agreed because all three were hard-coded off; now they all
     /// read from here, which reads from the spec.
-    negotiated_xattrs: bool,
+    pub(super) negotiated_xattrs: bool,
 
     /// Whether this session asked the remote `rsync --server` for `-A`.
     /// Twin of [`Self::negotiated_xattrs`]: command spec, session state
@@ -877,7 +877,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     pub(super) file_list_checksum_enabled: bool,
 
     pub(super) phase: AerorsyncSessionPhase,
-    committed: bool,
+    pub(super) committed: bool,
 
     // A2.1 runtime state.
     stream: Option<<T as RawRemoteShellTransport>::RawStream>,
@@ -885,7 +885,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// Outbound ndx state: tracks `prev_positive` / `prev_negative` for
     /// every `encode_ndx` we WRITE to the wire. Mirrors the static
     /// inside `io.c::write_ndx` (separate per direction in stock rsync).
-    outbound_ndx_state: NdxState,
+    pub(super) outbound_ndx_state: NdxState,
     /// Inbound ndx state: tracks the same baselines for every
     /// `decode_ndx` we READ from the wire. Mirrors the static inside
     /// `io.c::read_ndx`. **B.2 Step 4**: had to be split from the
@@ -1157,7 +1157,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    fn file_checksum_kind(&self) -> Result<FileChecksumKind, AerorsyncError> {
+    pub(super) fn file_checksum_kind(&self) -> Result<FileChecksumKind, AerorsyncError> {
         self.resolved_file_checksum_kind()
     }
 
@@ -2400,7 +2400,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// fallback, so a brand-new upload larger than ~16 MiB failed outright.
     /// Chunking removes that failure at its source; the `InvalidFrame` guard on
     /// [`write_one_data_frame`] remains as an unreachable safety net.
-    async fn write_data_frame(&mut self, payload: &[u8]) -> Result<(), AerorsyncError> {
+    pub(super) async fn write_data_frame(&mut self, payload: &[u8]) -> Result<(), AerorsyncError> {
         if payload.len() <= Self::MSG_DATA_MAX {
             return self.write_one_data_frame(payload).await;
         }
@@ -2902,7 +2902,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// Shared wire strong-hash dispatch used by both bulk and streaming
     /// signature phases. Keeps the negotiated-algo match arms in one
     /// place so Y-RSC.3 (md4/sha1) cannot drift between the two paths.
-    fn wire_block_strong(&self, block: &[u8], strong_algo: BlockStrongAlgo) -> Vec<u8> {
+    pub(super) fn wire_block_strong(&self, block: &[u8], strong_algo: BlockStrongAlgo) -> Vec<u8> {
         match strong_algo {
             BlockStrongAlgo::Xxh128 { seed } => compute_xxh128_wire_with_seed(block, seed),
             BlockStrongAlgo::Xxh64 { .. } | BlockStrongAlgo::Xxh3_64 { .. } => {
@@ -4003,7 +4003,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// DCtx. Pre-S8j this helper assumed 1 wire Literal = 1 logical
     /// literal, which silently mis-scaled the engine plan whenever the
     /// server split (for anything > ~16 KiB of compressed payload).
-    fn delta_wire_to_engine_ops(
+    pub(super) fn delta_wire_to_engine_ops(
         &self,
         wire_ops: &[DeltaOp],
         compression: &LiteralCompression,
@@ -4120,7 +4120,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     }
 
     /// How the negotiated winner maps onto the codecs this client has.
-    fn literal_compression(&self) -> LiteralCompression {
+    pub(super) fn literal_compression(&self) -> LiteralCompression {
         // `--new-compress` fixes zlibx on the command line; no list is
         // negotiated for compression then, whatever the peer's version.
         if self.argv_new_compress {
@@ -4304,7 +4304,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// dropping the leading `NDX_DONE` markers rsync 3.2.7 interleaves
     /// between the file-csum and the summary on the server→client
     /// stream (see `main.c::read_final_goodbye`).
-    async fn receive_summary_phase(
+    pub(super) async fn receive_summary_phase(
         &mut self,
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
@@ -4370,7 +4370,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
     /// Write a single `NDX_DONE` marker (1 byte `0x00`) wrapped in a
     /// MSG_DATA mux frame. `write_data_frame` enforces the wrapping.
-    async fn emit_ndx_done_marker(&mut self) -> Result<(), AerorsyncError> {
+    pub(super) async fn emit_ndx_done_marker(&mut self) -> Result<(), AerorsyncError> {
         self.write_data_frame(&[0x00]).await
     }
 
@@ -4563,7 +4563,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// writes back in `read_final_goodbye` line 887 after consuming
     /// the sender's `NDX_DONE + SummaryFrame`. Tolerates clean EOF
     /// (some rsync builds close the channel before the byte flushes).
-    async fn read_trailing_ndx_done(
+    pub(super) async fn read_trailing_ndx_done(
         &mut self,
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
