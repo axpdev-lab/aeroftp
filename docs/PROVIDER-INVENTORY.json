@@ -9,9 +9,9 @@
     "connection_forms": 58,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 62,
-    "connection_methods": 76,
-    "catalog_services": 85
+    "providers": 63,
+    "connection_methods": 77,
+    "catalog_services": 86
   },
   "transport_protocols": [
     "ftp",
@@ -129,7 +129,7 @@
   ],
   "catalog_categories": {
     "protocols": 8,
-    "object-storage": 26,
+    "object-storage": 27,
     "webdav": 21,
     "cloud-storage": 21,
     "media-services": 5,
@@ -465,6 +465,12 @@
       "id": "storj",
       "protocols": [
         "s3"
+      ]
+    },
+    {
+      "id": "swift",
+      "protocols": [
+        "swift"
       ]
     },
     {

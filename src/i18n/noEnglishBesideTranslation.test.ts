@@ -361,7 +361,7 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     // The provider a new connection tab is named after.
     'src/components/IntroHub/IntroHub.tsx': ['PixelUnion'],
     // Protocol class names.
-    'src/types.ts': ['WebDAV', 'FTPS', 'FTP', 'SFTP', 'SCP', 'Azure', 'MTP', 'API', 'OAuth'],
+    'src/types.ts': ['WebDAV', 'FTPS', 'FTP', 'SFTP', 'SCP', 'Azure', 'MTP', 'API', 'OAuth', 'Swift'],
     // Cipher names.
     'src/utils/archiveCipher.ts': ['AES', 'ZipCrypto'],
     // Font family names.

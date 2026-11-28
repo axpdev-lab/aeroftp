@@ -58,3 +58,17 @@ describe('My Servers filter chips: SCP', () => {
     expect(matching).toEqual(['ftp']);
   });
 });
+
+describe('My Servers filter chips: OpenStack Swift', () => {
+  it('lists a Swift profile under the S3 / Object chip and nowhere else', () => {
+    // Swift is object storage: it counts with S3 and Azure, and the catch-all
+    // cloud chip must exclude it so it is not double-listed.
+    const SPECIAL = new Set(['all', 'favorites', 'encrypted', 'active']);
+    const matching = FILTER_CHIPS
+      .filter((c) => !SPECIAL.has(c.id))
+      .filter((c) => c.matchFn('swift'))
+      .map((c) => c.id);
+    expect(matching).toEqual(['s3']);
+    expect(chip('cloud').matchFn('swift')).toBe(false);
+  });
+});

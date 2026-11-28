@@ -377,3 +377,41 @@ describe('commercial tier model: free / free-card / paid', () => {
         });
     });
 });
+
+describe('catalog: generic OpenStack Swift entry (Add Service)', () => {
+    const entry = PROVIDER_CATALOG.find(c => c.logoId === 'swift');
+
+    it('exists, is searchable by openstack/swift, and is not the Blomp preset', () => {
+        expect(entry).toBeDefined();
+        expect(entry!.company).toBe('OpenStack Swift');
+        expect(entry!.searchAliases).toEqual(expect.arrayContaining(['openstack', 'swift']));
+        // The generic entry carries no providerId: Quick Connect opens the
+        // plain Swift form, while Blomp keeps its own preset row.
+        expect(entry!.protocols).toEqual([
+            { label: 'Swift', protocol: 'swift', category: 'object-storage' },
+        ]);
+        expect(PROVIDER_CATALOG.find(c => c.logoId === 'blomp')).toBeDefined();
+    });
+
+    it('sits in the object-storage category, so the list-view category filter shows it there', () => {
+        expect(entry).toBeDefined();
+        expect(companyInCategory(entry!, 'object-storage')).toBe(true);
+        expect(companyInCategory(entry!, 'cloud-storage')).toBe(false);
+        expect(companyLaunchProtocol(entry!, 'object-storage').protocol).toBe('swift');
+        expect(companyLaunchProtocol(entry!, 'object-storage').providerId).toBeUndefined();
+    });
+
+    it('has exactly one README grid tile with a shipped icon file', () => {
+        const tiles = PROVIDER_GRID.filter(t => t.logoId === 'swift');
+        expect(tiles.length).toBe(1);
+        expect(tiles[0].label).toBe('OpenStack Swift');
+    });
+
+    it('projects into the CLI catalog with providerId null', () => {
+        const cli = buildCliCatalog().find(c => c.logoId === 'swift');
+        expect(cli).toBeDefined();
+        expect(cli!.protocols).toEqual([
+            { label: 'Swift', protocol: 'swift', providerId: null, paid: false, category: 'object-storage', note: null },
+        ]);
+    });
+});
