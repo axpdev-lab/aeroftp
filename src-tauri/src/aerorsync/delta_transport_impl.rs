@@ -1695,7 +1695,7 @@ impl AerorsyncBatch {
         local_path: &Path,
         remote_path: &str,
     ) -> Result<TransferReport, TransferError> {
-        // Z.1.2 — single retry budget on transient SSH channel drops.
+        // Z.1.2 - single retry budget on transient SSH channel drops.
         // The first attempt uses the existing shared session; if it
         // fails with a transient I/O error or a `TransferFailed` whose
         // stderr matches the channel-drop allowlist, we re-authenticate
@@ -1778,7 +1778,7 @@ impl AerorsyncBatch {
         remote_path: &str,
         local_path: &Path,
     ) -> Result<TransferReport, TransferError> {
-        // Z.1.2 — symmetric retry budget on the download leg. Reconnect
+        // Z.1.2 - symmetric retry budget on the download leg. Reconnect
         // semantics match the upload branch above; see the matching
         // comment for the classification rules.
         tracing::debug!(
@@ -1940,7 +1940,7 @@ fn build_source_entry(
     // B3 / X.3: when the session negotiates `-X`, read `user.*` xattrs
     // via libc. `None` when xattrs are off keeps the encoder emitting
     // zero xattr bytes (frozen oracles stay byte-identical). `Some(vec)`
-    // — empty or not — when on matches the codec contract for negotiated
+    // - empty or not - when on matches the codec contract for negotiated
     // sessions.
     let xattrs = if metadata_flags.preserve_xattrs {
         Some(crate::aerorsync::xattr_fs::read_user_xattrs(local_path).unwrap_or_default())
@@ -4118,7 +4118,7 @@ mod tests {
     /// Same probe, but reading the **link itself** (`lgetxattr`) instead of
     /// its target. R2 needs this: asking `getxattr` about an uploaded symlink
     /// resolves the target, and when that target does not exist remotely the
-    /// call returns ENOENT — which would make "the link carries no attribute"
+    /// call returns ENOENT - which would make "the link carries no attribute"
     /// pass for the wrong reason. See
     /// `delta_upload_symlink_xattr_not_inherited_live_lane_3`, which asserts
     /// both probes to keep that distinction observable.
@@ -4167,7 +4167,7 @@ PY"#
         // "Absent" must mean ENODATA and nothing else. The first version of
         // this probe printed MISSING on *any* first-call failure and mapped an
         // empty stdout to `None`, so a wrong path, a permission error or an
-        // unreadable namespace all read as "the attribute is not there" — and
+        // unreadable namespace all read as "the attribute is not there" - and
         // every `expect_absent` assertion in this file would have passed
         // without the probe ever having worked. Reported by CodeRabbit on #487.
         //
@@ -4835,7 +4835,7 @@ PY"#
     /// unit test on the local wrappers. What was never observed is the wire
     /// consequence: that stock rsync ends up with a bare link. On Linux the
     /// kernel forbids `user.*` on a symlink, so the pre-fix behaviour could
-    /// also make the receiver answer EPERM — this test therefore asserts the
+    /// also make the receiver answer EPERM - this test therefore asserts the
     /// upload *succeeds* as well as what it leaves behind.
     ///
     /// Two remote probes, deliberately: `lgetxattr` on the link must find

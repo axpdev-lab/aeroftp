@@ -593,7 +593,7 @@ enum SignatureHeader {
     /// only follows a real transfer request, `sender.c` /
     /// `generator.c::recv_generator`). First observed live 2026-07-21
     /// against bookworm rsync 3.2.7 (proto 32 advertised): identical
-    /// upload answered `ndx=1, iflags=0x0008` then the phase markers —
+    /// upload answered `ndx=1, iflags=0x0008` then the phase markers -
     /// the pre-fix driver blocked forever reading a sum_head that was
     /// never coming.
     Skipped {
@@ -5661,7 +5661,7 @@ mod tests {
     /// Realistic FIRST-entry shape for live tests against stock rsync.
     ///
     /// `sample_file_list_entry` sets `XMIT_SAME_TIME | XMIT_SAME_MODE` with
-    /// zeroed mtime/mode — legal only from the SECOND entry of a list, when
+    /// zeroed mtime/mode - legal only from the SECOND entry of a list, when
     /// a predecessor exists to be "same" as. Against a real rsync server
     /// the first entry decodes to mode 0 (a non-regular "special" file),
     /// the generator never enters the signature/delta phase, and the

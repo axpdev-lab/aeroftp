@@ -1575,7 +1575,7 @@ pub struct FileListDecodeOptions {
     /// what keeps their byte-pinned path unchanged.
     pub preserve_acls: bool,
     /// `-X` / `--xattrs` was negotiated, so every entry carries a
-    /// trailing xattr blob — including entries whose file has no
+    /// trailing xattr blob - including entries whose file has no
     /// extended attribute at all, where the blob is still `00 00`
     /// (measured, `04-xattr-wire-evidence.md` §4.1). The blob's presence
     /// is keyed on this option alone and never on the entry contents,
@@ -1693,16 +1693,16 @@ impl FileListCodecState {
 /// What `decode_file_list_entry` yielded. The caller then either
 /// appends the entry to its working file-list or finalises the list.
 ///
-/// The `Entry` variant is far larger than `EndOfList` — X.2a pushed
-/// `FileListEntry` past clippy's 200-byte threshold — but boxing it would
+/// The `Entry` variant is far larger than `EndOfList` - X.2a pushed
+/// `FileListEntry` past clippy's 200-byte threshold - but boxing it would
 /// be a pessimisation here, not a fix. This enum is only ever built as an
 /// immediate return value and matched on the spot: every construction
 /// site is a `return Ok((…, cursor))` and every consumer destructures it
 /// straight away, moving the `FileListEntry` into the caller's file-list.
 /// It is never held in a collection, which is the case the lint exists
 /// for. Boxing would add a heap allocation and a free per decoded entry
-/// on the file-list path — precisely the path the recursive tree sync
-/// (Y-RSC.7) will make hot — to save memory that is never actually held.
+/// on the file-list path - precisely the path the recursive tree sync
+/// (Y-RSC.7) will make hot - to save memory that is never actually held.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileListDecodeOutcome {
@@ -1985,7 +1985,7 @@ pub struct FileListEntry {
     ///
     /// Unlike `symlink_target` this is not gated on `mode`: rsync sends
     /// the blob for symlink entries too (`flist.c::send_file_entry` gates
-    /// it on `preserve_xattrs` alone, with no `S_ISLNK` exclusion — that
+    /// it on `preserve_xattrs` alone, with no `S_ISLNK` exclusion - that
     /// exclusion applies to ACLs, not xattrs). References stay unresolved
     /// here, like the ACL ones: a session table owns that.
     pub xattrs: Option<XattrWireEntry>,
@@ -2157,7 +2157,7 @@ fn decode_flist_flags(
 /// The per-xattr records are concatenated with no separator; `count` in
 /// the header is what says where the blob ends
 /// (`04-xattr-wire-evidence.md` §4.2). Both lengths come first, then both
-/// payloads — not name_len/name/datum_len/datum.
+/// payloads - not name_len/name/datum_len/datum.
 ///
 /// **Fail-closed.** Every length here is peer-supplied. Negative values,
 /// a zero `name_len`, a name missing its NUL, and values above
@@ -2169,8 +2169,8 @@ fn decode_flist_flags(
 /// that choice is load-bearing rather than cosmetic. The file list is
 /// decoded from a streaming buffer that is refilled one `MSG_DATA` frame
 /// at a time, and `receive_file_list_single_file` treats exactly three
-/// error shapes as "pull another frame and retry" — `TruncatedBuffer`,
-/// `InvalidNameLen`, `InvalidAlgoListLen` — while everything else aborts
+/// error shapes as "pull another frame and retry" - `TruncatedBuffer`,
+/// `InvalidNameLen`, `InvalidAlgoListLen` - while everything else aborts
 /// the transfer. A blob that straddles a frame boundary is normal, so it
 /// must land in the recoverable set; a structurally impossible length is
 /// not, so it must not.
@@ -5503,7 +5503,7 @@ mod tests {
     /// Pin for known issue #3 (tracker #458): `InvalidProtocolVersion
     /// { value: 2015297409 }` is not random garbage. It is the LE u32 of
     /// the four bytes that follow a stock server's 4-byte protocol version
-    /// in the capability preamble — i.e. a decode that started at offset
+    /// in the capability preamble - i.e. a decode that started at offset
     /// +4 into a valid frame.
     ///
     /// Root cause (2026-07-26): `ssh2::Channel::flush` after the client
@@ -5529,7 +5529,7 @@ mod tests {
         let misaligned = u32::from_le_bytes(preamble[4..8].try_into().unwrap());
         assert_eq!(misaligned, 2015297409);
         // A decoder that starts at offset 4 must hard-reject with exactly
-        // this value — the historical CI failure signature.
+        // this value - the historical CI failure signature.
         match decode_protocol_version(&preamble[4..]) {
             Err(RealWireError::InvalidProtocolVersion { value }) => {
                 assert_eq!(value, 2015297409);
@@ -8420,7 +8420,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // X.2a — xattr blob, inline values (≤ MAX_FULL_DATUM).
+    // X.2a - xattr blob, inline values (≤ MAX_FULL_DATUM).
     //
     // Every byte sequence asserted below was measured against rsync 3.2.7
     // with `--only-write-batch` on 2026-07-25 and is written up in
@@ -8472,7 +8472,7 @@ mod tests {
         // = `v1`, captured as 24 bytes.
         //   00    marker: full list, not a back-reference
         //   01    count = 1
-        //   12    name_len = 18 — 17 name bytes PLUS the trailing NUL
+        //   12    name_len = 18 - 17 name bytes PLUS the trailing NUL
         //   02    datum_len = 2
         //   ...   "user.aeroftp.test\0"
         //   ...   "v1", no terminator
@@ -8492,7 +8492,7 @@ mod tests {
     #[test]
     fn xattr_blob_with_no_attributes_is_exactly_two_zero_bytes() {
         // §4.1: with `-X` active a file that has no extended attribute
-        // still carries `00 00` — marker plus a zero count. This is the
+        // still carries `00 00` - marker plus a zero count. This is the
         // measurement that forced three states instead of two: absence
         // (`None`) and empty (`Some(vec![])`) are different on the wire.
         assert_eq!(encoded_xattr_blob(vec![]), vec![0x00, 0x00]);
@@ -8563,7 +8563,7 @@ mod tests {
     fn multiple_xattrs_concatenate_with_no_separator() {
         // §4.2, measured: `00 03 | 07 02 user.a\0 v1 | 08 03 user.bb\0 v22
         // | 09 04 user.ccc\0 v333`. The count in the header is the only
-        // thing that says where the blob ends — there is no separator and
+        // thing that says where the blob ends - there is no separator and
         // no terminator to resynchronise on.
         let pairs = vec![
             XattrPair::inline("user.a", b"v1".to_vec()),
@@ -8712,7 +8712,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // X.2b — the out-of-band datum section.
+    // X.2b - the out-of-band datum section.
     //
     // Byte sequences below come from captures taken on rsync 3.2.7 and
     // written up in `06-xattr-oob-wire-evidence.md`. The measurements that
@@ -9258,12 +9258,12 @@ mod tests {
         // rsync gates the blob on `preserve_xattrs` alone: unlike ACLs,
         // which `send_acl` skips for symlinks, xattrs are sent for symlink
         // entries as well. A symlink carries no flist checksum, so here
-        // the blob follows the target directly — the one shape where the
+        // the blob follows the target directly - the one shape where the
         // two optional tails are adjacent.
         //
         // **Provenance**: unlike every other pin in this block, this one
         // is read off `send_file_name`'s call order in rsync 3.2.7 rather
-        // than measured — §4 of the evidence doc never captured a symlink
+        // than measured - §4 of the evidence doc never captured a symlink
         // under `-X`, because on Linux a symlink cannot hold a `user.*`
         // attribute and the capture used `user.aeroftp.test`. The shape
         // is not in doubt (the blob is unconditional once `-X` is on) but

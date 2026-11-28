@@ -66,7 +66,7 @@ pub enum SshHostKeyPolicy {
 /// classic SFTP leg) and russh (the native probe leg) had different default
 /// preferences, so a server exposing both `ssh-ed25519` and `rsa-sha2-512`
 /// would yield two different fingerprints depending on which library opened
-/// the channel — fingerprint pinning rejected the second one. Enforcing the
+/// the channel - fingerprint pinning rejected the second one. Enforcing the
 /// same priority order on both legs makes the selection deterministic and
 /// the fingerprint pinnable across reconnects.
 ///
