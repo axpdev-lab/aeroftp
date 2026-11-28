@@ -2950,6 +2950,27 @@ impl StorageProvider for BoxProvider {
         // Its etag guards the PUT, so a link another client sets meanwhile
         // is neither updated nor taken for this one.
         let before = self.file_with_link(&file_id).await?;
+        // What the link the file has already says is decided before anything
+        // is written: the PUT asks for open access, so it would widen a link
+        // limited to the company or to collaborators, and Box shows only
+        // whether a link has a password, never which one.
+        let edit_asked = options.permissions.as_deref() == Some("edit");
+        if let Some(existing) = &before.shared_link {
+            let refused = if existing.effective_access.as_deref() != Some("open") {
+                Some("is not open to anyone with the link, and AeroFTP does not widen it")
+            } else if !edit_asked && existing.effective_permission.as_deref() == Some("can_edit") {
+                Some("lets its recipients edit, so it is no view link")
+            } else if options.password.is_some() && existing.is_password_enabled != Some(false) {
+                Some("has a password already, or Box does not say, and Box never shows which one, so a new one could not be confirmed")
+            } else {
+                None
+            };
+            if let Some(why) = refused {
+                return Err(ProviderError::Other(format!(
+                    "The file's existing Box shared link {why}; it was left as it is, so change or remove it in Box"
+                )));
+            }
+        }
         let token = self.get_token().await?;
 
         // Box API: shared_link with access, password, unshared_at, permissions
@@ -3021,7 +3042,7 @@ impl StorageProvider for BoxProvider {
         // Box states the role apart from the settings sent: edit access is
         // handed out only when stated, and a link that lets recipients edit
         // is not handed out as a view link.
-        let edit = options.permissions.as_deref() == Some("edit");
+        let edit = edit_asked;
         let role = link.effective_permission.as_deref();
         let missing = if options.password.is_some() && link.is_password_enabled != Some(true) {
             Some("the password")
@@ -4357,7 +4378,8 @@ mod tests {
         // The file's link before the PUT: it comes back without the
         // password, and nothing removes it.
         let (mut p, puts) = box_sharing_over(
-            serde_json::json!({"url": "https://app.box.com/s/x"}),
+            serde_json::json!({"url": "https://app.box.com/s/x", "effective_access": "open",
+                "effective_permission": "can_download", "is_password_enabled": false}),
             200,
             serde_json::json!({"url": "https://app.box.com/s/x"}),
         )
@@ -4376,6 +4398,49 @@ mod tests {
         let sent = puts.lock().unwrap().clone();
         assert_eq!(sent.len(), 1, "no removal: {sent:?}");
         assert_eq!(sent[0]["if_match"], "2", "{sent:?}");
+
+        // What the existing link shows decides before anything is written:
+        // a link limited to the company is not widened to open, an edit
+        // link is no view link, and a new password on a link that has one
+        // could not be confirmed.
+        let default = ShareLinkOptions::default();
+        let password = ShareLinkOptions {
+            password: Some("pw".into()),
+            ..Default::default()
+        };
+        for (existing, ask, why) in [
+            (
+                serde_json::json!({"url": "https://app.box.com/s/x", "effective_access": "company",
+                    "effective_permission": "can_download", "is_password_enabled": false}),
+                &default,
+                "does not widen it",
+            ),
+            (
+                serde_json::json!({"url": "https://app.box.com/s/x", "effective_access": "open",
+                    "effective_permission": "can_edit", "is_password_enabled": false}),
+                &default,
+                "no view link",
+            ),
+            (
+                serde_json::json!({"url": "https://app.box.com/s/x", "effective_access": "open",
+                    "effective_permission": "can_download", "is_password_enabled": true}),
+                &password,
+                "has a password already",
+            ),
+        ] {
+            let (mut p, puts) = box_sharing_over(
+                existing,
+                200,
+                serde_json::json!({"url": "https://app.box.com/s/x"}),
+            )
+            .await;
+            let err = p
+                .create_share_link("/a.txt", ask.clone())
+                .await
+                .unwrap_err();
+            assert!(err.to_string().contains(why), "{why}: {err}");
+            assert!(puts.lock().unwrap().is_empty(), "{why}: nothing written");
+        }
     }
 
     /// Box declares the etag optional. A create answer without one is not

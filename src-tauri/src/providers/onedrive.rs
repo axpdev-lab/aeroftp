@@ -2609,8 +2609,15 @@ impl StorageProvider for OneDriveProvider {
             .expiration
             .as_deref()
             .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok());
+        // A permission the item had before is a link Graph gave back: its
+        // password, if it has one, is the old one, and Graph shows no
+        // password, so the one sent is not confirmed.
+        let reused =
+            matches!((&result.id, &before), (Some(id), Some(before)) if before.contains(id));
         let missing = if options.password.is_some() && result.has_password == Some(false) {
             Some("the password")
+        } else if options.password.is_some() && reused {
+            Some("a password it is known to carry")
         } else if deadline.is_some_and(|deadline| {
             result.expiration.is_some()
                 && !expiry.is_some_and(|at| {
@@ -2622,16 +2629,13 @@ impl StorageProvider for OneDriveProvider {
             None
         };
         if let Some(missing) = missing {
-            let made_now = match (&result.id, &before) {
-                (Some(id), Some(before)) => !before.contains(id),
-                _ => false,
-            };
-            let outcome = match (&result.id, made_now) {
-                (Some(id), true) => match self.remove_link_permission(&item_id, id).await {
+            let outcome = match (&result.id, reused) {
+                (Some(id), false) => match self.remove_link_permission(&item_id, id).await {
                     Ok(()) => "it was removed again",
                     Err(_) => "removing it failed too, so remove it in OneDrive",
                 },
-                _ => "it is a link the file had already, left in place for its recipients, so check its settings in OneDrive",
+                (Some(_), true) => "it is a link the file had already, left in place for its recipients, so check its settings in OneDrive",
+                (None, _) => "OneDrive gives no id to tell whether the link is new, so it was left in place; check it in OneDrive",
             };
             return Err(ProviderError::Other(format!(
                 "OneDrive gave the share link without {missing}; {outcome}"
@@ -3790,6 +3794,16 @@ mod tests {
                                     link("OLD", serde_json::json!({"hasPassword": false}))
                                 }
                                 Some("unstated-pw") => link("NEW2", serde_json::json!({})),
+                                // The link the item had, protected by its
+                                // old password.
+                                Some("old-with-pw") => {
+                                    link("OLD", serde_json::json!({"hasPassword": true}))
+                                }
+                                Some("no-id-without-pw") => axum::Json(serde_json::json!({
+                                    "link": {"webUrl": "https://1drv.ms/u/NOID"},
+                                    "hasPassword": false
+                                }))
+                                .into_response(),
                                 Some(_) => link("NEW3", serde_json::json!({"hasPassword": true})),
                                 None => link(
                                     "NEW4",
@@ -3844,6 +3858,26 @@ mod tests {
             .to_string();
         assert!(err.contains("left in place"), "{err}");
         assert_eq!(deleted.lock().unwrap().len(), 1, "the old link stays");
+
+        // A link the item had comes back protected: by its old password,
+        // not the one sent, so it is not handed out, and stays.
+        let err = provider
+            .create_share_link("/a.txt", with("old-with-pw"))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("known to carry") && err.contains("left in place"),
+            "{err}"
+        );
+        // Without an id nothing says the link is new: it is not removed.
+        let err = provider
+            .create_share_link("/a.txt", with("no-id-without-pw"))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("gives no id"), "{err}");
+        assert_eq!(deleted.lock().unwrap().len(), 1, "nothing more removed");
 
         let expiring = ShareLinkOptions {
             expires_in_secs: Some(3600),
