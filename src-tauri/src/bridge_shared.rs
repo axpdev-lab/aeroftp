@@ -1508,6 +1508,59 @@ pub fn export_line_value(field: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// A profile's host as it can stand in the authority of a URL that another
+/// tool parses (an lftp bookmark, a Duplicacy or restic SFTP repository).
+#[derive(Debug, PartialEq, Eq)]
+pub enum UrlAuthorityHost {
+    /// A host name or IPv4 address, written as it is.
+    Name(String),
+    /// An IPv6 address, without its brackets; a zone (`%eth0`) is kept as
+    /// written. Each format says how it is bracketed or whether it can be.
+    Ipv6(String),
+}
+
+/// The characters that end or split the host of a URL authority in at least
+/// one of the parsers the exports feed: `@` closes a user name (lftp and
+/// Duplicacy split at the last one), `/` and `\` start the path, `:` starts
+/// a port, `?` and `#` end the authority for Go's `net/url` (restic),
+/// brackets delimit an IPv6 address and `%` is decoded by lftp.
+const URL_HOST_DELIMITERS: [char; 9] = ['@', '/', '\\', ':', '?', '#', '[', ']', '%'];
+
+/// The host of `host` for a URL authority, or why it cannot be one.
+///
+/// The host is the one part of these URLs written as it is: a user name is
+/// percent-encoded or checked by its format, a folder is encoded. A host
+/// `good.example@evil.example` written raw is read by lftp and Duplicacy as
+/// the user `good.example` on `evil.example`, so the export would point the
+/// tool at another server than the profile names. Such a host is refused,
+/// not cleaned. An IPv6 address, bare or in brackets, is returned without
+/// them for its format to write.
+pub fn url_authority_host(host: &str) -> Result<UrlAuthorityHost, String> {
+    export_line_value("host", host)?;
+    if host.is_empty() {
+        return Err("its host is empty; correct the profile and export again".into());
+    }
+    if host.contains(char::is_whitespace) {
+        return Err(
+            "its host holds a space, which would end the URL early; correct the profile and export again"
+                .into(),
+        );
+    }
+    if is_ipv6_host_literal(host) {
+        let inner = host
+            .strip_prefix('[')
+            .and_then(|h| h.strip_suffix(']'))
+            .unwrap_or(host);
+        return Ok(UrlAuthorityHost::Ipv6(inner.to_string()));
+    }
+    if let Some(c) = host.chars().find(|c| URL_HOST_DELIMITERS.contains(c)) {
+        return Err(format!(
+            "its host holds {c:?}, which ends the host of a URL, so the exported entry would name another server or port; correct the profile and export again"
+        ));
+    }
+    Ok(UrlAuthorityHost::Name(host.to_string()))
+}
+
 /// The entry names one exported file gives out, so that no two profiles are
 /// written under one name.
 ///

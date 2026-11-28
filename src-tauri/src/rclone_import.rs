@@ -13775,6 +13775,52 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         }
     }
 
+    /// rclone's `Minio` provider defaults to path-style, as `Other` does: a
+    /// MinIO profile stored as virtual-host keeps that choice through export
+    /// and import (Requested 176), and one stored as path-style needs no line.
+    #[test]
+    fn a_minio_profile_keeps_its_addressing_through_export_and_import() {
+        for (stored, line) in [
+            (serde_json::json!(false), Some("force_path_style = false\n")),
+            (
+                serde_json::json!("False"),
+                Some("force_path_style = false\n"),
+            ),
+            (serde_json::json!(true), None),
+        ] {
+            let servers = vec![RcloneExportServer {
+                id: "minio".into(),
+                name: "minio".into(),
+                host: "minio.example.test".into(),
+                port: 9000,
+                username: "AK".into(),
+                protocol: Some("s3".into()),
+                options: Some(serde_json::json!({
+                    "endpoint": "https://minio.example.test:9000",
+                    "pathStyle": stored,
+                })),
+                provider_id: Some("minio".into()),
+            }];
+            let (_, conf) = export_to_string(&servers, "minio-addressing");
+            let section = section_of(&conf, "minio");
+            assert!(section.contains("provider = Minio\n"), "{conf}");
+            match line {
+                Some(line) => assert!(section.contains(line), "{stored}: {conf}"),
+                None => assert!(!section.contains("force_path_style"), "{stored}: {conf}"),
+            }
+            let back = import_section(&conf, "minio");
+            let want = stored.as_bool().unwrap_or(false);
+            assert_eq!(
+                back.options
+                    .as_ref()
+                    .and_then(|o| o.get("pathStyle"))
+                    .and_then(|v| v.as_bool()),
+                Some(want),
+                "{stored}: {conf}"
+            );
+        }
+    }
+
     #[test]
     fn test_export_tigris_s3_is_other_with_explicit_region_and_addressing() {
         let export = |options: serde_json::Value, host: &str| {

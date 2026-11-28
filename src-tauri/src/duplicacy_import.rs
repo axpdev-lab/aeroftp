@@ -563,17 +563,39 @@ fn duplicacy_storage_for(
             } else {
                 serde_json::json!({ "ssh_password": secret.unwrap_or("") })
             };
+            // Duplicacy reads `sftp://` with the regex
+            // `^([\w-]+)://([\w\-@\.\!]+@)?([^/]+)(/(.+))?` and splits the port
+            // at the first `:` of the server. A user outside that class makes
+            // the whole `user@host` the server, and a `:` in it then names a
+            // host and a port of its own; an IPv6 address has no form.
+            let host = match crate::bridge_shared::url_authority_host(&server.host)? {
+                crate::bridge_shared::UrlAuthorityHost::Name(name) => name,
+                crate::bridge_shared::UrlAuthorityHost::Ipv6(_) => {
+                    return Err("its host is an IPv6 address, which a Duplicacy sftp:// storage URL cannot name (Duplicacy splits the port at the first `:`); use a host name for it".to_string())
+                }
+            };
+            if let Some(c) = server
+                .username
+                .chars()
+                .find(|c| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '@' | '.' | '!')))
+            {
+                return Err(format!(
+                    "its user name holds {c:?}, which a Duplicacy sftp:// storage URL cannot carry (Duplicacy would read part of it as the server); export a profile whose user has only letters, digits and _ - @ . !"
+                ));
+            }
             let authority = if server.port == 22 || server.port == 0 {
-                server.host.clone()
+                host
             } else {
-                format!("{}:{}", server.host, server.port)
+                format!("{}:{}", host, server.port)
+            };
+            let userinfo = if server.username.is_empty() {
+                String::new()
+            } else {
+                format!("{}@", server.username)
             };
             // Duplicacy reads `host/rel` from the home and `host//abs` as
             // absolute: an absolute start folder keeps its leading slash.
-            Ok((
-                format!("sftp://{}@{}/{}", server.username, authority, path),
-                keys,
-            ))
+            Ok((format!("sftp://{userinfo}{authority}/{path}"), keys))
         }
         ("webdav", _) => {
             let ep = endpoint.ok_or_else(|| "WebDAV profile has no server URL".to_string())?;
@@ -1059,6 +1081,96 @@ mod tests {
                     "{base} {folder}"
                 );
             }
+        }
+    }
+
+    /// Duplicacy's `CreateStorage` reads an `sftp://` storage with this regex
+    /// (Go RE2, `\w` is ASCII) and splits the port at the first `:` of the
+    /// server: `(user, server, port, folder)`.
+    fn duplicacy_reads_sftp(storage: &str) -> Option<(String, String, u32, String)> {
+        let re = regex::Regex::new(r"^([\w-]+)://((?-u:[\w\-@\.\!])+@)?([^/]+)(/(.+))?").unwrap();
+        let m = re.captures(storage)?;
+        let user = m.get(2).map_or("", |u| u.as_str());
+        let user = user.strip_suffix('@').unwrap_or(user).to_string();
+        let server = m.get(3)?.as_str();
+        let (server, port) = match server.find(':') {
+            Some(i) => (&server[..i], server[i + 1..].parse().unwrap_or(0)),
+            None => (server, 22),
+        };
+        Some((
+            user,
+            server.to_string(),
+            port,
+            m.get(5)?.as_str().to_string(),
+        ))
+    }
+
+    /// A raw `good.example@evil.example` host made Duplicacy open
+    /// `evil.example`, and a user outside its regex class made the whole
+    /// `user@host` the server. Such profiles are refused; a host name with a
+    /// user that has an `@` (a hosting login) still goes out, and Duplicacy
+    /// reads back the server, port, user and folder the profile names.
+    #[test]
+    fn an_sftp_storage_names_the_server_the_profile_names() {
+        let storage = |host: &str, port: u32, user: &str| {
+            let server = DuplicacyExportServer {
+                id: "s".into(),
+                name: "s".into(),
+                host: host.into(),
+                port,
+                username: user.into(),
+                protocol: Some("sftp".into()),
+                options: None,
+                provider_id: None,
+                initial_path: Some("/srv/backup".into()),
+            };
+            duplicacy_storage_for(&server, Some("p")).map(|(url, _)| url)
+        };
+        for (host, port, user) in [
+            ("nas.example.com", 22, "deploy"),
+            ("nas.example.com", 2222, "web@example.com"),
+            ("10.0.0.5", 0, "a.b-c_d!"),
+            ("nas.example.com", 22, ""),
+        ] {
+            let url = storage(host, port, user).unwrap();
+            let read = duplicacy_reads_sftp(&url).unwrap_or_else(|| panic!("{url}"));
+            let port = if port == 0 { 22 } else { port };
+            assert_eq!(
+                read,
+                (user.into(), host.into(), port, "/srv/backup".into()),
+                "{url}"
+            );
+        }
+        // What Duplicacy would have opened with the host written raw.
+        assert_eq!(
+            duplicacy_reads_sftp("sftp://u@good.example@evil.example//srv").map(|r| r.1),
+            Some("evil.example".into())
+        );
+        for host in [
+            "good.example@evil.example",
+            "evil.example/x",
+            "h.example:2222",
+            "h.example?x",
+            "h.example#x",
+            "[evil]h",
+            "h%2eexample",
+        ] {
+            let reason = storage(host, 22, "u").unwrap_err();
+            assert!(reason.starts_with("its host holds"), "{host}: {reason}");
+        }
+        assert!(storage("", 22, "u")
+            .unwrap_err()
+            .starts_with("its host is empty"));
+        for host in ["::1", "[2001:db8::1]", "fe80::1%eth0"] {
+            let reason = storage(host, 22, "u").unwrap_err();
+            assert!(reason.contains("IPv6"), "{host}: {reason}");
+        }
+        for user in ["a:b", "a b", "a/b", "b\u{fc}ro", "a%40b", "a+b"] {
+            let reason = storage("nas.example.com", 22, user).unwrap_err();
+            assert!(
+                reason.starts_with("its user name holds"),
+                "{user:?}: {reason}"
+            );
         }
     }
 }

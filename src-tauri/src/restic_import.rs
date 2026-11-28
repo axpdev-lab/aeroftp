@@ -64,12 +64,115 @@ use std::path::{Path, PathBuf};
 /// - `s3:s3.amazonaws.com/bucket[/path]` or `s3:https://endpoint/bucket`
 ///   -> `("s3", map_s3_provider_from_endpoint(host), host, 443, path)`
 /// - `b2:bucket:path` -> `("s3", "backblaze-b2", "", 443, Some(bucket))`
-/// - `sftp:user@host:/path` -> `("sftp", None, host, 22, path)` (user stripped)
+/// - `sftp:user@host:/path` or `sftp://user@host:port//path` ->
+///   `("sftp", None, host, port, path)` (the user comes from [`parse_restic_sftp`])
 /// - `rest:https://host/` -> `None`: restic's REST server protocol, which no
 ///   AeroFTP transport speaks (it is not WebDAV)
 /// - `rclone:remote:path` -> `None` (caller chains into the rclone importer)
 /// - local path / `swift:` / `azure:` / `gs:` -> `None` (not bridgeable)
 pub type ResticRepoTarget = (&'static str, Option<String>, String, u32, Option<String>);
+
+/// Go's `path.Clean`, which restic applies to an SFTP folder: repeated `/`
+/// become one, `.` elements go, a `..` takes the element before it (none at
+/// the root), a trailing `/` goes; an empty result is `.`.
+fn go_path_clean(path: &str) -> String {
+    let rooted = path.starts_with('/');
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => match parts.last() {
+                Some(&last) if last != ".." => {
+                    parts.pop();
+                }
+                _ if rooted => {}
+                _ => parts.push(".."),
+            },
+            other => parts.push(other),
+        }
+    }
+    let joined = parts.join("/");
+    match (rooted, joined.is_empty()) {
+        (true, _) => format!("/{joined}"),
+        (false, true) => ".".to_string(),
+        (false, false) => joined,
+    }
+}
+
+/// The start folder of a restic SFTP folder: cleaned as restic cleans it,
+/// and none for `.`, the SSH user's home, as for an empty one.
+fn restic_folder(path: &str) -> Option<String> {
+    let clean = go_path_clean(path);
+    (clean != ".").then_some(clean)
+}
+
+/// An SFTP repository as restic's `sftp.ParseConfig` reads it:
+/// `(user, host, port, folder)`.
+///
+/// The URL form `sftp://user@host:port//path` goes through Go's `net/url`:
+/// the user and the folder are percent-decoded, an IPv6 host is in brackets,
+/// and restic drops one leading `/` of the path (`//srv` is `/srv`, `/srv` is
+/// the relative `srv`). The short form `sftp:user@host:path` is cut at its
+/// first `:`, and the user at the `@` the way `strings.SplitN(host, "@", 3)`
+/// does: with two of them the user keeps the first. Either way the folder is
+/// then cleaned with [`go_path_clean`], so it is the one restic opens.
+fn parse_restic_sftp(url: &str) -> Option<(String, String, u32, Option<String>)> {
+    if let Some(rest) = url.strip_prefix("sftp://") {
+        // The authority ends at the first `/`, `?` or `#`. Only it goes
+        // through `url::Url`: that parser removes `.` and `..` segments from
+        // the path, and `net/url` keeps them (`/../repo` is restic's
+        // `../repo`, not `repo`).
+        let (authority, tail) = rest.split_at(rest.find(['/', '?', '#']).unwrap_or(rest.len()));
+        // restic refuses a URL with no path.
+        if !tail.starts_with('/') {
+            return None;
+        }
+        // `url::Url` refuses an IPv6 zone (`[fe80::1%25eth0]`), which
+        // `net/url` decodes: it parses the authority without it.
+        // The zone is the `%25` after the last `[`: a user may hold `%25` too.
+        let zone_at = authority
+            .rfind('[')
+            .and_then(|open| authority[open..].find("%25").map(|at| open + at));
+        let (authority, zone) = match zone_at {
+            Some(at) => {
+                let (before, after) = (&authority[..at], &authority[at + 3..]);
+                let (zone, rest) = after.split_once(']')?;
+                (
+                    format!("{before}]{rest}"),
+                    Some(urlencoding::decode(zone).ok()?.into_owned()),
+                )
+            }
+            _ => (authority.to_string(), None),
+        };
+        let parsed = url::Url::parse(&format!("sftp://{authority}/")).ok()?;
+        let host = parsed.host_str().filter(|h| !h.is_empty())?;
+        // An `sftp` URL's host stays percent-encoded in `url::Url`; `net/url`
+        // decodes it.
+        let host = match zone {
+            Some(zone) => format!("{}%{zone}]", host.strip_suffix(']')?),
+            None => urlencoding::decode(host).ok()?.into_owned(),
+        };
+        crate::bridge_shared::url_authority_host(&host).ok()?;
+        let port = parsed.port().map_or(22, u32::from);
+        let user = urlencoding::decode(parsed.username()).ok()?.into_owned();
+        let raw_path = tail.split(['?', '#']).next().unwrap_or_default();
+        let path = urlencoding::decode(raw_path).ok()?;
+        let path = path.strip_prefix('/').unwrap_or(&path);
+        return Some((user, host, port, restic_folder(path)));
+    }
+    let r = url.strip_prefix("sftp:")?;
+    // restic refuses the short form without the `:` before the folder.
+    let (authority, path) = r.split_once(':')?;
+    let parts: Vec<&str> = authority.splitn(3, '@').collect();
+    let (user, host) = match parts.as_slice() {
+        [user, at, host] => (format!("{user}@{at}"), *host),
+        [user, host] => (user.to_string(), *host),
+        _ => (String::new(), authority),
+    };
+    // A third `@`, a `/` or a `%` stays in what restic gives SSH as the host.
+    crate::bridge_shared::url_authority_host(host).ok()?;
+    Some((user, host.to_string(), 22, restic_folder(path)))
+}
 
 pub fn parse_restic_repo(url: &str) -> Option<ResticRepoTarget> {
     let url = url.trim();
@@ -113,20 +216,10 @@ pub fn parse_restic_repo(url: &str) -> Option<ResticRepoTarget> {
         ));
     }
 
-    // ---- SFTP (`sftp:user@host:/path`) ----
-    if let Some(r) = url.strip_prefix("sftp:") {
-        // Host segment is everything up to the first ':' that introduces the
-        // remote path. `user@` (if present) is stripped: AeroFTP carries the
-        // SSH user separately.
-        let host_part = r.split(':').next().unwrap_or(r);
-        let host = host_part.rsplit('@').next().unwrap_or(host_part);
-        if host.is_empty() {
-            return None;
-        }
-        let path = r
-            .split_once(':')
-            .and_then(|(_, p)| (!p.is_empty()).then(|| p.to_string()));
-        return Some(("sftp", None, host.to_string(), 22, path));
+    // ---- SFTP (`sftp:user@host:/path`, `sftp://user@host:port//path`) ----
+    if url.starts_with("sftp:") {
+        let (_, host, port, path) = parse_restic_sftp(url)?;
+        return Some(("sftp", None, host, port, path));
     }
 
     // ---- Restic REST server (`rest:https://host/`): not bridgeable ----
@@ -253,8 +346,14 @@ pub fn import_restic_repo_url(
             env("AWS_SECRET_ACCESS_KEY").filter(|v| !v.is_empty()),
         ),
         // SFTP: key / ssh-agent auth. We never copy key bytes; credential
-        // stays None regardless of the environment.
-        "sftp" => (String::new(), None),
+        // stays None regardless of the environment. The user is the one the
+        // repository names.
+        "sftp" => (
+            parse_restic_sftp(url)
+                .map(|(user, ..)| user)
+                .unwrap_or_default(),
+            None,
+        ),
         _ => (String::new(), None),
     };
 
@@ -441,11 +540,51 @@ fn restic_repo_for(p: &ResticExportServer, secret: &str) -> Result<ResticEnv, St
         (Some("sftp"), _) => {
             // sftp:user@host:/path (key / agent auth: no secret env). A port
             // other than 22 needs restic's URL form, sftp://user@host:port//path.
+            //
+            // A repository that starts with `sftp://` is the URL form to
+            // restic, so a user starting with `//` goes there too.
+            // restic cuts the short form at its first `:` and then splits the
+            // user at the `@` (`SplitN(host, "@", 3)`): it reads the profile
+            // back only for a user without `:` and with one `@` at most, and a
+            // host that is not an IPv6 address. Anything else goes in the URL
+            // form, which restic reads with Go's `net/url`: the user and the
+            // folder percent-decoded, an IPv6 address in brackets (its zone's
+            // `%` written `%25`), `?` and `#` ending the path.
             let path = p.initial_path.clone().unwrap_or_default();
-            let repo = if p.port == 22 || p.port == 0 {
-                format!("sftp:{}@{}:{}", p.username, p.host, path)
-            } else {
-                format!("sftp://{}@{}:{}/{}", p.username, p.host, p.port, path)
+            let host = crate::bridge_shared::url_authority_host(&p.host)?;
+            let short_form = (p.port == 22 || p.port == 0)
+                && matches!(host, crate::bridge_shared::UrlAuthorityHost::Name(_))
+                && !p.username.contains(':')
+                && !p.username.starts_with("//")
+                && p.username.matches('@').count() <= 1
+                && !p
+                    .username
+                    .chars()
+                    .any(|c| c.is_control() || c.is_whitespace());
+            let repo = match host {
+                crate::bridge_shared::UrlAuthorityHost::Name(name) if short_form => {
+                    format!("sftp:{}@{}:{}", p.username, name, path)
+                }
+                host => {
+                    let host = match host {
+                        crate::bridge_shared::UrlAuthorityHost::Name(name) => name,
+                        crate::bridge_shared::UrlAuthorityHost::Ipv6(addr) => {
+                            format!("[{}]", addr.replace('%', "%25"))
+                        }
+                    };
+                    let userinfo = if p.username.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{}@", urlencoding::encode(&p.username))
+                    };
+                    let port = if p.port == 0 { 22 } else { p.port };
+                    let folder = path
+                        .split('/')
+                        .map(|segment| urlencoding::encode(segment).into_owned())
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    format!("sftp://{userinfo}{host}:{port}/{folder}")
+                }
             };
             Ok((repo, Vec::new()))
         }
@@ -919,5 +1058,178 @@ mod tests {
         assert!(body.contains("s3:https://a.example.com/tests"), "{body}");
         assert!(body.contains("AWS_ACCESS_KEY_ID='AKA'"), "{body}");
         assert!(body.contains("AWS_SECRET_ACCESS_KEY='secret-a'"), "{body}");
+    }
+
+    /// The SFTP repository restic reads back names the profile's server,
+    /// port, user and folder: the short form where restic's cut keeps them,
+    /// the URL form otherwise (a `:` in the user, two `@`, another port, an
+    /// IPv6 address). A host that would name another server is refused. The
+    /// URL form used to come back with its port read as part of the folder.
+    #[test]
+    fn an_sftp_repository_names_the_server_the_profile_names() {
+        let repo = |host: &str, port: u32, user: &str, folder: &str| {
+            let p = ResticExportServer {
+                id: "s".into(),
+                name: "s".into(),
+                host: host.into(),
+                port,
+                username: user.into(),
+                protocol: Some("sftp".into()),
+                options: None,
+                provider_id: None,
+                initial_path: Some(folder.into()),
+            };
+            restic_repo_for(&p, "").map(|(repo, _)| repo)
+        };
+        for (host, port, user, folder, form) in [
+            (
+                "nas.example.com",
+                22,
+                "backup",
+                "/srv/restic",
+                "sftp:backup@",
+            ),
+            (
+                "nas.example.com",
+                0,
+                "web@example.com",
+                "/srv/restic",
+                "sftp:web@",
+            ),
+            (
+                "nas.example.com",
+                2222,
+                "backup",
+                "/srv/restic",
+                "sftp://backup@",
+            ),
+            ("nas.example.com", 22, "a:b", "/srv/restic", "sftp://a%3Ab@"),
+            (
+                "nas.example.com",
+                22,
+                "a@b@c",
+                "/srv/restic",
+                "sftp://a%40b%40c@",
+            ),
+            ("nas.example.com", 2222, "u", "/50% off/c#1?", "sftp://u@"),
+            ("::1", 22, "u", "/srv/restic", "sftp://u@[::1]:22/"),
+            (
+                "[2001:db8::1]",
+                2200,
+                "u",
+                "srv",
+                "sftp://u@[2001:db8::1]:2200/",
+            ),
+        ] {
+            let url = repo(host, port, user, folder).unwrap();
+            assert!(url.starts_with(form), "{url}");
+            let port = if port == 0 { 22 } else { port };
+            let host = if host.contains(':') && !host.starts_with('[') {
+                format!("[{host}]")
+            } else {
+                host.to_string()
+            };
+            assert_eq!(
+                parse_restic_sftp(&url),
+                Some((user.to_string(), host, port, Some(folder.to_string()))),
+                "{url}"
+            );
+        }
+        let scoped = repo("fe80::1%eth0", 22, "u", "/r").unwrap();
+        assert!(
+            scoped.starts_with("sftp://u@[fe80::1%25eth0]:22/"),
+            "{scoped}"
+        );
+        assert_eq!(
+            parse_restic_sftp(&scoped),
+            Some((
+                "u".to_string(),
+                "[fe80::1%eth0]".to_string(),
+                22,
+                Some("/r".to_string())
+            ))
+        );
+        // `net/url` decodes the host; restic refuses a repository without
+        // the folder delimiter; `/` and `/.` are both the home folder.
+        assert_eq!(
+            parse_restic_sftp("sftp://u@b%C3%BCro.example:2222//srv").map(|r| r.1),
+            Some("b\u{fc}ro.example".to_string())
+        );
+        let zoned = repo("fe80::1%eth0", 22, "50%", "/r").unwrap();
+        assert_eq!(
+            parse_restic_sftp(&zoned).map(|r| (r.0, r.1)),
+            Some(("50%".to_string(), "[fe80::1%eth0]".to_string())),
+            "{zoned}"
+        );
+        for url in [
+            "sftp://u@nas.example.com:2222",
+            "sftp:u@nas.example.com",
+            "sftp:u@a@b@evil.example:/srv",
+            "sftp:u@h/x:/srv",
+            "sftp://u@evil%40x.example//srv",
+        ] {
+            assert_eq!(parse_restic_sftp(url), None, "{url}");
+        }
+        for url in [
+            "sftp://u@nas.example.com/",
+            "sftp://u@nas.example.com/.",
+            "sftp:u@nas.example.com:",
+            "sftp:u@nas.example.com:.",
+        ] {
+            assert_eq!(parse_restic_sftp(url).map(|r| r.3), Some(None), "{url}");
+        }
+        assert!(repo("", 22, "u", "/r")
+            .unwrap_err()
+            .starts_with("its host is empty"));
+        for host in [
+            "good.example@evil.example",
+            "evil.example/x",
+            "h.example:2222",
+            "h.example?x",
+            "h.example#x",
+            "[evil]h",
+            "h%2eexample",
+        ] {
+            let reason = repo(host, 22, "u", "/r").unwrap_err();
+            assert!(reason.starts_with("its host holds"), "{host}: {reason}");
+        }
+        // `net/url` keeps dot segments and restic's `path.Clean` resolves
+        // them, and so does the import.
+        for (url, folder) in [
+            ("sftp://u@nas.example.com/../repo", "../repo"),
+            ("sftp://u@nas.example.com:2222//a/./b/../c?x#y", "/a/c"),
+            ("sftp://u@nas.example.com//a/link/../repo", "/a/repo"),
+            ("sftp:u@nas.example.com:/srv//restic/./", "/srv/restic"),
+            ("sftp:u@nas.example.com:a/../../r", "../r"),
+            ("sftp://u@nas.example.com//../x", "/x"),
+        ] {
+            assert_eq!(
+                parse_restic_sftp(url).map(|r| r.3),
+                Some(Some(folder.to_string())),
+                "{url}"
+            );
+        }
+        // A user starting with `//` would make the short form read as the
+        // URL form, another user and folder: it goes in the URL form.
+        let url = repo("nas.example.com", 22, "//backup", "/srv/restic").unwrap();
+        assert!(url.starts_with("sftp://%2F%2Fbackup@"), "{url}");
+        assert_eq!(
+            parse_restic_sftp(&url),
+            Some((
+                "//backup".to_string(),
+                "nas.example.com".to_string(),
+                22,
+                Some("/srv/restic".to_string())
+            ))
+        );
+        // The import keeps the user it reads.
+        let env = |_: &str| -> Option<String> { None };
+        let r = import_restic_repo_url("sftp://a%3Ab@nas.example.com:2222//srv/restic", &env)
+            .expect("import");
+        let s = &r.servers[0];
+        assert_eq!(s.username, "a:b");
+        assert_eq!(s.host, "nas.example.com");
+        assert_eq!(s.port, 2222);
+        assert_eq!(s.initial_path.as_deref(), Some("/srv/restic"));
     }
 }
