@@ -8012,7 +8012,8 @@ fn whole_object_total_from_content_range(headers: &reqwest::header::HeaderMap) -
 ///
 /// `413` and a `403` whose server reason names a size limit become the typed,
 /// non-retried `FileTooLarge`; a `413` whose reason says the account storage
-/// is full, and `507`, become the typed, non-retried `QuotaExceeded`. All
+/// is full and names no per-file limit, and `507`, become the typed,
+/// non-retried `QuotaExceeded`. All
 /// name the plan limit and quote the server's own reason; `reason` comes
 /// whole from `server_reason`: the classification reads all of it, and the
 /// error quotes its first line, shortened and sanitized.
@@ -8027,7 +8028,11 @@ fn upload_failure_error(status: StatusCode, reason: Option<&str>) -> ProviderErr
              409 here)"
                 .to_string(),
         ),
-        StatusCode::PAYLOAD_TOO_LARGE if reason.is_some_and(reason_says_storage_full) => {
+        StatusCode::PAYLOAD_TOO_LARGE
+            if reason.is_some_and(|reason| {
+                reason_says_storage_full(reason) && !reason_says_file_too_large(reason)
+            }) =>
+        {
             ProviderError::QuotaExceeded(format!(
                 "the account is full or has reached its storage limit (HTTP 413).{says}"
             ))
@@ -8050,11 +8055,13 @@ fn upload_failure_error(status: StatusCode, reason: Option<&str>) -> ProviderErr
     }
 }
 
-/// A 403 reason that names a size limit ("File too large. Max 50MB on Free.",
-/// LifetimeCloud). Narrow on purpose: any other 403 keeps its mapping.
+/// A reason that names a per-file size limit ("File too large. Max 50MB on
+/// Free.", LifetimeCloud; "the per-file quota is 50 MB"). Narrow on
+/// purpose: any other 403 keeps its mapping, and on a 413 it wins over the
+/// storage-full words, because a per-file quota is not a full account.
 fn reason_says_file_too_large(reason: &str) -> bool {
     let lower = reason.to_lowercase();
-    lower.contains("too large") || lower.contains("file size limit")
+    lower.contains("too large") || lower.contains("file size limit") || lower.contains("per-file")
 }
 
 /// A 413 reason that says the account is full ("Storage limit reached",
@@ -11098,6 +11105,52 @@ exit 1
             crate::transfer_dag::TransferErrorKind::QuotaExceeded
         );
         assert_eq!(transfer.retry, crate::transfer_dag::RetryDirective::Never);
+    }
+
+    #[test]
+    fn put_413_per_file_quota_is_file_too_large_not_a_full_account() {
+        for reason in [
+            "File too large. The per-file quota is 50 MB; account storage remains available.",
+            "Per-file quota of 50 MB exceeded",
+        ] {
+            match upload_failure_error(StatusCode::PAYLOAD_TOO_LARGE, Some(reason)) {
+                ProviderError::FileTooLarge(msg) => {
+                    assert!(msg.contains("HTTP 413"), "msg: {msg}");
+                    assert!(
+                        msg.ends_with(&format!("Server says: {reason}")),
+                        "msg: {msg}"
+                    );
+                }
+                other => panic!("{reason}: expected FileTooLarge, got {other:?}"),
+            }
+        }
+        // Control: an account-full reason stays QuotaExceeded.
+        assert!(matches!(
+            upload_failure_error(StatusCode::PAYLOAD_TOO_LARGE, Some("Storage limit reached")),
+            ProviderError::QuotaExceeded(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn put_413_per_file_quota_past_200_bytes_is_file_too_large() {
+        let message = late_phrase(
+            "File too large. The per-file quota is 50 MB; account storage remains available.",
+        );
+        assert!(message.find("per-file quota").unwrap() > 200);
+        let (base, server) = serve_put_refusal(
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+            padded_sabre_refusal(&message, 800),
+        )
+        .await;
+        let outcome = put_to_refusal(&base).await;
+        server.abort();
+        match outcome.expect_err("413 must fail") {
+            ProviderError::FileTooLarge(msg) => {
+                assert!(msg.contains("HTTP 413"), "msg: {msg}");
+                assert!(!msg.contains("per-file quota"), "msg: {msg}");
+            }
+            other => panic!("expected FileTooLarge, got {other:?}"),
+        }
     }
 
     /// A server whose PUT /up answers `status` with `body`.
