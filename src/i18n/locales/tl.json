@@ -398,7 +398,14 @@
                 "refused": "Hindi napalitan ang mode",
                 "copyKeptTitle": "Pinanatili ang panimulang folder",
                 "copyKept": "Walang katumbas ang panimulang folder na {path} sa {mode} mode at pinanatili ito nang walang pagbabago."
-            }
+            },
+            "fieldPatternInvalid": "Hindi mukhang tama ang value na ito para sa field na ito",
+            "puterUsernameIsEmail": "Isa itong email address: Kailangan ng Puter ang iyong Puter username (Settings > Account > Username)",
+            "resetEndpointToDefault": "I-reset sa default",
+            "fieldExpectsEmail": "Inaasahan ng field na ito ang email ng iyong account",
+            "fieldNotEmail": "Gamitin dito ang iyong username, hindi ang email",
+            "fieldAwsAccessKeyId": "Ang AWS access key ID ay nagsisimula sa AKIA o ASIA at may 20 character",
+            "fieldR2AccountId": "Ang Cloudflare account ID ay may 32 hexadecimal na character"
         },
         "browser": {
             "remote": "Remote",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Naka-off: ang mga koneksyon ng data ay pupunta sa host na kinonektahan mo, tulad ng ginagawa ng curl. I-on lang para sa server na nagpapadala ng data mula sa ibang address.",
             "discoverFastly": "Fastly Object Storage: storage na compatible sa S3 sa 12 rehiyon (5 GB libre, kailangan ng card)",
             "discoverNeon": "Neon Object Storage: S3-compatible na storage para sa bawat project branch (5 GB libre kada proyekto)",
-            "discoverPuter": "Puter cloud storage sa pamamagitan ng WebDAV (25 MB libre, walang card)",
+            "discoverPuter": "Puter cloud storage sa pamamagitan ng WebDAV (200 MB libre, walang card)",
             "discoverLifetimeCloud": "Imbakan ng LifetimeCloud sa pamamagitan ng WebDAV (1 GB libre, walang card)",
             "discoverCoritan": "Coritan Object Storage: storage na compatible sa S3 sa 6 rehiyon (10 GB libre, hindi kailangan ng card)"
         },

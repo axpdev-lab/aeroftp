@@ -398,7 +398,14 @@
                 "refused": "Der Modus wurde nicht gewechselt",
                 "copyKeptTitle": "Startordner beibehalten",
                 "copyKept": "Der Startordner {path} hat im Modus {mode} keine Entsprechung und wurde unverändert beibehalten."
-            }
+            },
+            "fieldPatternInvalid": "Dieser Wert sieht für dieses Feld nicht richtig aus",
+            "puterUsernameIsEmail": "Das ist eine E-Mail-Adresse: Puter benötigt deinen Puter-Benutzernamen (Settings > Account > Username)",
+            "resetEndpointToDefault": "Auf Standard zurücksetzen",
+            "fieldExpectsEmail": "Dieses Feld erwartet die E-Mail-Adresse deines Kontos",
+            "fieldNotEmail": "Verwende hier deinen Benutzernamen, nicht deine E-Mail-Adresse",
+            "fieldAwsAccessKeyId": "Eine AWS Access Key ID beginnt mit AKIA oder ASIA und hat 20 Zeichen",
+            "fieldR2AccountId": "Die Cloudflare-Konto-ID hat 32 hexadezimale Zeichen"
         },
         "browser": {
             "remote": "Remote",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Aus: Datenverbindungen gehen an den Host, mit dem Sie verbunden sind, wie bei curl. Nur für einen Server aktivieren, der Daten von einer anderen Adresse sendet.",
             "discoverFastly": "Fastly Object Storage: S3-kompatibler Speicher in 12 Regionen (5 GB kostenlos, Karte erforderlich)",
             "discoverNeon": "Neon Object Storage: S3-kompatibler Speicher pro Projekt-Branch (5 GB kostenlos pro Projekt)",
-            "discoverPuter": "Puter-Cloudspeicher über WebDAV (25 MB kostenlos, ohne Karte)",
+            "discoverPuter": "Puter-Cloudspeicher über WebDAV (200 MB kostenlos, ohne Karte)",
             "discoverLifetimeCloud": "LifetimeCloud-Speicher über WebDAV (1 GB kostenlos, ohne Karte)",
             "discoverCoritan": "Coritan Object Storage: S3-kompatibler Speicher in 6 Regionen (10 GB kostenlos, keine Karte erforderlich)"
         },

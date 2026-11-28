@@ -398,7 +398,14 @@
                 "refused": "Mode tidak diganti",
                 "copyKeptTitle": "Folder awal dipertahankan",
                 "copyKept": "Folder awal {path} tidak memiliki padanan dalam mode {mode} dan dipertahankan apa adanya."
-            }
+            },
+            "fieldPatternInvalid": "Nilai ini tidak terlihat benar untuk kolom ini",
+            "puterUsernameIsEmail": "Ini adalah alamat email: Puter memerlukan nama pengguna Puter Anda (Settings > Account > Username)",
+            "resetEndpointToDefault": "Setel ulang ke default",
+            "fieldExpectsEmail": "Kolom ini mengharapkan alamat email akun Anda",
+            "fieldNotEmail": "Gunakan nama pengguna Anda di sini, bukan email",
+            "fieldAwsAccessKeyId": "AWS access key ID dimulai dengan AKIA atau ASIA dan 20 karakter",
+            "fieldR2AccountId": "ID akun Cloudflare terdiri dari 32 karakter heksadesimal"
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Nonaktif: koneksi data menuju host tempat Anda terhubung, seperti yang dilakukan curl. Aktifkan hanya untuk server yang mengirim data dari alamat lain.",
             "discoverFastly": "Fastly Object Storage: penyimpanan kompatibel S3 di 12 wilayah (5 GB gratis, perlu kartu)",
             "discoverNeon": "Neon Object Storage: penyimpanan kompatibel S3 untuk setiap cabang proyek (5 GB gratis per proyek)",
-            "discoverPuter": "Penyimpanan cloud Puter melalui WebDAV (25 MB gratis, tanpa kartu)",
+            "discoverPuter": "Penyimpanan cloud Puter melalui WebDAV (200 MB gratis, tanpa kartu)",
             "discoverLifetimeCloud": "Penyimpanan LifetimeCloud melalui WebDAV (1 GB gratis, tanpa kartu)",
             "discoverCoritan": "Coritan Object Storage: penyimpanan kompatibel S3 di 6 wilayah (10 GB gratis, tanpa kartu)"
         },

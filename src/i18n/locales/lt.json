@@ -398,7 +398,14 @@
                 "refused": "Režimas nebuvo perjungtas",
                 "copyKeptTitle": "Pradinis aplankas išlaikytas",
                 "copyKept": "Pradinis aplankas {path} neturi atitikmens {mode} režime ir buvo paliktas toks, koks yra."
-            }
+            },
+            "fieldPatternInvalid": "Ši reikšmė neatrodo teisinga šiam laukui",
+            "puterUsernameIsEmail": "Tai el. pašto adresas: Puter reikia jūsų Puter vartotojo vardo (Settings > Account > Username)",
+            "resetEndpointToDefault": "Atkurti numatytąją",
+            "fieldExpectsEmail": "Šiame laukelyje tikimasi paskyros el. pašto adreso",
+            "fieldNotEmail": "Čia įveskite vartotojo vardą, ne el. paštą",
+            "fieldAwsAccessKeyId": "AWS prieigos rakto ID prasideda AKIA arba ASIA ir turi 20 simbolių",
+            "fieldR2AccountId": "Cloudflare paskyros ID turi 32 šešioliktainius simbolius"
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Išjungta: duomenų ryšiai eina į pagrindinį kompiuterį, prie kurio prisijungėte, kaip daro curl. Įjunkite tik serveriui, kuris siunčia duomenis iš kito adreso.",
             "discoverFastly": "Fastly Object Storage: su S3 suderinama saugykla 12 regionų (5 GB nemokamai, reikalinga kortelė)",
             "discoverNeon": "Neon Object Storage: S3 suderinama saugykla, skirta kiekvienai projekto šakai (5 GB nemokamai projektui)",
-            "discoverPuter": "„Puter“ debesų saugykla per WebDAV (25 MB nemokamai, be kortelės)",
+            "discoverPuter": "„Puter“ debesų saugykla per WebDAV (200 MB nemokamai, be kortelės)",
             "discoverLifetimeCloud": "LifetimeCloud saugykla per WebDAV (1 GB nemokamai, be kortelės)",
             "discoverCoritan": "Coritan Object Storage: su S3 suderinama saugykla 6 regionuose (10 GB nemokamai, kortelė nereikalinga)"
         },

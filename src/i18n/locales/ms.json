@@ -398,7 +398,14 @@
                 "refused": "Mod tidak ditukar",
                 "copyKeptTitle": "Folder awal dikekalkan",
                 "copyKept": "Folder awal {path} tiada padanan dalam mod {mode} dan dikekalkan seperti sedia ada."
-            }
+            },
+            "fieldPatternInvalid": "Nilai ini tidak kelihatan betul untuk medan ini",
+            "puterUsernameIsEmail": "Ini adalah alamat e-mel: Puter memerlukan nama pengguna Puter anda (Settings > Account > Username)",
+            "resetEndpointToDefault": "Set semula ke lalai",
+            "fieldExpectsEmail": "Medan ini menjangkakan alamat e-mel akaun anda",
+            "fieldNotEmail": "Gunakan nama pengguna anda di sini, bukan e-mel",
+            "fieldAwsAccessKeyId": "AWS access key ID bermula dengan AKIA atau ASIA dan 20 aksara",
+            "fieldR2AccountId": "ID akaun Cloudflare mempunyai 32 aksara heksadesimal"
         },
         "browser": {
             "remote": "Jauh",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Mati: sambungan data menuju hos yang anda sambungkan, seperti yang dilakukan curl. Hidupkan hanya untuk pelayan yang menghantar data dari alamat lain.",
             "discoverFastly": "Fastly Object Storage: storan serasi S3 di 12 wilayah (5 GB percuma, kad diperlukan)",
             "discoverNeon": "Neon Object Storage: storan serasi S3 untuk setiap cabang projek (5 GB percuma setiap projek)",
-            "discoverPuter": "Storan awan Puter melalui WebDAV (25 MB percuma, tanpa kad)",
+            "discoverPuter": "Storan awan Puter melalui WebDAV (200 MB percuma, tanpa kad)",
             "discoverLifetimeCloud": "Storan LifetimeCloud melalui WebDAV (1 GB percuma, tanpa kad)",
             "discoverCoritan": "Coritan Object Storage: storan serasi S3 di 6 wilayah (10 GB percuma, tanpa kad)"
         },

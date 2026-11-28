@@ -398,7 +398,14 @@
                 "refused": "未切换模式",
                 "copyKeptTitle": "已保留初始文件夹",
                 "copyKept": "初始文件夹 {path} 在 {mode} 模式下没有对应项，已保持原样。"
-            }
+            },
+            "fieldPatternInvalid": "此值对于此字段看起来不正确",
+            "puterUsernameIsEmail": "这是一个电子邮件地址：Puter 需要您的 Puter 用户名 (Settings > Account > Username)",
+            "resetEndpointToDefault": "重置为默认",
+            "fieldExpectsEmail": "此字段需要您账户的电子邮件地址",
+            "fieldNotEmail": "请在此输入用户名，而不是电子邮件地址",
+            "fieldAwsAccessKeyId": "AWS access key ID 以 AKIA 或 ASIA 开头，共 20 个字符",
+            "fieldR2AccountId": "Cloudflare 账户 ID 为 32 个十六进制字符"
         },
         "browser": {
             "remote": "远程",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "关闭：数据连接会发往你所连接的主机，与 curl 一致。仅对从其他地址发送数据的服务器开启。",
             "discoverFastly": "Fastly Object Storage：覆盖 12 个区域的 S3 兼容存储（免费 5 GB，需要银行卡）",
             "discoverNeon": "Neon Object Storage：按项目分支提供的 S3 兼容存储（每个项目免费 5 GB）",
-            "discoverPuter": "通过WebDAV使用Puter云存储（25 MB免费，无需银行卡）",
+            "discoverPuter": "通过WebDAV使用Puter云存储（200 MB免费，无需银行卡）",
             "discoverLifetimeCloud": "通过 WebDAV 的 LifetimeCloud 存储 (1 GB 免费，无需银行卡)",
             "discoverCoritan": "Coritan Object Storage：覆盖 6 个区域的 S3 兼容存储（免费 10 GB，无需银行卡）"
         },

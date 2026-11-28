@@ -398,7 +398,14 @@
                 "refused": "Način nije promijenjen",
                 "copyKeptTitle": "Početna mapa zadržana",
                 "copyKept": "Početna mapa {path} nema ekvivalent u načinu {mode} i zadržana je kakva jest."
-            }
+            },
+            "fieldPatternInvalid": "Ova vrijednost ne izgleda ispravno za ovo polje",
+            "puterUsernameIsEmail": "Ovo je e-mail adresa: Puter treba vaše Puter korisničko ime (Settings > Account > Username)",
+            "resetEndpointToDefault": "Vrati na zadano",
+            "fieldExpectsEmail": "Ovo polje očekuje e-mail adresu vašeg računa",
+            "fieldNotEmail": "Ovdje unesite svoje korisničko ime, ne e-mail",
+            "fieldAwsAccessKeyId": "AWS access key ID počinje s AKIA ili ASIA i ima 20 znakova",
+            "fieldR2AccountId": "Cloudflare ID računa ima 32 heksadecimalna znaka"
         },
         "browser": {
             "remote": "Udaljeno",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Isključeno: podatkovne veze idu na host s kojim ste se povezali, kao što radi curl. Uključite samo za poslužitelj koji šalje podatke s druge adrese.",
             "discoverFastly": "Fastly Object Storage: pohrana kompatibilna sa S3 u 12 regija (5 GB besplatno, potrebna kartica)",
             "discoverNeon": "Neon Object Storage: pohrana kompatibilna sa S3 za svaku granu projekta (5 GB besplatno po projektu)",
-            "discoverPuter": "Puter oblaka pohrana putem WebDAV-a (25 MB besplatno, bez kartice)",
+            "discoverPuter": "Puter oblaka pohrana putem WebDAV-a (200 MB besplatno, bez kartice)",
             "discoverLifetimeCloud": "LifetimeCloud pohrana putem WebDAV-a (1 GB besplatno, bez kartice)",
             "discoverCoritan": "Coritan Object Storage: pohrana kompatibilna sa S3 u 6 regija (10 GB besplatno, bez kartice)"
         },

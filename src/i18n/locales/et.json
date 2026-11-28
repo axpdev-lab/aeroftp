@@ -398,7 +398,14 @@
                 "refused": "Režiimi ei vahetatud",
                 "copyKeptTitle": "Algkaust säilitati",
                 "copyKept": "Algkaustal {path} pole režiimis {mode} vastet ja see säilitati muutmata kujul."
-            }
+            },
+            "fieldPatternInvalid": "See väärtus ei tundu selle välja jaoks õige",
+            "puterUsernameIsEmail": "See on e-posti aadress: Puter vajab sinu Puteri kasutajanime (Settings > Account > Username)",
+            "resetEndpointToDefault": "Lähtesta vaikimisi",
+            "fieldExpectsEmail": "See väli ootab sinu konto e-posti aadressi",
+            "fieldNotEmail": "Kasuta siin oma kasutajanime, mitte e-posti",
+            "fieldAwsAccessKeyId": "AWS access key ID algab AKIA või ASIA ja on 20 tähemärki pikk",
+            "fieldR2AccountId": "Cloudflare'i konto ID on 32 kuueteistkümnendmärki"
         },
         "browser": {
             "remote": "Kaugserver",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Väljas: andmeühendused lähevad hostile, millega ühendusid, nagu curl teeb. Lülita sisse ainult serveri jaoks, mis saadab andmeid mujalt aadressilt.",
             "discoverFastly": "Fastly Object Storage: S3-ühilduv salvestusruum 12 piirkonnas (5 GB tasuta, vajalik on kaart)",
             "discoverNeon": "Neon Object Storage: S3-ga ühilduv salvestusruum iga projekti haru jaoks (5 GB tasuta projekti kohta)",
-            "discoverPuter": "Puter pilvesalvestus WebDAV-i kaudu (25 MB tasuta, kaarti pole vaja)",
+            "discoverPuter": "Puter pilvesalvestus WebDAV-i kaudu (200 MB tasuta, kaarti pole vaja)",
             "discoverLifetimeCloud": "LifetimeCloud salvestusruum WebDAV-i kaudu (1 GB tasuta, kaardita)",
             "discoverCoritan": "Coritan Object Storage: S3-ühilduv salvestusruum 6 piirkonnas (10 GB tasuta, kaarti pole vaja)"
         },

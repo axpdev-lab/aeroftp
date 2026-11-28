@@ -398,7 +398,14 @@
                 "refused": "Tryb nie został przełączony",
                 "copyKeptTitle": "Zachowano folder początkowy",
                 "copyKept": "Folder początkowy {path} nie ma odpowiednika w trybie {mode} i został zachowany bez zmian."
-            }
+            },
+            "fieldPatternInvalid": "Ta wartość nie wygląda poprawnie dla tego pola",
+            "puterUsernameIsEmail": "To jest adres e-mail: Puter wymaga nazwy użytkownika Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Przywróć domyślne",
+            "fieldExpectsEmail": "To pole oczekuje adresu e-mail Twojego konta",
+            "fieldNotEmail": "Wpisz tutaj nazwę użytkownika, nie adres e-mail",
+            "fieldAwsAccessKeyId": "AWS access key ID zaczyna się od AKIA lub ASIA i ma 20 znaków",
+            "fieldR2AccountId": "ID konta Cloudflare ma 32 znaki szesnastkowe"
         },
         "browser": {
             "remote": "Zdalny",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Wyłączone: połączenia danych idą do hosta, z którym się połączyłeś, tak jak robi to curl. Włącz tylko dla serwera, który wysyła dane z innego adresu.",
             "discoverFastly": "Fastly Object Storage: pamięć masowa zgodna z S3 w 12 regionach (5 GB za darmo, wymagana karta)",
             "discoverNeon": "Neon Object Storage: magazyn zgodny z S3 dla każdej gałęzi projektu (5 GB bezpłatnie na projekt)",
-            "discoverPuter": "Chmura Puter przez WebDAV (25 MB za darmo, bez karty)",
+            "discoverPuter": "Chmura Puter przez WebDAV (200 MB za darmo, bez karty)",
             "discoverLifetimeCloud": "Pamięć LifetimeCloud przez WebDAV (1 GB bezpłatnie, bez karty)",
             "discoverCoritan": "Coritan Object Storage: pamięć masowa zgodna z S3 w 6 regionach (10 GB za darmo, bez karty)"
         },

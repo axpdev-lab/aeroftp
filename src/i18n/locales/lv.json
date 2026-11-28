@@ -398,7 +398,14 @@
                 "refused": "Režīms netika pārslēgts",
                 "copyKeptTitle": "Sākotnējā mape saglabāta",
                 "copyKept": "Sākotnējai mapei {path} nav atbilsmes režīmā {mode}, un tā tika saglabāta nemainīta."
-            }
+            },
+            "fieldPatternInvalid": "Šī vērtība neizskatās pareiza šim laukam",
+            "puterUsernameIsEmail": "Šī ir e-pasta adrese: Puter nepieciešams jūsu Puter lietotājvārds (Settings > Account > Username)",
+            "resetEndpointToDefault": "Atiestatīt uz noklusējumu",
+            "fieldExpectsEmail": "Šajā laukā tiek gaidīta konta e-pasta adrese",
+            "fieldNotEmail": "Šeit ievadiet lietotājvārdu, ne e-pastu",
+            "fieldAwsAccessKeyId": "AWS piekļuves atslēgas ID sākas ar AKIA vai ASIA un ir 20 rakstzīmes",
+            "fieldR2AccountId": "Cloudflare konta ID ir 32 heksadecimālas rakstzīmes"
         },
         "browser": {
             "remote": "Attālināts",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Izslēgts: datu savienojumi iet uz resursdatoru, ar kuru izveidojāt savienojumu, kā to dara curl. Ieslēdziet tikai serverim, kas sūta datus no citas adreses.",
             "discoverFastly": "Fastly Object Storage: ar S3 saderīga krātuve 12 reģionos (5 GB bez maksas, nepieciešama karte)",
             "discoverNeon": "Neon Object Storage: ar S3 saderīga krātuve katram projekta zaram (5 GB bez maksas par projektu)",
-            "discoverPuter": "Puter mākoņdatu krātuve caur WebDAV (25 MB bez maksas, bez kartes)",
+            "discoverPuter": "Puter mākoņdatu krātuve caur WebDAV (200 MB bez maksas, bez kartes)",
             "discoverLifetimeCloud": "LifetimeCloud krātuve, izmantojot WebDAV (1 GB bez maksas, bez kartes)",
             "discoverCoritan": "Coritan Object Storage: ar S3 saderīga krātuve 6 reģionos (10 GB bez maksas, karte nav nepieciešama)"
         },

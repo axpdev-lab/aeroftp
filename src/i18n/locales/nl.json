@@ -398,7 +398,14 @@
                 "refused": "De modus is niet gewisseld",
                 "copyKeptTitle": "Beginmap behouden",
                 "copyKept": "De beginmap {path} heeft geen equivalent in de {mode}-modus en is ongewijzigd behouden."
-            }
+            },
+            "fieldPatternInvalid": "Deze waarde ziet er niet goed uit voor dit veld",
+            "puterUsernameIsEmail": "Dit is een e-mailadres: Puter heeft je Puter-gebruikersnaam nodig (Settings > Account > Username)",
+            "resetEndpointToDefault": "Standaard herstellen",
+            "fieldExpectsEmail": "Dit veld verwacht het e-mailadres van je account",
+            "fieldNotEmail": "Gebruik hier je gebruikersnaam, niet je e-mailadres",
+            "fieldAwsAccessKeyId": "Een AWS access key ID begint met AKIA of ASIA en heeft 20 tekens",
+            "fieldR2AccountId": "Het Cloudflare-account-ID heeft 32 hexadecimale tekens"
         },
         "browser": {
             "remote": "Extern",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Uit: dataverbindingen gaan naar de host waarmee je verbonden bent, zoals curl doet. Zet dit alleen aan voor een server die data vanaf een ander adres verstuurt.",
             "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)",
             "discoverNeon": "Neon Object Storage: S3-compatibele opslag per projectbranch (5 GB gratis per project)",
-            "discoverPuter": "Puter-cloudopslag via WebDAV (25 MB gratis, zonder kaart)",
+            "discoverPuter": "Puter-cloudopslag via WebDAV (200 MB gratis, zonder kaart)",
             "discoverLifetimeCloud": "LifetimeCloud-opslag via WebDAV (1 GB gratis, geen kaart)",
             "discoverCoritan": "Coritan Object Storage: S3-compatibele opslag in 6 regio's (10 GB gratis, geen kaart vereist)"
         },

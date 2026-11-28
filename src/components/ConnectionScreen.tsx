@@ -48,6 +48,7 @@ import { isValidOverlayScope, loginRelativeForm, normalizeOverlayAnchor, resolve
 import { overlayEditDiffers } from '../utils/overlayEditDiff';
 import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
+import { ResetEndpointLink } from './common/ResetEndpointLink';
 import { CopySecretButton } from './common/CopySecretButton';
 import { CopyableFormFields } from './common/CopyableFormFields';
 import { loadFourSharedCredentials } from '../utils/fourSharedCredentials';
@@ -59,6 +60,7 @@ import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDef
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { resolvePresetText } from '../providers/presetText';
+import { fieldPatternIssue } from '../providers/fieldValidation';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { canonicalOptionsForEdit } from '../utils/profileSecurity';
 import { createProfileCredentialJournal, type ProfileCredentialJournal, type ProfileCredentialWriter } from '../utils/profileCredentialJournal';
@@ -66,6 +68,7 @@ import { loadSavedServerProfiles, readSavedServerProfilesForWrite, revertConvert
 import { carryFavoriteServer } from '../utils/favoriteServers';
 import { carryServerGroups } from '../utils/serverGroups';
 import { getStorageDedupKey } from '../utils/storageDedup';
+import { legacyPuterProfileForEdit } from '../utils/puterProfile';
 import { warnIfSavedByOtherAccount } from '../utils/crossUserDedupWarning';
 import { useActivityLog } from '../hooks/useActivityLog';
 import { logger } from '../utils/logger';
@@ -446,6 +449,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     const usernameField = formProvider?.fields?.find(f => f.key === 'username');
     const passwordField = formProvider?.fields?.find(f => f.key === 'password');
+    const usernamePatternIssue = fieldPatternIssue(usernameField, connectionParams.username);
+    const passwordPatternIssue = fieldPatternIssue(passwordField, connectionParams.password);
     // A preset's own text names a control of this form by reference, resolved
     // to the label the form shows in the current language.
     const presetText = (text: string) => resolvePresetText(text, formProvider, t);
@@ -2362,11 +2367,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             providerId: profile.providerId,
         });
 
+        // A Puter profile saved in the old token form shows the account in the
+        // username field and saves back in the new form (owner, 2026-11-27).
+        const puterLegacy = legacyPuterProfileForEdit(profile.providerId, profile.host, profile.username);
+
         // Immediately update form with new profile data (password empty initially)
         onConnectionParamsChange({
-            server: profile.host,
+            server: puterLegacy?.server ?? profile.host,
             port: profile.port,
-            username: profile.username,
+            username: puterLegacy?.username ?? profile.username,
             password: profile.password || '', // Set immediately, will be updated if stored
             protocol: effectiveProtocol,
             providerId: profile.providerId,
@@ -6099,6 +6108,24 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className={`w-full px-3 py-2 border rounded-lg text-sm ${advancedUnlocked ? 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600' : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
                                                     placeholder={t('connection.swiftAuthUrl')}
                                                 />
+                                                <ResetEndpointLink
+                                                    provider={selectedProvider}
+                                                    params={connectionParams}
+                                                    fallbackPort={443}
+                                                    onReset={(def) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        server: def.server,
+                                                        port: def.port ?? connectionParams.port ?? 443,
+                                                        // Resetting the auth URL crosses the Blomp
+                                                        // boundary exactly like editing it, so the
+                                                        // opt-in follows the preset again.
+                                                        options: swiftOptionsForAuthUrl(
+                                                            connectionParams.server,
+                                                            def.server,
+                                                            connectionParams.options,
+                                                        ),
+                                                    })}
+                                                />
                                                 {!advancedUnlocked && (
                                                     <button type="button" onClick={() => setShowAdvancedWarning(true)} className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300">
                                                         <Pencil size={10} />{t('common.edit')}
@@ -6368,10 +6395,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={connectionParams.username}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, username: e.target.value })}
-                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-12' : ''} bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm`}
+                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-12' : ''} bg-gray-50 dark:bg-gray-700 border ${usernamePatternIssue ? 'border-amber-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-sm`}
                                                     placeholder={getUsernamePlaceholder()}
                                                     maxLength={isFilenDesktopBridge ? FILEN_BRIDGE_MAX_LENGTH : undefined}
-                                                    aria-invalid={!!filenBridgeCredentialIssue}
+                                                    aria-invalid={!!filenBridgeCredentialIssue || !!usernamePatternIssue}
                                                 />
                                                 {isFilenDesktopBridge && (
                                                     <InlinePasswordGenerator
@@ -6381,7 +6408,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     />
                                                 )}
                                             </div>
-                                            {!isFilenDesktopBridge && usernameField?.helpText && (
+                                            {!isFilenDesktopBridge && usernamePatternIssue ? (
+                                                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400" role="alert">{t(usernamePatternIssue)}</p>
+                                            ) : !isFilenDesktopBridge && usernameField?.helpText && (
                                                 <p className="text-xs text-gray-500 mt-1">{presetText(usernameField.helpText)}</p>
                                             )}
                                         </div>
@@ -6395,10 +6424,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type={showPassword ? 'text' : 'password'}
                                                     value={connectionParams.password}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-20' : 'pr-12'} bg-gray-50 dark:bg-gray-700 border rounded-lg text-sm ${filenBridgeCredentialIssue ? 'border-amber-500' : 'border-gray-300 dark:border-gray-600'}`}
+                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-20' : 'pr-12'} bg-gray-50 dark:bg-gray-700 border rounded-lg text-sm ${filenBridgeCredentialIssue ? 'border-amber-500' : passwordPatternIssue ? 'border-amber-500' : 'border-gray-300 dark:border-gray-600'}`}
                                                     placeholder={t('connection.passwordPlaceholder')}
                                                     maxLength={isFilenDesktopBridge ? FILEN_BRIDGE_MAX_LENGTH : undefined}
-                                                    aria-invalid={!!filenBridgeCredentialIssue}
+                                                    aria-invalid={!!filenBridgeCredentialIssue || !!passwordPatternIssue}
                                                 />
                                                 {isFilenDesktopBridge && (
                                                     <InlinePasswordGenerator
@@ -6411,7 +6440,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
-                                            {!isFilenDesktopBridge && passwordField?.helpText && (
+                                            {!isFilenDesktopBridge && passwordPatternIssue ? (
+                                                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400" role="alert">{t(passwordPatternIssue)}</p>
+                                            ) : !isFilenDesktopBridge && passwordField?.helpText && (
                                                 <p className="text-xs text-gray-500 mt-1">{presetText(passwordField.helpText)}</p>
                                             )}
                                             {isFilenDesktopBridge && (
@@ -6448,28 +6479,40 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="flex gap-2">
-                                                    <div className="flex-1 min-w-0">
-                                                        <label className="block text-sm font-medium mb-1.5">{getServerLabel()}</label>
-                                                        <input
-                                                            type="text"
-                                                            value={connectionParams.server}
-                                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
-                                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                            placeholder="https://davXXX.teracloud.jp/dav/"
-                                                        />
+                                                <div>
+                                                    <div className="flex gap-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <label className="block text-sm font-medium mb-1.5">{getServerLabel()}</label>
+                                                            <input
+                                                                type="text"
+                                                                value={connectionParams.server}
+                                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
+                                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                                placeholder="https://davXXX.teracloud.jp/dav/"
+                                                            />
+                                                        </div>
+                                                        <div className="w-24">
+                                                            <label className="block text-sm font-medium mb-1.5">{t('connection.port')}</label>
+                                                            <input
+                                                                type="number"
+                                                                value={connectionParams.port || 443}
+                                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || 443 })}
+                                                                className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
+                                                                min={1}
+                                                                max={65535}
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <div className="w-24">
-                                                        <label className="block text-sm font-medium mb-1.5">{t('connection.port')}</label>
-                                                        <input
-                                                            type="number"
-                                                            value={connectionParams.port || 443}
-                                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || 443 })}
-                                                            className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
-                                                            min={1}
-                                                            max={65535}
-                                                        />
-                                                    </div>
+                                                    <ResetEndpointLink
+                                                        provider={selectedProvider}
+                                                        params={connectionParams}
+                                                        fallbackPort={443}
+                                                        onReset={(def) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            server: def.server,
+                                                            port: def.port ?? connectionParams.port ?? 443,
+                                                        })}
+                                                    />
                                                 </div>
                                             )
                                         )}
@@ -6542,6 +6585,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                     />
                                                                 </div>
                                                             </div>
+                                                            <ResetEndpointLink
+                                                                provider={selectedProvider}
+                                                                params={connectionParams}
+                                                                fallbackPort={getDefaultPort(protocol)}
+                                                                onReset={(def) => onConnectionParamsChange({
+                                                                    ...connectionParams,
+                                                                    server: def.server,
+                                                                    port: def.port ?? connectionParams.port,
+                                                                })}
+                                                            />
                                                             {!advancedUnlocked && (
                                                                 <button
                                                                     type="button"

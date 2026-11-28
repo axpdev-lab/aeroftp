@@ -571,32 +571,9 @@ describe('Puter WebDAV credential guidance and Advanced Server override', () => 
     it('renders username and password helpText for puter-webdav', async () => {
         await renderPuterNewConnection();
         const text = container.textContent || '';
-        expect(text).toContain('Token auth: use -token as the username (literal)');
-        expect(text).toMatch(/appended verification codes expire and may stop authenticating/i);
-        expect(text).toContain('-token');
-    });
-
-    it('allows unlocking and overriding Server under Advanced Options for token auth', async () => {
-        await renderPuterNewConnection();
-        const toggle = button('protocol.advanced');
-        await act(async () => toggle.click());
-
-        const serverInput = container.querySelector<HTMLInputElement>('input[placeholder="https://dav.puter.com/{username}"]')!;
-        expect(serverInput).toBeDefined();
-        expect(serverInput.disabled).toBe(true);
-
-        const editBtn = button('common.edit');
-        await act(async () => editBtn.click());
-
-        const unlockBtn = button('protocol.advancedUnlock');
-        await act(async () => unlockBtn.click());
-
-        expect(serverInput.disabled).toBe(false);
-        await act(async () => {
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(serverInput, 'https://dav.puter.com/myuser');
-            serverInput.dispatchEvent(new Event('input', { bubbles: true }));
-        });
-        expect(serverInput.value).toBe('https://dav.puter.com/myuser');
+        expect(text).toContain('API token');
+        expect(text).toContain('not your email');
+        expect(text).not.toContain('-token');
     });
 });
 
@@ -762,17 +739,6 @@ describe('a preset text names the controls its form renders', () => {
         const placeholders = [...container.querySelectorAll('input')].map(input => input.placeholder);
         expect(placeholders).toContain(`Press ${label('connection.discovery.fetch')} to list your folders`);
         expect([...container.querySelectorAll('button')].some(b => b.textContent?.includes(label('connection.discovery.fetch')))).toBe(true);
-    });
-
-    it('sends Puter token auth to the field the WebDAV form labels Endpoint URL, behind Advanced', async () => {
-        const puter = PROVIDERS.find(provider => provider.id === 'puter-webdav')!;
-        await renderPreset(puter);
-        const help = resolvePresetText(puter.fields!.find(field => field.key === 'password')!.helpText!, puter, label);
-        expect(container.textContent).toContain(help);
-        expect(help).toContain('set [connection.endpointUrl] to https://dav.puter.com/<username> under [protocol.advanced] ([common.edit], then [protocol.advancedUnlock])');
-        await act(async () => button(label('protocol.advanced')).click());
-        const server = container.querySelector<HTMLInputElement>('input[placeholder="https://dav.puter.com/{username}"]')!;
-        expect(server.closest('div')!.querySelector('label')!.textContent).toBe(label('connection.endpointUrl'));
     });
 });
 

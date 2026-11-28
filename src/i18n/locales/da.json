@@ -398,7 +398,14 @@
                 "refused": "Tilstanden blev ikke skiftet",
                 "copyKeptTitle": "Startmappe bevaret",
                 "copyKept": "Startmappen {path} har ingen tilsvarende i {mode}-tilstand og er bevaret, som den er."
-            }
+            },
+            "fieldPatternInvalid": "Denne værdi ser ikke korrekt ud for dette felt",
+            "puterUsernameIsEmail": "Dette er en e-mailadresse: Puter skal bruge dit Puter-brugernavn (Settings > Account > Username)",
+            "resetEndpointToDefault": "Nulstil til standard",
+            "fieldExpectsEmail": "Dette felt forventer e-mailadressen på din konto",
+            "fieldNotEmail": "Brug dit brugernavn her, ikke din e-mail",
+            "fieldAwsAccessKeyId": "Et AWS access key ID starter med AKIA eller ASIA og har 20 tegn",
+            "fieldR2AccountId": "Cloudflare-konto-ID'et har 32 hexadecimale tegn"
         },
         "browser": {
             "remote": "Ekstern",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Fra: dataforbindelser går til den vært, du har forbundet til, som curl gør. Slå kun til for en server, der sender data fra en anden adresse.",
             "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort påkrævet)",
             "discoverNeon": "Neon Object Storage: S3-kompatibel lagring pr. projektgren (5 GB gratis pr. projekt)",
-            "discoverPuter": "Puter-skystorage via WebDAV (25 MB gratis, intet kort)",
+            "discoverPuter": "Puter-skystorage via WebDAV (200 MB gratis, intet kort)",
             "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB gratis, intet kort)",
             "discoverCoritan": "Coritan Object Storage: S3-kompatibel lagring i 6 regioner (10 GB gratis, uden kort)"
         },

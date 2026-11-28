@@ -463,7 +463,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#FF9900',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.accessKeyId, helpText: 'IAM Console → Users → Security Credentials → Access Keys' },
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'IAM Console → Users → Security Credentials → Access Keys', pattern: '^(AKIA|ASIA)[A-Z0-9]{16}$', patternMessageKey: 'connection.fieldAwsAccessKeyId' },
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'Shown only once at key creation' },
             { ...COMMON_FIELDS.bucket, placeholder: 'my-bucket', helpText: 'S3 Console → Buckets → Bucket name' },
             {
@@ -671,6 +671,8 @@ export const PROVIDERS: ProviderConfig[] = [
                 required: true,
                 placeholder: 'a1b2c3d4e5f6...',
                 helpText: 'Cloudflare Dashboard → R2 → Overview → Account ID',
+                pattern: '^[0-9a-f]{32}$',
+                patternMessageKey: 'connection.fieldR2AccountId',
                 group: 'server',
             },
             {
@@ -1471,7 +1473,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#008BF6',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com', pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessageKey: 'connection.fieldExpectsEmail' },
             { ...COMMON_FIELDS.password, label: 'Password', helpText: 'Your regular 4shared login password' },
         ],
         features: { shareLink: false, sync: true },
@@ -1493,7 +1495,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#00AEEF',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.username, placeholder: 'Your CloudMe username' },
+            { ...COMMON_FIELDS.username, placeholder: 'Your CloudMe username', pattern: '^[^@\\s]+$', patternMessageKey: 'connection.fieldNotEmail' },
             { ...COMMON_FIELDS.password },
         ],
         features: {
@@ -1507,18 +1509,29 @@ export const PROVIDERS: ProviderConfig[] = [
     {
         id: 'puter-webdav',
         name: 'Puter',
-        description: 'Puter cloud storage via WebDAV (25 MB free, no card)',
+        description: 'Puter cloud storage via WebDAV (200 MB free, no card)',
         protocol: 'webdav',
         category: 'webdav',
         icon: 'Cloud',
         color: '#8B5CF6',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.username, placeholder: 'Your Puter username', helpText: 'Token auth: use -token as the username (literal)' },
-            { ...COMMON_FIELDS.password, helpText: 'Your Puter password; with 2FA enabled, append the code (appended verification codes expire and may stop authenticating later requests; use -token authentication for persistent connections). Token auth: the auth token as password with -token as username, and set {ui:connection.endpointUrl} to https://dav.puter.com/<username> under {ui:protocol.advanced} ({ui:common.edit}, then {ui:protocol.advancedUnlock}): the {username} path resolves to -token otherwise' },
+            {
+                ...COMMON_FIELDS.username,
+                placeholder: 'Your Puter username',
+                helpText: 'The username in Puter under Settings > Account > Username, not your email: it names your drive, https://dav.puter.com/{username}',
+                pattern: '^[^@]*$',
+                patternMessageKey: 'connection.puterUsernameIsEmail',
+            },
+            {
+                ...COMMON_FIELDS.password,
+                label: 'API token',
+                placeholder: 'Paste your Puter API token',
+                helpText: 'Puter > Settings > Account > API Token > Create token. AeroFTP signs in with the token; your Puter password is not used',
+            },
         ],
         setupInstructions: [
-            'The free plan is very limited: 25 MB in total, no card, useful to try and evaluate Puter, not for real use; a paid Puter plan adds storage',
+            'The free plan is small: 200 MB in total, no card, useful to try and evaluate Puter, not for a backup library; a paid Puter plan adds storage',
         ],
         features: {
             shareLink: false,
@@ -1630,7 +1643,7 @@ export const PROVIDERS: ProviderConfig[] = [
         stable: true,
         contactVerified: true,
         fields: [
-            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com', pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessageKey: 'connection.fieldExpectsEmail' },
             {
                 ...COMMON_FIELDS.password,
                 label: 'App Password',
@@ -1718,7 +1731,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#0099CC',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com', pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessageKey: 'connection.fieldExpectsEmail' },
             { ...COMMON_FIELDS.password, label: 'Password', helpText: 'Your regular OpenDrive login password' },
         ],
         features: { shareLink: false, sync: true },
@@ -1822,6 +1835,8 @@ export const PROVIDERS: ProviderConfig[] = [
                 ...COMMON_FIELDS.username,
                 label: 'User ID (Email)',
                 placeholder: 'email@example.com',
+                pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$',
+                patternMessageKey: 'connection.fieldExpectsEmail',
             },
             {
                 ...COMMON_FIELDS.password,
@@ -2117,6 +2132,8 @@ export const PROVIDERS: ProviderConfig[] = [
                 type: 'email',
                 required: true,
                 placeholder: 'your@blomp.com',
+                pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$',
+                patternMessageKey: 'connection.fieldExpectsEmail',
                 group: 'credentials',
             },
             {
@@ -2154,6 +2171,8 @@ export const PROVIDERS: ProviderConfig[] = [
                 type: 'email',
                 required: true,
                 placeholder: 'email@example.com',
+                pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$',
+                patternMessageKey: 'connection.fieldExpectsEmail',
                 group: 'credentials',
             },
             {

@@ -398,7 +398,14 @@
                 "refused": "Režim nebol prepnutý",
                 "copyKeptTitle": "Počiatočný priečinok zachovaný",
                 "copyKept": "Počiatočný priečinok {path} nemá v režime {mode} žiadny ekvivalent a zostal bez zmeny."
-            }
+            },
+            "fieldPatternInvalid": "Táto hodnota nevyzerá pre toto pole správne",
+            "puterUsernameIsEmail": "Toto je e-mailová adresa: Puter potrebuje vaše používateľské meno v Puteri (Settings > Account > Username)",
+            "resetEndpointToDefault": "Obnoviť predvolené",
+            "fieldExpectsEmail": "Toto pole očakáva e-mailovú adresu vášho účtu",
+            "fieldNotEmail": "Sem zadajte používateľské meno, nie e-mail",
+            "fieldAwsAccessKeyId": "AWS access key ID začína AKIA alebo ASIA a má 20 znakov",
+            "fieldR2AccountId": "ID účtu Cloudflare má 32 hexadecimálnych znakov"
         },
         "browser": {
             "remote": "Vzdialený",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Vypnuté: dátové spojenia smerujú na hostiteľa, ku ktorému ste sa pripojili, rovnako ako pri curl. Zapnite len pre server, ktorý posiela dáta z inej adresy.",
             "discoverFastly": "Fastly Object Storage: úložisko kompatibilné s S3 v 12 regiónoch (5 GB zdarma, vyžaduje sa karta)",
             "discoverNeon": "Neon Object Storage: úložisko kompatibilné s S3 pre každú vetvu projektu (5 GB zadarmo na projekt)",
-            "discoverPuter": "Cloudové úložisko Puter cez WebDAV (25 MB zadarmo, bez karty)",
+            "discoverPuter": "Cloudové úložisko Puter cez WebDAV (200 MB zadarmo, bez karty)",
             "discoverLifetimeCloud": "Úložisko LifetimeCloud cez WebDAV (1 GB zadarmo, bez karty)",
             "discoverCoritan": "Coritan Object Storage: úložisko kompatibilné s S3 v 6 regiónoch (10 GB zdarma, bez karty)"
         },

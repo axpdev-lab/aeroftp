@@ -398,7 +398,14 @@
                 "refused": "모드가 전환되지 않았습니다",
                 "copyKeptTitle": "시작 폴더 유지됨",
                 "copyKept": "시작 폴더 {path}에 해당하는 항목이 {mode} 모드에 없어 그대로 유지되었습니다."
-            }
+            },
+            "fieldPatternInvalid": "이 값은 이 필드에 올바르지 않은 것 같습니다",
+            "puterUsernameIsEmail": "이것은 이메일 주소입니다: Puter에는 Puter 사용자 이름이 필요합니다 (Settings > Account > Username)",
+            "resetEndpointToDefault": "기본값으로 재설정",
+            "fieldExpectsEmail": "이 필드에는 계정의 이메일 주소를 입력하세요",
+            "fieldNotEmail": "여기에 이메일이 아닌 사용자 이름을 입력하세요",
+            "fieldAwsAccessKeyId": "AWS access key ID는 AKIA 또는 ASIA로 시작하며 20자입니다",
+            "fieldR2AccountId": "Cloudflare 계정 ID는 32자리 16진수입니다"
         },
         "browser": {
             "remote": "원격",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "끔: 데이터 연결은 curl처럼 연결한 호스트로 향합니다. 다른 주소에서 데이터를 보내는 서버에만 켜세요.",
             "discoverFastly": "Fastly Object Storage: 12개 리전의 S3 호환 스토리지 (5 GB 무료, 카드 필요)",
             "discoverNeon": "Neon Object Storage: 프로젝트 브랜치별 S3 호환 스토리지 (프로젝트당 5 GB 무료)",
-            "discoverPuter": "WebDAV를 통한 Puter 클라우드 스토리지 (25 MB 무료, 카드 불필요)",
+            "discoverPuter": "WebDAV를 통한 Puter 클라우드 스토리지 (200 MB 무료, 카드 불필요)",
             "discoverLifetimeCloud": "WebDAV를 통한 LifetimeCloud 스토리지 (1 GB 무료, 카드 불필요)",
             "discoverCoritan": "Coritan Object Storage: 6개 리전의 S3 호환 스토리지 (10 GB 무료, 카드 불필요)"
         },

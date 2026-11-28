@@ -398,7 +398,14 @@
                 "refused": "Non se cambiou o modo",
                 "copyKeptTitle": "Cartafol inicial conservado",
                 "copyKept": "O cartafol inicial {path} non ten equivalente no modo {mode} e conservouse tal como estaba."
-            }
+            },
+            "fieldPatternInvalid": "Este valor non parece correcto para este campo",
+            "puterUsernameIsEmail": "Isto é un enderezo de correo electrónico: Puter necesita o teu nome de usuario de Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Restablecer o valor predeterminado",
+            "fieldExpectsEmail": "Este campo espera o correo electrónico da túa conta",
+            "fieldNotEmail": "Usa aquí o teu nome de usuario, non o correo",
+            "fieldAwsAccessKeyId": "Un access key ID de AWS empeza por AKIA ou ASIA e ten 20 caracteres",
+            "fieldR2AccountId": "O ID de conta de Cloudflare ten 32 caracteres hexadecimais"
         },
         "browser": {
             "remote": "Remoto",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Desactivado: as conexións de datos van ao host ao que te conectaches, como fai curl. Actívao só para un servidor que envía os datos desde outro enderezo.",
             "discoverFastly": "Fastly Object Storage: almacenamento compatible con S3 en 12 rexións (5 GB gratis, require tarxeta)",
             "discoverNeon": "Neon Object Storage: almacenamento compatible con S3 por rama de proxecto (5 GB gratuítos por proxecto)",
-            "discoverPuter": "Almacenamento na nube Puter a través de WebDAV (25 MB gratuítos, sen tarxeta)",
+            "discoverPuter": "Almacenamento na nube Puter a través de WebDAV (200 MB gratuítos, sen tarxeta)",
             "discoverLifetimeCloud": "Almacenamento LifetimeCloud mediante WebDAV (1 GB gratuíto, sen tarxeta)",
             "discoverCoritan": "Coritan Object Storage: almacenamento compatible con S3 en 6 rexións (10 GB gratis, sen tarxeta)"
         },

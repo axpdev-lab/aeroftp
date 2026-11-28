@@ -398,7 +398,14 @@
                 "refused": "Режим не был сменён",
                 "copyKeptTitle": "Начальная папка сохранена",
                 "copyKept": "Начальная папка {path} не имеет соответствия в режиме {mode} и сохранена без изменений."
-            }
+            },
+            "fieldPatternInvalid": "Это значение выглядит неправильно для этого поля",
+            "puterUsernameIsEmail": "Это адрес электронной почты: Puter требуется ваше имя пользователя Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Сбросить по умолчанию",
+            "fieldExpectsEmail": "Это поле ожидает адрес электронной почты вашего аккаунта",
+            "fieldNotEmail": "Введите здесь имя пользователя, а не адрес почты",
+            "fieldAwsAccessKeyId": "AWS access key ID начинается с AKIA или ASIA и содержит 20 символов",
+            "fieldR2AccountId": "ID аккаунта Cloudflare состоит из 32 шестнадцатеричных символов"
         },
         "browser": {
             "remote": "Удалённый",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Выключено: соединения для данных идут на хост, к которому вы подключились, как в curl. Включайте только для сервера, который отправляет данные с другого адреса.",
             "discoverFastly": "Fastly Object Storage: S3-совместимое хранилище в 12 регионах (5 GB бесплатно, требуется карта)",
             "discoverNeon": "Neon Object Storage: хранилище, совместимое с S3, для каждой ветки проекта (5 GB бесплатно на проект)",
-            "discoverPuter": "Облачное хранилище Puter через WebDAV (25 МБ бесплатно, без карты)",
+            "discoverPuter": "Облачное хранилище Puter через WebDAV (200 МБ бесплатно, без карты)",
             "discoverLifetimeCloud": "Хранилище LifetimeCloud через WebDAV (1 GB бесплатно, без карты)",
             "discoverCoritan": "Coritan Object Storage: S3-совместимое хранилище в 6 регионах (10 GB бесплатно, карта не требуется)"
         },

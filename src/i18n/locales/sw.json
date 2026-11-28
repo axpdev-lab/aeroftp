@@ -398,7 +398,14 @@
                 "refused": "Hali haikubadilishwa",
                 "copyKeptTitle": "Folda ya mwanzo imehifadhiwa",
                 "copyKept": "Folda ya mwanzo {path} haina kilinganishi katika hali ya {mode} na imehifadhiwa kama ilivyo."
-            }
+            },
+            "fieldPatternInvalid": "Thamani hii haionekani sawa kwa uwanja huu",
+            "puterUsernameIsEmail": "Hii ni anwani ya barua pepe: Puter inahitaji jina lako la mtumiaji wa Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Rudisha kwa chaguo-msingi",
+            "fieldExpectsEmail": "Sehemu hii inatarajia barua pepe ya akaunti yako",
+            "fieldNotEmail": "Tumia jina la mtumiaji hapa, si barua pepe",
+            "fieldAwsAccessKeyId": "AWS access key ID huanza na AKIA au ASIA na ina herufi 20",
+            "fieldR2AccountId": "Kitambulisho cha akaunti ya Cloudflare kina herufi 32 za hexadesimal"
         },
         "browser": {
             "remote": "Mbali",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Zima: miunganisho ya data huenda kwa mwenyeji uliyeunganishwa naye, kama curl inavyofanya. Washa tu kwa seva inayotuma data kutoka anwani nyingine.",
             "discoverFastly": "Fastly Object Storage: hifadhi inayooana na S3 katika maeneo 12 (5 GB bila malipo, kadi inahitajika)",
             "discoverNeon": "Neon Object Storage: hifadhi inayooana na S3 kwa kila tawi la mradi (5 GB bure kwa mradi)",
-            "discoverPuter": "Hifadhi ya wingu ya Puter kupitia WebDAV (MB 25 bila malipo, bila kadi)",
+            "discoverPuter": "Hifadhi ya wingu ya Puter kupitia WebDAV (MB 200 bila malipo, bila kadi)",
             "discoverLifetimeCloud": "Hifadhi ya LifetimeCloud kupitia WebDAV (1 GB bure, bila kadi)",
             "discoverCoritan": "Coritan Object Storage: hifadhi inayooana na S3 katika maeneo 6 (10 GB bila malipo, kadi haihitajiki)"
         },

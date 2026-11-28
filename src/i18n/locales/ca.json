@@ -398,7 +398,14 @@
                 "refused": "No s'ha canviat el mode",
                 "copyKeptTitle": "S'ha mantingut la carpeta inicial",
                 "copyKept": "La carpeta inicial {path} no té cap equivalent en el mode {mode} i s'ha mantingut tal com era."
-            }
+            },
+            "fieldPatternInvalid": "Aquest valor no sembla correcte per a aquest camp",
+            "puterUsernameIsEmail": "Això és una adreça de correu electrònic: Puter necessita el teu nom d'usuari de Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Restableix el valor predeterminat",
+            "fieldExpectsEmail": "Aquest camp espera l'adreça de correu del teu compte",
+            "fieldNotEmail": "Usa aquí el teu nom d'usuari, no el correu",
+            "fieldAwsAccessKeyId": "Un access key ID d'AWS comença per AKIA o ASIA i té 20 caràcters",
+            "fieldR2AccountId": "L'ID de compte de Cloudflare té 32 caràcters hexadecimals"
         },
         "browser": {
             "remote": "Remot",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Desactivat: les connexions de dades van al host al qual t'has connectat, com fa curl. Activa'l només per a un servidor que envia les dades des d'una altra adreça.",
             "discoverFastly": "Fastly Object Storage: emmagatzematge compatible amb S3 en 12 regions (5 GB gratis, cal targeta)",
             "discoverNeon": "Neon Object Storage: emmagatzematge compatible amb S3 per branca de projecte (5 GB gratuïts per projecte)",
-            "discoverPuter": "Emmagatzematge al núvol Puter via WebDAV (25 MB gratis, sense targeta)",
+            "discoverPuter": "Emmagatzematge al núvol Puter via WebDAV (200 MB gratis, sense targeta)",
             "discoverLifetimeCloud": "Emmagatzematge LifetimeCloud mitjançant WebDAV (1 GB gratuït, sense targeta)",
             "discoverCoritan": "Coritan Object Storage: emmagatzematge compatible amb S3 en 6 regions (10 GB gratis, sense targeta)"
         },

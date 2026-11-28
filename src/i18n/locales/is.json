@@ -398,7 +398,14 @@
                 "refused": "Ekki var skipt um ham",
                 "copyKeptTitle": "Upphafsmöppu haldið",
                 "copyKept": "Upphafsmappan {path} á sér enga samsvörun í {mode}-ham og var haldið óbreyttri."
-            }
+            },
+            "fieldPatternInvalid": "Þetta gildi lítur ekki rétt út fyrir þetta reit",
+            "puterUsernameIsEmail": "Þetta er netfang: Puter þarf Puter notandanafnið þitt (Settings > Account > Username)",
+            "resetEndpointToDefault": "Endurstilla í Sjálfgefið",
+            "fieldExpectsEmail": "Þessi reitur væntir netfangsins á reikningnum þínum",
+            "fieldNotEmail": "Notaðu notandanafnið þitt hér, ekki netfang",
+            "fieldAwsAccessKeyId": "AWS access key ID byrjar á AKIA eða ASIA og er 20 stafir",
+            "fieldR2AccountId": "Cloudflare reikningsauðkennið er 32 sextándastafir"
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Slökkt: gagnatengingar fara á gestgjafann sem þú tengdist, eins og curl gerir. Kveiktu aðeins fyrir þjón sem sendir gögn frá öðru vistfangi.",
             "discoverFastly": "Fastly Object Storage: S3-samhæfð geymsla á 12 svæðum (5 GB ókeypis, greiðslukort nauðsynlegt)",
             "discoverNeon": "Neon Object Storage: S3-samhæft geymslupláss fyrir hverja verkgrein (5 GB ókeypis á verk)",
-            "discoverPuter": "Puter skýgeymsla í gegnum WebDAV (25 MB ókeypis, engin kort)",
+            "discoverPuter": "Puter skýgeymsla í gegnum WebDAV (200 MB ókeypis, engin kort)",
             "discoverLifetimeCloud": "LifetimeCloud geymsla í gegnum WebDAV (1 GB ókeypis, ekkert kort)",
             "discoverCoritan": "Coritan Object Storage: S3-samhæfð geymsla á 6 svæðum (10 GB ókeypis, ekkert greiðslukort nauðsynlegt)"
         },

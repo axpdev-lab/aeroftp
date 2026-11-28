@@ -398,7 +398,14 @@
                 "refused": "Ni newidiwyd y modd",
                 "copyKeptTitle": "Cadwyd y ffolder cychwynnol",
                 "copyKept": "Nid oes gan y ffolder cychwynnol {path} gyfwerth yn y modd {mode}, a chafodd ei gadw fel y mae."
-            }
+            },
+            "fieldPatternInvalid": "Nid yw'r gwerth hwn yn edrych yn iawn ar gyfer y maes hwn",
+            "puterUsernameIsEmail": "Dyma gyfeiriad e-bost: Mae Puter angen dy enw defnyddiwr Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Ailosod i'r rhagosodiad",
+            "fieldExpectsEmail": "Mae'r maes hwn yn disgwyl cyfeiriad e-bost eich cyfrif",
+            "fieldNotEmail": "Defnyddiwch eich enw defnyddiwr yma, nid cyfeiriad e-bost",
+            "fieldAwsAccessKeyId": "Mae AWS access key ID yn dechrau gyda AKIA neu ASIA ac mae ganddo 20 nod",
+            "fieldR2AccountId": "Mae ID cyfrif Cloudflare yn 32 nod hecsadegol"
         },
         "browser": {
             "remote": "Pell",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "I ffwrdd: mae cysylltiadau data yn mynd i'r gwesteiwr y gwnaethoch gysylltu ag ef, fel y mae curl yn ei wneud. Trowch ymlaen ar gyfer gweinydd sy'n anfon data o gyfeiriad arall yn unig.",
             "discoverFastly": "Fastly Object Storage: storfa sy'n gydnaws ag S3 mewn 12 rhanbarth (5 GB am ddim, mae angen cerdyn)",
             "discoverNeon": "Neon Object Storage: storio'n gytûn â S3 ar gyfer pob cangen prosiect (5 GB am ddim fesul prosiect)",
-            "discoverPuter": "Storio cymywl Puter ar gyfer WebDAV (25 MB am ddim, dim cerdyn)",
+            "discoverPuter": "Storio cymywl Puter ar gyfer WebDAV (200 MB am ddim, dim cerdyn)",
             "discoverLifetimeCloud": "Storio LifetimeCloud drwy WebDAV (1 GB am ddim, dim cerdyn)",
             "discoverCoritan": "Coritan Object Storage: storfa sy'n gydnaws ag S3 mewn 6 rhanbarth (10 GB am ddim, dim angen cerdyn)"
         },

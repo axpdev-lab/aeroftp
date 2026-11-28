@@ -398,7 +398,14 @@
                 "refused": "Modul nu a fost comutat",
                 "copyKeptTitle": "Folderul inițial a fost păstrat",
                 "copyKept": "Folderul inițial {path} nu are echivalent în modul {mode} și a fost păstrat ca atare."
-            }
+            },
+            "fieldPatternInvalid": "Această valoare nu pare corectă pentru acest câmp",
+            "puterUsernameIsEmail": "Aceasta este o adresă de e-mail: Puter are nevoie de numele tău de utilizator Puter (Settings > Account > Username)",
+            "resetEndpointToDefault": "Resetează la valorile implicite",
+            "fieldExpectsEmail": "Acest câmp așteaptă adresa de e-mail a contului tău",
+            "fieldNotEmail": "Folosește aici numele de utilizator, nu e-mailul",
+            "fieldAwsAccessKeyId": "Un access key ID AWS începe cu AKIA sau ASIA și are 20 de caractere",
+            "fieldR2AccountId": "ID-ul contului Cloudflare are 32 de caractere hexazecimale"
         },
         "browser": {
             "remote": "La distanță",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Dezactivat: conexiunile de date merg la gazda la care te-ai conectat, ca la curl. Activează doar pentru un server care trimite datele de la altă adresă.",
             "discoverFastly": "Fastly Object Storage: stocare compatibilă S3 în 12 regiuni (5 GB gratuit, card necesar)",
             "discoverNeon": "Neon Object Storage: stocare compatibilă cu S3 pentru fiecare ramură de proiect (5 GB gratuite pe proiect)",
-            "discoverPuter": "Stocare cloud Puter prin WebDAV (25 MB gratuit, fără card)",
+            "discoverPuter": "Stocare cloud Puter prin WebDAV (200 MB gratuit, fără card)",
             "discoverLifetimeCloud": "Stocare LifetimeCloud prin WebDAV (1 GB gratuit, fără card)",
             "discoverCoritan": "Coritan Object Storage: stocare compatibilă S3 în 6 regiuni (10 GB gratuit, fără card)"
         },

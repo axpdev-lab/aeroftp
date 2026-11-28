@@ -398,7 +398,14 @@
                 "refused": "Режимот не беше променет",
                 "copyKeptTitle": "Почетната папка е задржана",
                 "copyKept": "Почетната папка {path} нема еквивалент во режимот {mode} и е задржана како што е."
-            }
+            },
+            "fieldPatternInvalid": "Оваа вредност не изгледа правилно за ова поле",
+            "puterUsernameIsEmail": "Ова е е-поштенска адреса: Puter му треба вашето Puter корисничко име (Settings > Account > Username)",
+            "resetEndpointToDefault": "Врати на стандардно",
+            "fieldExpectsEmail": "Ова поле очекува е-пошта на вашата сметка",
+            "fieldNotEmail": "Тука ставете корисничко име, не е-пошта",
+            "fieldAwsAccessKeyId": "AWS access key ID почнува со AKIA или ASIA и има 20 знаци",
+            "fieldR2AccountId": "Cloudflare ID на сметка има 32 хексадецимални знаци"
         },
         "browser": {
             "remote": "Далечински",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Исклучено: врските за податоци одат до хостот со кој се поврзавте, како што прави curl. Вклучете само за сервер што испраќа податоци од друга адреса.",
             "discoverFastly": "Fastly Object Storage: складиште компатибилно со S3 во 12 региони (5 GB бесплатно, потребна е картичка)",
             "discoverNeon": "Neon Object Storage: складиште компатибилно со S3 по гранка на проект (5 GB бесплатно по проект)",
-            "discoverPuter": "Puter облачно складиште преку WebDAV (25 MB бесплатно, без картичка)",
+            "discoverPuter": "Puter облачно складиште преку WebDAV (200 MB бесплатно, без картичка)",
             "discoverLifetimeCloud": "Складирање LifetimeCloud преку WebDAV (1 GB бесплатно, без картичка)",
             "discoverCoritan": "Coritan Object Storage: складиште компатибилно со S3 во 6 региони (10 GB бесплатно, не е потребна картичка)"
         },

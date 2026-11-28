@@ -257,6 +257,7 @@
             "disconnected": "Disconnesso",
             "connectionFailed": "Connessione fallita",
             "reconnecting": "Riconnessione in corso...",
+            "puterUsernameIsEmail": "Questo è un indirizzo email: Puter vuole il tuo username Puter (Settings > Account > Username)",
             "quickConnect": "Connessione Rapida",
             "saveServer": "Salva Server",
             "serverName": "Nome Server",
@@ -294,6 +295,7 @@
             "oauth2Connection": "Connessione OAuth2",
             "twoFactorCode": "TOTP a 6 cifre (opzionale, non salvato)",
             "twoFactorOptional": "Codice a 6 cifre (opzionale)",
+            "fieldPatternInvalid": "Questo valore non sembra corretto per questo campo",
             "filenPasswordPlaceholder": "Password account Filen",
             "filenEncryptionTitle": "Crittografia Zero-Knowledge",
             "filenEncryptionDesc": "Tutti i file vengono crittografati lato client con AES-256-GCM prima del caricamento. Filen non può accedere ai tuoi dati. La tua password non lascia mai questo dispositivo.",
@@ -548,7 +550,12 @@
                 "refused": "La modalità non è stata cambiata",
                 "copyKeptTitle": "Cartella iniziale mantenuta",
                 "copyKept": "La cartella iniziale {path} non ha un equivalente in modalità {mode} ed è stata mantenuta così com'è."
-            }
+            },
+            "resetEndpointToDefault": "Ripristina predefinito",
+            "fieldExpectsEmail": "Questo campo richiede l'indirizzo email del tuo account",
+            "fieldNotEmail": "Usa qui il tuo nome utente, non l'indirizzo email",
+            "fieldAwsAccessKeyId": "Un access key ID AWS inizia con AKIA o ASIA e ha 20 caratteri",
+            "fieldR2AccountId": "L'ID account Cloudflare ha 32 caratteri esadecimali"
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -855,7 +862,7 @@
             "discoverTigris": "Tigris: archiviazione distribuita globalmente compatibile con S3, senza costi di egress (5 GB gratis)",
             "discoverFastly": "Fastly Object Storage: archiviazione compatibile con S3 in 12 regioni (5 GB gratis, carta richiesta)",
             "discoverNeon": "Neon Object Storage: archiviazione compatibile con S3 per branch di progetto (5 GB gratis per progetto)",
-            "discoverPuter": "Archiviazione cloud Puter via WebDAV (25 MB gratis, senza carta)",
+            "discoverPuter": "Archiviazione cloud Puter via WebDAV (200 MB gratis, senza carta)",
             "discoverLifetimeCloud": "Archiviazione LifetimeCloud tramite WebDAV (1 GB gratis, senza carta)",
             "discoverCoritan": "Coritan Object Storage: archiviazione compatibile con S3 in 6 regioni (10 GB gratis, senza carta)"
         },

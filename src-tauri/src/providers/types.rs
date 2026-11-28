@@ -494,6 +494,46 @@ pub(crate) fn webdav_host_has_own_path(host: &str) -> bool {
         .is_some_and(|idx| !before_query[idx..].trim().trim_matches('/').is_empty())
 }
 
+/// Puter's preset id, and the literal user Puter's WebDAV expects for token auth.
+const PUTER_PROVIDER_ID: &str = "puter-webdav";
+const PUTER_TOKEN_USER: &str = "-token";
+
+/// The user sent to Puter. The form holds the Puter account (it names the
+/// WebDAV root, `https://dav.puter.com/{username}`), and Puter signs in with an
+/// API token only, sent as the password with the literal user `-token`. A
+/// saved profile that already says `-token` (the old form, with the account in
+/// its endpoint) is kept as it is.
+fn puter_wire_user(account: &str) -> Result<String, ProviderError> {
+    let account = account.trim();
+    if account == PUTER_TOKEN_USER {
+        return Ok(PUTER_TOKEN_USER.to_string());
+    }
+    if account.contains('@') {
+        return Err(ProviderError::InvalidConfig(
+            "Puter needs your Puter username (Settings > Account > Username), not your email address"
+                .to_string(),
+        ));
+    }
+    Ok(PUTER_TOKEN_USER.to_string())
+}
+
+/// Export-side view of the same Puter guard: a `puter-webdav` profile whose
+/// username is an email is refused at connect time, so an exporter must skip
+/// it with the identical reason instead of writing a profile no tool can use.
+/// One implementation: this only calls [`puter_wire_user`].
+pub(crate) fn puter_export_username_guard(
+    provider_id: Option<&str>,
+    username: &str,
+) -> Result<(), String> {
+    if provider_id == Some(PUTER_PROVIDER_ID) {
+        puter_wire_user(username)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        Ok(())
+    }
+}
+
 impl WebDavConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         // Build WebDAV URL from host. Three knobs decide the scheme, in order:
@@ -603,6 +643,15 @@ impl WebDavConfig {
             .or_else(|| config.extra.get(super::mega_df::PROVIDER_ID_META_KEY))
             .map(|p| p.trim().to_string())
             .filter(|p| !p.is_empty());
+
+        // Puter signs in with an API token only: the URL keeps the account
+        // (it names the WebDAV root), and only the user on the wire becomes
+        // the literal `-token`.
+        let username = if provider_id.as_deref() == Some(PUTER_PROVIDER_ID) {
+            puter_wire_user(&username)?
+        } else {
+            username
+        };
 
         let verify_cert = config
             .extra
@@ -1052,6 +1101,83 @@ mod webdav_config_tests {
             bad_cfg.initial_path = Some("/remote.php/dav/files/{username}".to_string());
             assert!(WebDavConfig::from_provider_config(&bad_cfg).is_err());
         }
+    }
+
+    fn puter_cfg(host: &str, user: &str, provider_key: &str) -> ProviderConfig {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("tls_mode".to_string(), "https".to_string());
+        extra.insert(provider_key.to_string(), "puter-webdav".to_string());
+        ProviderConfig {
+            name: "puter".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: host.to_string(),
+            port: Some(443),
+            username: Some(user.to_string()),
+            password: Some("api-token".to_string()),
+            initial_path: None,
+            extra,
+        }
+    }
+
+    #[test]
+    fn puter_account_names_the_root_and_the_wire_user_is_token() {
+        let cfg = puter_cfg("https://dav.puter.com/{username}", "AeroFTP", "provider_id");
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://dav.puter.com/AeroFTP");
+        assert_eq!(resolved.username, "-token");
+    }
+
+    #[test]
+    fn puter_legacy_token_profile_with_account_endpoint_is_unchanged() {
+        let cfg = puter_cfg("https://dav.puter.com/AeroFTP", "-token", "provider_id");
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://dav.puter.com/AeroFTP");
+        assert_eq!(resolved.username, "-token");
+    }
+
+    #[test]
+    fn puter_email_is_refused_with_a_clear_message() {
+        let cfg = puter_cfg(
+            "https://dav.puter.com/{username}",
+            "aeroftp@example.com",
+            "provider_id",
+        );
+        match WebDavConfig::from_provider_config(&cfg) {
+            Err(ProviderError::InvalidConfig(msg)) => {
+                assert!(
+                    msg.contains("not your email address"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected InvalidConfig, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn other_webdav_presets_keep_their_username() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("tls_mode".to_string(), "https".to_string());
+        extra.insert("provider_id".to_string(), "lifetimecloud".to_string());
+        let cfg = ProviderConfig {
+            name: "ltc".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "lifetimecloud.me".to_string(),
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.username, "alice");
+    }
+
+    #[test]
+    fn puter_camel_case_provider_id_extra_key_also_applies() {
+        let cfg = puter_cfg("https://dav.puter.com/{username}", "AeroFTP", "providerId");
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://dav.puter.com/AeroFTP");
+        assert_eq!(resolved.username, "-token");
     }
 
     #[test]

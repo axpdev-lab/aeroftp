@@ -32,7 +32,9 @@ import { scpFallbackAllowed, withScpFallback } from '../utils/scpFallback';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams, endpointNeedsCleartextConsent, presetNeedsUserEndpoint } from '../providers';
 import { resolvePresetText } from '../providers/presetText';
+import { fieldPatternIssue } from '../providers/fieldValidation';
 import { CopyLinkButton } from './common/CopyLinkButton';
+import { ResetEndpointLink } from './common/ResetEndpointLink';
 import { Bucket } from './connectionMethodIcons';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
 import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, ProtonDriveLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, TwakeLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
@@ -899,6 +901,9 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const regionField = providerConfig?.fields?.find(f => f.key === 'region');
         const endpointField = providerConfig?.fields?.find(f => f.key === 'endpoint');
         const accountIdField = providerConfig?.fields?.find(f => f.key === 'accountId');
+        // Live shape warning for fields with a pattern (e.g. the R2 account ID),
+        // the same helper and look ConnectionScreen uses for username/password.
+        const accountIdPatternIssue = fieldPatternIssue(accountIdField, options.accountId ? String(options.accountId) : undefined);
         const jurisdictionField = providerConfig?.fields?.find(f => f.key === 'jurisdiction');
         const hasRegionSelect = regionField?.type === 'select' && regionField?.options;
         // A preset's own text names a control of this form by reference.
@@ -1204,9 +1209,10 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     value={options.accountId || ''}
                                     onChange={(e) => handleAccountIdChange(e.target.value)}
                                     disabled={disabled}
-                                    className={`px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 ${endpointFixedPart ? 'rounded-l-lg border-r-0 flex-1 min-w-0' : 'rounded-lg w-full'}`}
+                                    className={`px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border ${accountIdPatternIssue ? 'border-amber-500' : 'border-gray-300 dark:border-gray-600'} ${endpointFixedPart ? 'rounded-l-lg border-r-0 flex-1 min-w-0' : 'rounded-lg w-full'}`}
                                     placeholder={(accountIdField.placeholder && presetText(accountIdField.placeholder)) || t('protocol.accountId')}
                                     required={accountIdField.required}
+                                    aria-invalid={!!accountIdPatternIssue}
                                 />
                                 {endpointFixedPart && (
                                     jurisdictionField?.options?.length ? (
@@ -1236,7 +1242,9 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 )}
                             </div>
                         )}
-                        {!isEditing && accountIdField.helpText && !presetUnlocked['endpointSuffix'] && (
+                        {accountIdPatternIssue ? (
+                            <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400" role="alert">{t(accountIdPatternIssue)}</p>
+                        ) : !isEditing && accountIdField.helpText && !presetUnlocked['endpointSuffix'] && (
                             <p className="text-xs text-gray-500 mt-1">{presetText(accountIdField.helpText)}</p>
                         )}
                         {!isEditing && jurisdictionField?.helpText && !presetUnlocked['endpointSuffix'] && (
@@ -1403,6 +1411,12 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         <p className="text-xs text-gray-500 mt-1">{presetText(endpointField.helpText)}</p>
                                     )}
                                 </div>
+                                <ResetEndpointLink
+                                    provider={providerConfig}
+                                    params={{ options }}
+                                    fallbackPort={443}
+                                    onReset={(def) => onChange({ ...options, endpoint: def.server })}
+                                />
                                 <Checkbox
                                     checked={options.pathStyle ?? providerConfig?.defaults?.pathStyle ?? false}
                                     onChange={(v) => onChange({ ...options, pathStyle: v })}

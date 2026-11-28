@@ -398,7 +398,14 @@
                 "refused": "Mod değiştirilmedi",
                 "copyKeptTitle": "Başlangıç klasörü korundu",
                 "copyKept": "{path} başlangıç klasörünün {mode} modunda bir karşılığı yok ve olduğu gibi korundu."
-            }
+            },
+            "fieldPatternInvalid": "Bu değer bu alan için doğru görünmüyor",
+            "puterUsernameIsEmail": "Bu bir e-posta adresi: Puter, Puter kullanıcı adınızı ister (Settings > Account > Username)",
+            "resetEndpointToDefault": "Varsayılana sıfırla",
+            "fieldExpectsEmail": "Bu alan hesabınızın e-posta adresini bekler",
+            "fieldNotEmail": "Buraya e-posta değil, kullanıcı adınızı yazın",
+            "fieldAwsAccessKeyId": "Bir AWS access key ID AKIA veya ASIA ile başlar ve 20 karakterdir",
+            "fieldR2AccountId": "Cloudflare hesap kimliği 32 onaltılık karakterdir"
         },
         "browser": {
             "remote": "Uzak",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "Kapalı: veri bağlantıları, curl gibi bağlandığınız ana makineye gider. Yalnızca verileri başka bir adresten gönderen sunucu için açın.",
             "discoverFastly": "Fastly Object Storage: 12 bölgede S3 uyumlu depolama (5 GB ücretsiz, kart gerekli)",
             "discoverNeon": "Neon Object Storage: proje dalı başına S3 uyumlu depolama (proje başına 5 GB ücretsiz)",
-            "discoverPuter": "WebDAV üzerinden Puter bulut depolama (25 MB ücretsiz, kart yok)",
+            "discoverPuter": "WebDAV üzerinden Puter bulut depolama (200 MB ücretsiz, kart yok)",
             "discoverLifetimeCloud": "WebDAV üzerinden LifetimeCloud depolama (1 GB ücretsiz, kart gerekmez)",
             "discoverCoritan": "Coritan Object Storage: 6 bölgede S3 uyumlu depolama (10 GB ücretsiz, kart gerekmez)"
         },

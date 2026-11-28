@@ -790,8 +790,8 @@
     "company": "Puter",
     "logoId": "puter",
     "country": "US",
-    "freeGb": 0.025,
-    "freeNote": "limited: 25 MB in total",
+    "freeGb": 0.2,
+    "freeNote": "limited: 200 MB in total",
     "freeRequiresCard": false,
     "regions": [
       "US"

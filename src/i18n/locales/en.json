@@ -1765,6 +1765,7 @@
             "azureAccessKey": "Access Key",
             "azureAccountName": "Account Name",
             "azureEndpoint": "Endpoint (optional)",
+            "resetEndpointToDefault": "Reset to default",
             "connectTo": "Connect to {provider}",
             "activeSessions": "Active Sessions",
             "aerocloudConfigured": "AeroCloud is already configured and syncing",
@@ -1797,6 +1798,11 @@
             "b2NativeAdvBucketUsage": "Bucket-level storage usage shown in the status bar",
             "b2NativeAdvShareLinks": "Share links with custom expiration (up to 7 days)",
             "b2NativeAdvVersions": "Full file version history per object",
+            "fieldPatternInvalid": "This value does not look right for this field",
+            "fieldExpectsEmail": "This field expects the email address of your account",
+            "fieldNotEmail": "Use your username here, not your email address",
+            "fieldAwsAccessKeyId": "An AWS access key ID starts with AKIA or ASIA and has 20 characters",
+            "fieldR2AccountId": "The Cloudflare account ID is 32 hexadecimal characters",
             "filenEncryptionDesc": "All files are encrypted client-side with AES-256-GCM before upload. Filen cannot access your data. Your password never leaves this device.",
             "filenEncryptionTitle": "Zero-Knowledge Encryption",
             "filenPasswordPlaceholder": "Filen account password",
@@ -1954,6 +1960,7 @@
             "passwordPlaceholder": "••••••••",
             "port": "Port",
             "protocol": "Protocol",
+            "puterUsernameIsEmail": "This is an email address: Puter needs your Puter username (Settings > Account > Username)",
             "quickConnect": "Quick Connect",
             "reconnecting": "Reconnecting...",
             "rememberPassword": "Remember password",
@@ -3778,7 +3785,7 @@
             "cloudinaryDesc": "Media CDN (25 credits/month free)",
             "backblazeDesc": "Backblaze B2 native API v4",
             "discoverNeon": "Neon Object Storage: S3-compatible storage per project branch (5 GB free per project)",
-            "discoverPuter": "Puter cloud storage via WebDAV (25 MB free, no card)"
+            "discoverPuter": "Puter cloud storage via WebDAV (200 MB free, no card)"
         },
         "quickLook": {
             "noPreview": "No preview available",

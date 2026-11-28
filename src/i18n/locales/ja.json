@@ -398,7 +398,14 @@
                 "refused": "モードは切り替えられませんでした",
                 "copyKeptTitle": "初期フォルダーを維持しました",
                 "copyKept": "初期フォルダー {path} には {mode} モードでの対応先がないため、そのまま維持されました。"
-            }
+            },
+            "fieldPatternInvalid": "この値はこのフィールドに対して正しくないようです",
+            "puterUsernameIsEmail": "これはメールアドレスです：Puter にはあなたの Puter ユーザー名が必要です (Settings > Account > Username)",
+            "resetEndpointToDefault": "デフォルトにリセット",
+            "fieldExpectsEmail": "このフィールドにはアカウントのメールアドレスを入力してください",
+            "fieldNotEmail": "ここにはメールアドレスではなくユーザー名を入力してください",
+            "fieldAwsAccessKeyId": "AWS アクセスキー ID は AKIA または ASIA で始まり 20 文字です",
+            "fieldR2AccountId": "Cloudflare アカウント ID は 32 桁の16進数です"
         },
         "browser": {
             "remote": "リモート",
@@ -2436,7 +2443,7 @@
             "trustPasvAddressHelp": "オフ: データ接続は curl と同様に、接続したホストへ向かいます。別のアドレスからデータを送信するサーバーの場合のみオンにしてください。",
             "discoverFastly": "Fastly Object Storage: 12リージョンで利用できるS3互換ストレージ (5 GB無料、カードが必要)",
             "discoverNeon": "Neon Object Storage：プロジェクトブランチごとのS3互換ストレージ（プロジェクトごとに5 GB無料）",
-            "discoverPuter": "WebDAV経由のPuterクラウドストレージ（25 MB無料、カード不要）",
+            "discoverPuter": "WebDAV経由のPuterクラウドストレージ（200 MB無料、カード不要）",
             "discoverLifetimeCloud": "WebDAV 経由の LifetimeCloud ストレージ (1 GB 無料、カード不要)",
             "discoverCoritan": "Coritan Object Storage: 6リージョンで利用できるS3互換ストレージ (10 GB無料、カード不要)"
         },
