@@ -1202,11 +1202,18 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(_) => return Ok(EntryResult::Failed(EntryFailure::LocalIo)),
         }
-        let _ = tokio::fs::set_permissions(
-            &local,
-            std::os::unix::fs::PermissionsExt::from_mode(entry.entry.mode),
-        )
-        .await;
+        // Unix only, masked to the rwx bits: the mode comes from the peer's
+        // file list, so setuid/setgid/sticky are attacker-supplied, the same
+        // rule as the single-file writer (streaming_writer.rs).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = tokio::fs::set_permissions(
+                &local,
+                std::fs::Permissions::from_mode(entry.entry.mode & 0o0777),
+            )
+            .await;
+        }
         pending_dirs.push((entry.ndx, local, entry.entry.mtime, entry.entry.mtime_nsec));
         Ok(EntryResult::Committed)
     }
