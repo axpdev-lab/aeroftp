@@ -84,6 +84,9 @@ src-tauri/src/aerorsync/capture/artifacts_deflate/
 src-tauri/src/aerorsync/capture/artifacts_real/*
 !src-tauri/src/aerorsync/capture/artifacts_real/frozen/
 src-tauri/src/aerorsync/capture/workspace/
+# The capture scripts import each other (b1_wire_campaign imports the B0
+# campaign, the self-test imports the decoder).
+src-tauri/src/aerorsync/capture/__pycache__/
 
 # The lane-3 harness key. Generated on first run by the script and by the CI
 # lane, never committed: it only ever authorises `testuser` inside the

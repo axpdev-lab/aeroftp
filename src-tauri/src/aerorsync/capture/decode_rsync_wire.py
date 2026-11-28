@@ -203,6 +203,8 @@ class FlistState:
     mtime: int = 0
     uid: int = 0
     gid: int = 0
+    # flist.c keeps the previous device's major: XMIT_SAME_RDEV_MAJOR reuses it.
+    rdev_major: int = 0
     ndx_start: int = 0
     entries: list = field(default_factory=list)
     all_entries: dict = field(default_factory=dict)
@@ -312,6 +314,15 @@ def decode_entry(out: Out, r: Reader, o: Opts, st: FlistState, ndx: int) -> bool
         xf = r.byte()
         if xf & 4:
             xf |= r.byte() << 8
+        # Classic flags end a list that met an I/O error with
+        # XMIT_EXTENDED_FLAGS|XMIT_IO_ERROR_ENDLIST and the error as a
+        # varint (flist.c::write_end_of_flist); a bare 0 is the clean end.
+        if xf == (1 << 2) | (1 << 12):
+            field_line(out, r, s, "flags 0x1004 = EXTENDED_FLAGS|IO_ERROR_ENDLIST: END OF LIST with an io_error")
+            s = r.pos
+            io = r.varint()
+            field_line(out, r, s, f"io_error = {io}")
+            return False
     if xf == 0:
         field_line(out, r, s, "flags 0 = END OF LIST")
         if o.varint_flags:
@@ -379,8 +390,21 @@ def decode_entry(out: Out, r: Reader, o: Opts, st: FlistState, ndx: int) -> bool
                 n = r.byte()
                 lab += f", group name {r.take(n)!r}"
             field_line(out, r, s, lab)
-        if o.has("D") and (stat.S_ISCHR(mode) or stat.S_ISBLK(mode)):
-            raise Stop("device entry: rdev not modelled")
+        # -D is --devices --specials. A device carries its number; below
+        # protocol 31 a fifo or socket does too (flist.c::recv_file_entry).
+        is_device = stat.S_ISCHR(mode) or stat.S_ISBLK(mode)
+        is_special = stat.S_ISFIFO(mode) or stat.S_ISSOCK(mode)
+        if o.has("D") and (is_device or (is_special and o.protocol < 31)):
+            s = r.pos
+            if xf & (1 << 8):
+                major = st.rdev_major
+                lab = f"rdev major {major} (SAME_RDEV_MAJOR)"
+            else:
+                major = r.varint() & 0xFFFFFFFF
+                st.rdev_major = major
+                lab = f"rdev major {major}"
+            minor = r.varint() & 0xFFFFFFFF
+            field_line(out, r, s, f"{lab}, minor {minor}")
         if o.has("l") and stat.S_ISLNK(mode):
             s = r.pos
             ln = r.varint()
@@ -571,8 +595,9 @@ def try_stats_tail(out: Out, r: Reader, o: Opts, st: FlistState) -> bool:
     parses. Measured on the frozen captures, that ambiguity made the first
     version stop counting NDX_DONE early. A candidate is accepted only if it
     is physically possible: total_size equals the sum of the regular-file
-    sizes in the decoded lists, and neither byte counter exceeds what the
-    capture shows that side sent."""
+    and symlink sizes in the decoded lists (flist.c adds F_LENGTH for
+    `S_ISREG(mode) || S_ISLNK(mode)`, a symlink's length being its target's),
+    and neither byte counter exceeds what the capture shows that side sent."""
     probe = Reader(r.buf[r.pos:], r.base + r.pos)
     try:
         vals = [probe.varlong(3) for _ in range(5)]
@@ -583,7 +608,7 @@ def try_stats_tail(out: Out, r: Reader, o: Opts, st: FlistState) -> bool:
         return False
     total_read, total_written, total_size = vals[:3]
     files_size = sum(e["size"] for e in st.all_entries.values()
-                     if "mode" in e and stat.S_ISREG(e["mode"]))
+                     if "mode" in e and (stat.S_ISREG(e["mode"]) or stat.S_ISLNK(e["mode"])))
     if total_size != files_size or total_written > o.raw_out or total_read > o.raw_in:
         return False
     s = r.pos
@@ -790,7 +815,11 @@ def main() -> int:
         cv = handshake_client(out, rc, o)
         o.protocol = min(sv, cv)
         out(f"   negotiated protocol {o.protocol}")
-        if "v" in caps:
+        # compat.c: the strings are negotiated only when the server set
+        # CF_VARINT_FLIST_FLAGS, which it does only if it knows the client's
+        # 'v'. A server older than 3.2 ignores the 'v' and never sets it.
+        negotiate = o.varint_flags
+        if negotiate:
             out("== negotiated strings")
             negotiated(out, rc, o, "client", compress)
             srv = negotiated(out, rs, o, "server", compress)
@@ -799,8 +828,8 @@ def main() -> int:
         seed = rs.int32()
         field_line(out, rs, s, f"checksum seed {seed}")
         # First common algorithm in the client's order wins (compat.c).
-        cli_list = cin[5:5 + cin[4]].decode().split() if "v" in caps else ["md5"]
-        winner = next((x for x in cli_list if x in srv), "md5") if "v" in caps else "md5"
+        cli_list = cin[5:5 + cin[4]].decode().split() if negotiate else ["md5"]
+        winner = next((x for x in cli_list if x in srv), "md5") if negotiate else "md5"
         o.csum_len = CSUM_LEN.get(winner, 16)
         out(f"   checksum winner {winner!r} -> {o.csum_len} bytes")
         out("")
