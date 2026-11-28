@@ -94,6 +94,28 @@ describe('BridgeSourcePanel confirmImport', () => {
         expect(onImport).toHaveBeenCalledTimes(1);
     });
 
+    // CodeRabbit Minor on #1641: the success overlay auto-closes the dialog,
+    // so it must not cover a warnings list the user has to read. With warnings,
+    // the confirm announces the counts in the success line only: no overlay,
+    // no close timer.
+    it('keeps a warned commit readable: no overlay and no auto-close when the scan warned', async () => {
+        const { context, onImport } = fixture();
+        context.result = {
+            ...(context.result as Record<string, unknown>),
+            warnings: [{ name: 'Alpha', reason: 'password not available' }],
+        };
+        const scans = context.scans as ReturnType<typeof createScanSettler>;
+        await scans.track('scan-1');
+        const { confirmImport } = await panel(context);
+
+        await confirmImport();
+        expect(onImport).toHaveBeenCalledTimes(1);
+        expect(scans.isCommitted()).toBe(true);
+        expect(context.setSuccess).toHaveBeenCalled();
+        expect(context.setImportSummary).not.toHaveBeenCalled();
+        expect((context.closeTimerRef as { current: unknown }).current).toBeNull();
+    });
+
     it('leaves a failed confirm retryable', async () => {
         const { context, onImport, commit } = fixture();
         const scans = context.scans as ReturnType<typeof createScanSettler>;

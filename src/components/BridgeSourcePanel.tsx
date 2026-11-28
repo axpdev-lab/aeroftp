@@ -332,13 +332,19 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             if (outcome.updated > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(outcome.updated)));
             setSuccess(parts.join(', '));
             cancelDelayedClose();
-            // Show the real counts (added / not selected or skipped / replaced)
-            // for a short pause; the overlay closes the dialog when it is done.
-            setImportSummary({
-                imported: outcome.added,
-                skipped: result.skipped.length + (result.servers.length - selected.length),
-                overwritten: outcome.updated,
-            });
+            // The overlay auto-closes the dialog, so it mounts only when there
+            // is nothing to read first: a scan that warned (e.g. a password
+            // that did not reveal) keeps its warnings list visible, with no
+            // auto-close (CodeRabbit Minor on #1641).
+            if ((result.warnings ?? []).length === 0) {
+                // Show the real counts (added / not selected or skipped /
+                // replaced) for a short pause; the overlay closes the dialog.
+                setImportSummary({
+                    imported: outcome.added,
+                    skipped: result.skipped.length + (result.servers.length - selected.length),
+                    overwritten: outcome.updated,
+                });
+            }
         } finally {
             committingRef.current = false;
             setLoading(false);
