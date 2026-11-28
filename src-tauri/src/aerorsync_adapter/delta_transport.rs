@@ -214,4 +214,46 @@ mod tests {
             }
         }
     }
+
+    /// A batch whose SSH handshake really fails degrades to the marker
+    /// batch instead of failing the sync, end to end through
+    /// `begin_batch`: the loop then moves every file on the single-shot
+    /// path. The peer accepts the TCP connection and closes it before any
+    /// SSH byte, so the failure is the handshake itself (a transport
+    /// failure, not a login refusal), with no race on a freed port.
+    #[tokio::test]
+    async fn begin_batch_degrades_to_noop_when_the_handshake_fails() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a loopback port");
+        let port = listener.local_addr().expect("local addr").port();
+        let peer = tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                drop(socket);
+            }
+        });
+
+        let mut config = crate::aerorsync::ssh_transport::SshTransportConfig::localhost_test(
+            "/dev/null".into(),
+            1 << 20,
+        );
+        config.port = port;
+        let transport = AerorsyncDeltaTransport::new(config, 1);
+
+        let err = match transport.open_batch().await {
+            Err(e) => e,
+            Ok(_) => panic!("a peer that closes before any SSH byte must fail the handshake"),
+        };
+        assert_eq!(err.kind, AerorsyncErrorKind::TransportFailure, "{err}");
+
+        let batch = transport
+            .begin_batch()
+            .await
+            .expect("a failed handshake must not fail begin_batch");
+        assert!(
+            batch.is_noop(),
+            "a failed handshake must hand back the NoopBatch marker"
+        );
+        peer.abort();
+    }
 }

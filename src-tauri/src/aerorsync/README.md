@@ -32,8 +32,9 @@ wire protocol. No rsync source code was copied into this tree. That claim is
 about the protocol, not about `scripts/aerorsync-emit.sh`: the emitter performs
 a mechanical copy of these files into a standalone package, which is a build
 step and not an independent re-implementation. The module depends only on
-permissively-licensed Rust crates (`russh`, `ssh2`, `zstd`, `xxhash-rust`) for
-SSH transport, compression and hashing: it neither links against librsync nor
+permissively-licensed Rust crates (`russh` and `ssh2` for SSH transport, `zstd`
+and `flate2` for compression, `xxhash-rust`, `md-5`, `md4`, `sha1` and `sha2`
+for hashing): it neither links against librsync nor
 spawns the rsync binary.
 
 The rsync project (rsync.samba.org) is GPL-3.0-or-later, and the GPL half of
@@ -47,20 +48,26 @@ shipped as default on OpenBSD).
 
 ## Status
 
-> Cargo feature `aerorsync` is compiled by default. Runtime toggle
-> `native_rsync_enabled` **defaults ON since `Z.1.5` (2026-05-12)**
-> for fresh installs after the `AERORSYNC_HOST_KEY_ALGS` + russh
+> Cargo feature `aerorsync` is compiled by default. The runtime mode
+> (`auto`, `native` or `classic`, persisted in `native_rsync.toml`)
+> **defaults to `auto` since `Z.1.5` (2026-05-12)** for fresh installs
+> after the `AERORSYNC_HOST_KEY_ALGS` + russh
 > `Preferred.key` follow-up closed the host-key algorithm negotiation
 > asymmetry that had motivated the temporary OFF default in `aca4577c`.
-> Existing installs keep the user-persisted value. The config key
-> retains its historical name for backward compatibility of persisted
-> settings. The module ships with wire-protocol 31 parity for the
+> Existing installs keep the user-persisted value; a file written
+> before the mode key existed maps its legacy `native_rsync_enabled`
+> boolean to `auto` (true) or `classic` (false), and that key keeps its
+> historical name for backward compatibility of persisted settings.
+> The module ships with wire-protocol 31 parity for the
 > single-file delta path on Linux, macOS and Windows. `Z.4.3.f6` (mux
 > header/payload coalesce plus Windows `S_IFREG` synthesis) closed the
 > last session-reuse deadlock in v3.8.5; `AerorsyncBatch` shares one
 > SSH session across N files on every OS. POSIX access ACL (`-A`) is
 > Linux-only at the provider metadata policy; Windows has no classic
-> `rsync` binary fallback.
+> `rsync` binary fallback. `scripts/aerorsync-emit.sh` emits the module
+> as a standalone crate: `.github/workflows/aerorsync-standalone.yml`
+> checks and lints it on Linux, macOS and Windows and runs its own suite
+> on Linux. The crate is not published yet.
 >
 > **Production dispatch (Blocco B closed 2026-04-26)**: `AerorsyncDeltaTransport`
 > invokes stock `rsync --server` via `RemoteCommandFlavor::WrapperParity`
@@ -73,7 +80,7 @@ shipped as default on OpenBSD).
 > in-process mock tests and the `live_tests.rs` lane that runs the
 > dev-only `/opt/aerorsync/bin/aerorsync_serve` binary under
 > `#[cfg(all(test, feature = "aerorsync"))]`. Closure evidence in
-> [`2026-04-26_Aerorsync_B2_Step5_Closure.md`](../../../docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/archive/aerorsync-saga-2026-04/2026-04-26_Aerorsync_B2_Step5_Closure.md).
+> [`2026-04-26_Aerorsync_B2_Step5_Closure.md`](../../../docs/dev/roadmap/BACKUP-APPENDIX/2026-07-25_aerorsync-consolidation/APPENDIX-Y/archive/aerorsync-saga-2026-04/2026-04-26_Aerorsync_B2_Step5_Closure.md).
 >
 > The binary-rsync classic fallback stays available on Unix through
 > `RsyncBinaryTransport` inside the same `DeltaTransport` trait surface.
@@ -86,7 +93,7 @@ shipped as default on OpenBSD).
 - **Advertisement dei compressori = promessa, non wish list**: annunciamo `zstd zlibx none`, non la lista di stock rsync `zstd lz4 zlibx zlib none`. Il vincitore e' il primo nome della **nostra** lista che il peer ha anche lui (`compat.c::parse_negotiate_str`), quindi annunciare un codec che non sappiamo guidare significa perdere contro noi stessi: con la lista di stock, un peer compilato con lz4 ma senza zstd ci faceva scegliere `lz4`, per cui non esiste nessun codec nel modulo, mentre `zlibx` stava una posizione sotto, implementato e misurato. `none` in coda garantisce che le due liste si intersechino sempre, cosi' un peer che offre solo codec che rifiutiamo ottiene literal non compressi (delta funzionante) invece di un'intersezione vuota. `zlib` semplice e' rifiutato per motivi strutturali: accoppia i matched block nella history del compressore (`token.c::see_deflate_token`) e per decodificarlo serve `inflateIncomp`, funzione che rsync patcha nella zlib che si porta dentro e che non esiste ne' nella zlib di sistema ne' in alcun crate Rust. E' esattamente il motivo per cui upstream ha creato `zlibx`
 - **Checksum negoziati first-class (Y-RSC.3)**: xxh128, xxh3, xxh64, md5, md4 e sha1 sono implementati in entrambi i ruoli e in entrambe le direzioni (block-strong signatures seeded + whole-file trailer/flist digest unseeded, semantica derivata da rsync 3.2.7 `checksum.c`). L'advertisement di default resta `xxh128 xxh3 xxh64 md5 md4` (byte-pinned, md4 last-resort); sha1 non è pubblicizzato di default e diventa negoziabile via `AEROFTP_RSYNC_CSUM_ALGOS=sha1`. Un winner `none`, `sha256`, `sha512`, `xxhash` o un nome sconosciuto (override compreso) e' `NegotiationFailed` dopo il preamble e prima della file-list: nel prodotto integrato non disabilita la verify. `none` come modo di trasferimento non verificato resta una decisione di design esplicita per un eventuale crate standalone, non per AeroFTP.
 - **Multiplex framing** bidirezionale attivato dopo il preamble (`MPLEX_BASE = 7`)
-- **Remote-shell mode** via SSH (`SshRemoteShellTransport` con libssh2), host key pinning obbligatorio
+- **Remote-shell mode** via SSH (`SshRemoteShellTransport`: libssh2 con autenticazione a chiave, la leg russh con ssh-agent o password, vedi `prefers_russh_leg`), host key pinning obbligatorio
 - **Single-file transfer** (batch / session reuse chiuso con `AerorsyncBatch`, P3-T01 W3)
 - **Explicit sender/receiver role split** nel driver state machine
 - **Profilo metadata di prodotto**: il comando integrato invia il literal `--server -ltprIze.iLsfxCIvu` (oppure la variante con `A` su Linux e `X` su Unix quando quei metadata sono attivi). `-I` forza il trasferimento esplicitamente richiesto senza il pre-pass di `-c`; il checksum del delta trailer continua a verificare il file trasferito. Non richiede e non emette owner/group/devices (`-o -g -D`). I literal storici `-logDtp...` restano solo per gli oracle di capture.
@@ -96,8 +103,8 @@ shipped as default on OpenBSD).
 | Gate | Default | Effetto |
 |---|---|---|
 | Cargo feature `aerorsync` | on | Compila il backend nativo e i test del modulo; si puo disattivare con `--no-default-features` per build/debug lean |
-| `settings::load_native_rsync_mode()` (runtime TOML) | `auto` (ON da v3.8.0) | In `auto`/`native` e feature attiva, `SftpProvider::delta_transport()` ritorna `AerorsyncDeltaTransport` (con fallback classic su soft refusal); in `classic` forza `RsyncBinaryTransport` su Unix o SFTP pieno su Windows |
-| `#[cfg(ci_lane3)]` su `driver_upload_live_lane_3_real_rsync_byte_identical` (+ twin streaming) | spento | Attivato in CI con `RUSTFLAGS='--cfg ci_lane3'` su branch `strada-c-*` |
+| `settings::load_native_rsync_mode()` (runtime TOML) | `auto` (installazioni nuove da Z.1.5) | In `auto`/`native`, con feature attiva e fingerprint dell'host key catturata dalla sessione SFTP, `SftpProvider::delta_transport()` ritorna `AerorsyncDeltaTransport`; se manca la fingerprint o il transport non si costruisce, `auto` ripiega sul fallback classic mentre `native` non usa il binario e ritorna `None` (SFTP pieno); in `classic` forza `RsyncBinaryTransport` su Unix o SFTP pieno su Windows |
+| `#[cfg(ci_lane3)]` su `driver_upload_live_lane_3_real_rsync_byte_identical` (+ twin streaming) | spento | Attivato con `RUSTFLAGS='--cfg ci_lane3'` dal job `lane3` di `.github/workflows/aerorsync-protocol.yml`, su push e PR verso `main` che toccano il modulo |
 
 ## Come esercitare
 
@@ -125,11 +132,25 @@ cargo test --features aerorsync \
   driver_upload_live_lane_3_real_rsync_byte_identical
 ```
 
+## Variabili d'ambiente
+
+Tutte opzionali; senza, il comportamento e' quello byte-pinned di default.
+
+| Variabile | Dove | Effetto |
+|---|---|---|
+| `AEROFTP_RSYNC_CSUM_ALGOS` | `native_driver.rs` | Sostituisce la lista dei checksum annunciati (per esempio `sha1`) |
+| `AEROFTP_RSYNC_COMPRESS_ALGOS` | `native_driver.rs` | Sostituisce la lista dei compressori annunciati |
+| `AEROFTP_RSYNC_SERVER_FLAGS` | `remote_command.rs` | Sostituisce la stringa compatta dei flag di `rsync --server`, per sondare wrapper remoti non stock |
+| `AEROFTP_WIRE_DUMP_DIR` | `native_driver.rs`, `ssh_transport.rs`, `russh_session_transport.rs` | Diagnostica: scrive i byte del canale e la command line remota in quella cartella |
+| `AEROFTP_DEFLATE_CAPTURE` | `tests.rs` | Test: cartella della cattura rsync 3.1.3 per l'oracolo `zlibx` |
+| `AEROFTP_ISSUE_658_SOURCE_PATH` | `native_driver.rs` | Test manuale #658: sorgente incomprimibile grande |
+| `RSNP_TEST_REAL_*`, `RSNP_TEST_ONLY_CSUM_ALGO` | `live_tests.rs` | Test live: chiave, host, porta, fingerprint, target remoti, obbligo della lane, checksum singolo |
+
 ## Stato test
 
-- **673 unit/integration test passano, 0 failed** (contro byte reali di rsync 3.2.7 frozen e contro l'oracolo di byte catturati da rsync 3.1.3): wire, protocol, compression zstd e deflate, file-list, delta ops, summary frame, xattr, ACL e pin delle policy provider/probe (snapshot 2026-08-27)
+- **777 funzioni di test** nel modulo (conteggio statico di `#[test]` e `#[tokio::test]` al 2026-11-26, comprese 17 `#[ignore]` e 16 sotto `ci_lane3`), contro byte reali di rsync 3.2.7 frozen e contro l'oracolo di byte catturati da rsync 3.1.3: wire, protocol, compression zstd e deflate, file-list, delta ops, summary frame, xattr, ACL e pin delle policy provider/probe
 - **8 live test** `#[ignore]` sulla matrice dei checksum negoziati (xxh128, xxh3, xxh64, md5, md4, sha1) che pilotano i transport di upload e download di produzione, piu' i live test per fixture Docker + **3 benchmark live** `#[ignore]` (`aerorsync_bench_*`, confronto diretto con rsync nativo sullo stesso harness)
-- **15 CI test** `ci_lane3` contro stock rsync 3.2.7 reale in Docker: upload byte-identical (sha256 match), upload streaming, symlink in entrambe le direzioni, compressor fallback, `user.*` xattr inline / out-of-band / binario con NUL / vuoto, path batch, symlink senza xattr ereditato, e POSIX access ACL con named user + mask in entrambe le direzioni
+- **15 CI test** `ci_lane3` contro stock rsync 3.2.7 reale in Docker: upload byte-identical (sha256 match), upload streaming, symlink in entrambe le direzioni, checksum e compressor fallback, `user.*` xattr inline / out-of-band / binario con NUL / vuoto, path batch, symlink senza xattr ereditato, e POSIX access ACL con named user + mask in entrambe le direzioni. Il sedicesimo test sotto `ci_lane3`, `driver_upload_streaming_live_issue_658_incompressible`, e' `#[ignore]` e si lancia a mano con `AEROFTP_ISSUE_658_SOURCE_PATH`
 - **1 lane deflate dedicata** in `.github/workflows/aerorsync-protocol.yml`: fixture Docker con client e server entrambi pinnati a rsync 3.1.3 protocollo 31, che e' il vintage senza zstd, piu' l'oracolo di byte catturati che pinna il framing dei token `zlibx`
 
 ## Limiti noti (da chiudere)
@@ -200,9 +221,9 @@ Totale: 25 file `.rs` + harness `capture/`.
 
 ## Cross-reference
 
-- **Assessment 22 apr 2026**: `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/2026-04-22_Native_Rsync_Assessment.md`
-- **Piano Windows promozione**: `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/tasks/active/PR-T11_Native_Rsync_Cross_OS.md`
-- **Roadmap Y produzione**: `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/2026-04-22_P1-T03_ROADMAP_Produzione_Evoluzione.md`
+- **Assessment 22 apr 2026**: `docs/dev/roadmap/BACKUP-APPENDIX/2026-07-25_aerorsync-consolidation/APPENDIX-Y/archive/strada-c-replan-2026-04-21/strategic/2026-04-22_Native_Rsync_Assessment.md`
+- **Piano Windows promozione**: `docs/dev/roadmap/BACKUP-APPENDIX/2026-07-25_aerorsync-consolidation/APPENDIX-Y/archive/strada-c-replan-2026-04-21/tasks/PR-T11_Native_Rsync_Cross_OS.md`
+- **Roadmap Y produzione**: `docs/dev/roadmap/BACKUP-APPENDIX/2026-07-25_aerorsync-consolidation/APPENDIX-Y/archive/strada-c-replan-2026-04-21/strategic/2026-04-22_P1-T03_ROADMAP_Produzione_Evoluzione.md`
 - **Trait pubblico `DeltaTransport`**: `src-tauri/src/delta_transport.rs`
-- **Adapter classico fallback**: `src-tauri/src/rsync_over_ssh.rs` (`RsyncBinaryTransport`)
-- **Dispatcher produzione**: `src-tauri/src/providers/sftp.rs::delta_transport()` (linea ~231)
+- **Adapter classico fallback**: `src-tauri/src/delta_transport.rs` (`RsyncBinaryTransport`), sul plumbing di `src-tauri/src/rsync_over_ssh.rs`
+- **Dispatcher produzione**: `src-tauri/src/providers/sftp.rs::delta_transport()` (linea ~2022)

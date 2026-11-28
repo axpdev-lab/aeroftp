@@ -12,7 +12,7 @@
 //! The application keeps its own structurally identical alias, because
 //! the module that holds it also compiles with the `aerorsync` feature
 //! off; the two must stay the same type, which the application-side test
-//! `delta_transport::tests::aerorsync_delta_progress_sink_is_the_crate_progress_sink`
+//! `delta_transport::progress_sink_pin::aerorsync_delta_progress_sink_is_the_crate_progress_sink`
 //! pins at compile time. This module never names the application path,
 //! comments included.
 
