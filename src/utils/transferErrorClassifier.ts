@@ -55,17 +55,19 @@ export async function classifyTransferFailure(
 export function classifyErrorFast(rawError: string): { kind: SyncErrorKind; retryable: boolean } {
   const lower = rawError.toLowerCase();
 
+  // Quota / storage full (FTP 552): NOT retryable. Checked before the
+  // file-size phrases, matching sync.rs: a quota error may quote a server
+  // reason that mentions a file size limit.
+  if (lower.includes('quota') || lower.includes('storage full') || lower.includes('insufficient storage') || lower.includes('552 ')) {
+    return { kind: 'quota_exceeded', retryable: false };
+  }
   // One file over the destination's per-file limit (HTTP 413, a plan cap): NOT
   // retryable, and NOT fatal to the batch: the other files still fit. Checked
-  // before quota because an OpenDrive "file size limit" reply is about this file.
+  // after quota, matching sync.rs.
   if (lower.includes('file too large') || lower.includes('file size limit')
     || lower.includes('maximum allowed file size') || lower.includes('payload too large')
     || lower.includes('request entity too large')) {
     return { kind: 'file_too_large', retryable: false };
-  }
-  // Quota / storage full (FTP 552): NOT retryable
-  if (lower.includes('quota') || lower.includes('storage full') || lower.includes('insufficient storage') || lower.includes('552 ')) {
-    return { kind: 'quota_exceeded', retryable: false };
   }
   // Authentication (FTP 530): NOT retryable
   if (lower.includes('auth') || lower.includes('login') || lower.includes('credential') || lower.includes('401 ') || lower.includes('530 ')) {

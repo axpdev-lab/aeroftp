@@ -607,6 +607,40 @@ fn server_reason(body: &str, base_url: &str, sent: &[String]) -> Option<String> 
         .map(|message| scrubbed(message, body.len(), base_url, sent))
 }
 
+/// Largest error reply the upload paths read for the server's reason. A
+/// Sabre or Nextcloud error document is well under this; a longer reply is
+/// not read, and the status-based error stands.
+const REFUSAL_BODY_CAP: usize = 8 * 1024;
+/// How long the upload paths wait for that reply before giving up on it.
+const REFUSAL_BODY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The body of an upload refusal, or `None` when it is longer than
+/// `REFUSAL_BODY_CAP`, does not arrive within `REFUSAL_BODY_DEADLINE`, or
+/// fails to read. Never truncated: a cut reason could pass the eligibility
+/// checks and produce a false file-size or quota error.
+async fn bounded_refusal_body(mut response: reqwest::Response) -> Option<String> {
+    if response
+        .content_length()
+        .is_some_and(|len| len > REFUSAL_BODY_CAP as u64)
+    {
+        return None;
+    }
+    let read = async {
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await.ok()? {
+            if body.len() + chunk.len() > REFUSAL_BODY_CAP {
+                return None;
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Some(String::from_utf8_lossy(&body).into_owned())
+    };
+    tokio::time::timeout(REFUSAL_BODY_DEADLINE, read)
+        .await
+        .ok()
+        .flatten()
+}
+
 /// The value of a response header as the download diagnostic logs it. A
 /// `Location` or `Content-Location` names a URL whose path or query can carry
 /// a secret (the MEGAcmd path token), so only its origin is kept; a
@@ -6299,8 +6333,9 @@ impl StorageProvider for WebDavProvider {
                         | StatusCode::FORBIDDEN
                         | StatusCode::INSUFFICIENT_STORAGE
                 ) {
-                    let body = response.text().await.unwrap_or_default();
-                    server_reason(&body, &self.config.url, &self.sent_secrets())
+                    bounded_refusal_body(response).await.and_then(|body| {
+                        server_reason(&body, &self.config.url, &self.sent_secrets())
+                    })
                 } else {
                     None
                 };
@@ -7400,16 +7435,30 @@ impl StorageProvider for WebDavProvider {
                     .unwrap_or_else(|| nextcloud_chunk_filename(part_number));
                 Ok(UploadedPart { part_number, etag })
             }
-            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => Err(
-                ProviderError::PermissionDenied("Nextcloud rejected chunk upload".to_string()),
-            ),
+            StatusCode::UNAUTHORIZED => Err(ProviderError::PermissionDenied(
+                "Nextcloud rejected chunk upload".to_string(),
+            )),
+            StatusCode::FORBIDDEN => {
+                let reason = bounded_refusal_body(response)
+                    .await
+                    .and_then(|body| server_reason(&body, &self.config.url, &self.sent_secrets()));
+                if reason.as_deref().is_some_and(reason_says_file_too_large) {
+                    Err(upload_failure_error(
+                        StatusCode::FORBIDDEN,
+                        reason.as_deref(),
+                    ))
+                } else {
+                    Err(ProviderError::PermissionDenied(
+                        "Nextcloud rejected chunk upload".to_string(),
+                    ))
+                }
+            }
             StatusCode::PAYLOAD_TOO_LARGE | StatusCode::INSUFFICIENT_STORAGE => {
                 let status = response.status();
-                let body = response.text().await.unwrap_or_default();
-                Err(upload_failure_error(
-                    status,
-                    server_reason(&body, &self.config.url, &self.sent_secrets()).as_deref(),
-                ))
+                let reason = bounded_refusal_body(response)
+                    .await
+                    .and_then(|body| server_reason(&body, &self.config.url, &self.sent_secrets()));
+                Err(upload_failure_error(status, reason.as_deref()))
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
@@ -7477,11 +7526,32 @@ impl StorageProvider for WebDavProvider {
             )),
             StatusCode::PAYLOAD_TOO_LARGE | StatusCode::INSUFFICIENT_STORAGE => {
                 let status = response.status();
-                let body = response.text().await.unwrap_or_default();
-                Err(upload_failure_error(
-                    status,
-                    server_reason(&body, &self.config.url, &self.sent_secrets()).as_deref(),
-                ))
+                let reason = bounded_refusal_body(response)
+                    .await
+                    .and_then(|body| server_reason(&body, &self.config.url, &self.sent_secrets()));
+                Err(upload_failure_error(status, reason.as_deref()))
+            }
+            StatusCode::FORBIDDEN => {
+                let body = bounded_refusal_body(response).await;
+                let reason = body
+                    .as_deref()
+                    .and_then(|body| server_reason(body, &self.config.url, &self.sent_secrets()));
+                if reason.as_deref().is_some_and(reason_says_file_too_large) {
+                    Err(upload_failure_error(
+                        StatusCode::FORBIDDEN,
+                        reason.as_deref(),
+                    ))
+                } else {
+                    Err(ProviderError::TransferFailed(format!(
+                        "Nextcloud assemble failed: {} {}",
+                        StatusCode::FORBIDDEN,
+                        server_message(
+                            body.as_deref().unwrap_or(""),
+                            &self.config.url,
+                            &self.sent_secrets()
+                        )
+                    )))
+                }
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
@@ -11006,6 +11076,278 @@ exit 1
             crate::transfer_dag::TransferErrorKind::QuotaExceeded
         );
         assert_eq!(transfer.retry, crate::transfer_dag::RetryDirective::Never);
+    }
+
+    /// A server whose PUT /up answers `status` with `body`.
+    /// A Sabre error document whose `<s:message>` is `message`, padded with an
+    /// XML comment to `total` bytes: `message_element` reads the message at
+    /// any body length, so only the cap can keep it out.
+    fn padded_sabre_refusal(message: &str, total: usize) -> String {
+        let head = format!(
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\"><s:message>{message}</s:message><!--"
+        );
+        let tail = "--></d:error>";
+        let pad = total.saturating_sub(head.len() + tail.len());
+        format!("{head}{}{tail}", "x".repeat(pad))
+    }
+
+    async fn serve_put_refusal(
+        status: axum::http::StatusCode,
+        body: String,
+    ) -> (String, tokio::task::JoinHandle<()>) {
+        let app = axum::Router::new().route(
+            "/up",
+            axum::routing::put(move || {
+                let body = body.clone();
+                async move { (status, body) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        (base, server)
+    }
+
+    async fn put_to_refusal(base: &str) -> Result<(), ProviderError> {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("f.bin");
+        std::fs::write(&file, b"payload").unwrap();
+        let mut provider = WebDavProvider::new(test_config(base)).unwrap();
+        provider.connected = true;
+        provider.upload(file.to_str().unwrap(), "/up", None).await
+    }
+
+    /// A server whose PUT and MOVE answers carry `body` with status 403 and
+    /// every other method gets 201 Created, so begin_multipart_upload works.
+    async fn serve_403_on_put_and_move(body: String) -> (String, tokio::task::JoinHandle<()>) {
+        use axum::response::IntoResponse;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let body = body.clone();
+                async move {
+                    if req.method() == axum::http::Method::PUT || req.method().as_str() == "MOVE" {
+                        (axum::http::StatusCode::FORBIDDEN, body).into_response()
+                    } else {
+                        axum::http::StatusCode::CREATED.into_response()
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        (base, server)
+    }
+
+    async fn nextcloud_provider(base: &str) -> WebDavProvider {
+        let mut cfg = test_config(base);
+        cfg.provider_id = Some("nextcloud".to_string());
+        let mut p = WebDavProvider::new(cfg).expect("provider");
+        p.server_root = Some("/remote.php/dav/files/alice/".to_string());
+        p.connected = true;
+        p
+    }
+
+    #[tokio::test]
+    async fn put_refusal_body_over_the_cap_is_discarded_never_classified() {
+        // 413 with a Sabre document of REFUSAL_BODY_CAP + 1 bytes whose
+        // <s:message> says "Quota full": message_element would extract it at
+        // any length, so only the cap keeps it out. The status mapping stands.
+        let body = padded_sabre_refusal("Quota full", REFUSAL_BODY_CAP + 1);
+        let (base, server) =
+            serve_put_refusal(axum::http::StatusCode::PAYLOAD_TOO_LARGE, body).await;
+        let outcome = put_to_refusal(&base).await;
+        server.abort();
+        match outcome.expect_err("413 must fail") {
+            ProviderError::FileTooLarge(msg) => {
+                assert!(msg.contains("HTTP 413"), "msg: {msg}");
+                assert!(!msg.contains("Server says:"), "msg: {msg}");
+            }
+            other => panic!("expected FileTooLarge, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn put_refusal_streamed_body_over_the_cap_is_discarded() {
+        // No Content-Length (chunked): the cap must hold inside the chunk
+        // loop, not only at the Content-Length shortcut.
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().route(
+            "/up",
+            axum::routing::put(|| async {
+                let body = padded_sabre_refusal("Quota full", REFUSAL_BODY_CAP + 1).into_bytes();
+                let (first, rest) = body.split_at(64);
+                let stream = futures_util::stream::iter([
+                    Ok::<_, std::io::Error>(bytes::Bytes::copy_from_slice(first)),
+                    Ok(bytes::Bytes::copy_from_slice(rest)),
+                ]);
+                (
+                    axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+                    axum::body::Body::from_stream(stream),
+                )
+                    .into_response()
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let outcome = put_to_refusal(&base).await;
+        server.abort();
+        match outcome.expect_err("413 must fail") {
+            ProviderError::FileTooLarge(msg) => {
+                assert!(msg.contains("HTTP 413"), "msg: {msg}");
+                assert!(!msg.contains("Server says:"), "msg: {msg}");
+            }
+            other => panic!("expected FileTooLarge, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn put_refusal_short_reason_is_quoted() {
+        let (base, server) = serve_put_refusal(
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+            "Quota full".to_string(),
+        )
+        .await;
+        let outcome = put_to_refusal(&base).await;
+        server.abort();
+        match outcome.expect_err("413 must fail") {
+            ProviderError::QuotaExceeded(msg) => {
+                assert!(msg.contains("HTTP 413"), "msg: {msg}");
+                assert!(msg.ends_with("Server says: Quota full"), "msg: {msg}");
+            }
+            other => panic!("expected QuotaExceeded, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn put_refusal_short_sabre_reason_is_quoted() {
+        // Control: the same XML form IS classified when it fits under the
+        // cap, so the over-cap tests are green for the right reason.
+        let (base, server) = serve_put_refusal(
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+            padded_sabre_refusal("Quota full", 300),
+        )
+        .await;
+        let outcome = put_to_refusal(&base).await;
+        server.abort();
+        match outcome.expect_err("413 must fail") {
+            ProviderError::QuotaExceeded(msg) => {
+                assert!(msg.contains("HTTP 413"), "msg: {msg}");
+                assert!(msg.ends_with("Server says: Quota full"), "msg: {msg}");
+            }
+            other => panic!("expected QuotaExceeded, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn put_refusal_stalled_body_falls_back_to_the_status_error() {
+        use axum::response::IntoResponse;
+        use futures_util::StreamExt;
+        let app = axum::Router::new().route(
+            "/up",
+            axum::routing::put(|| async {
+                // One chunk, then the stream never ends: the read must give
+                // up on its own deadline instead of waiting for EOF.
+                let stalled = futures_util::stream::once(async {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"partial"))
+                })
+                .chain(futures_util::stream::pending());
+                (
+                    axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+                    axum::body::Body::from_stream(stalled),
+                )
+                    .into_response()
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("f.bin");
+        std::fs::write(&file, b"payload").unwrap();
+        let mut provider = WebDavProvider::new(test_config(&base)).unwrap();
+        provider.connected = true;
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            provider.upload(file.to_str().unwrap(), "/up", None),
+        )
+        .await
+        .expect("the refusal must be reported within 20 s");
+        server.abort();
+        match outcome.expect_err("413 must fail") {
+            ProviderError::FileTooLarge(msg) => {
+                assert!(!msg.contains("Server says:"), "msg: {msg}");
+            }
+            other => panic!("expected FileTooLarge, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn nextcloud_chunk_403_quotes_a_size_limit_but_a_plain_403_stays_permission_denied() {
+        let (base, server) =
+            serve_403_on_put_and_move("File too large. Max 50MB on Free.".to_string()).await;
+        let mut p = nextcloud_provider(&base).await;
+        let handle = p
+            .begin_multipart_upload("/f.bin", 3, None, None)
+            .await
+            .expect("begin");
+        let part = p.upload_part(&handle, 1, b"abc".to_vec()).await;
+        assert!(
+            matches!(&part, Err(ProviderError::FileTooLarge(msg)) if msg.ends_with("Server says: File too large. Max 50MB on Free.")),
+            "{part:?}"
+        );
+        server.abort();
+
+        let (base, server) = serve_403_on_put_and_move("Forbidden".to_string()).await;
+        let mut p = nextcloud_provider(&base).await;
+        let handle = p
+            .begin_multipart_upload("/f.bin", 3, None, None)
+            .await
+            .expect("begin");
+        let part = p.upload_part(&handle, 1, b"abc".to_vec()).await;
+        assert!(
+            matches!(&part, Err(ProviderError::PermissionDenied(m)) if m == "Nextcloud rejected chunk upload"),
+            "{part:?}"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn nextcloud_assemble_403_quotes_a_size_limit_but_a_plain_403_stays_transfer_failed() {
+        let (base, server) =
+            serve_403_on_put_and_move("File too large. Max 50MB on Free.".to_string()).await;
+        let mut p = nextcloud_provider(&base).await;
+        let handle = p
+            .begin_multipart_upload("/f.bin", 3, None, None)
+            .await
+            .expect("begin");
+        let done = p.complete_multipart_upload(handle, Vec::new()).await;
+        assert!(
+            matches!(&done, Err(ProviderError::FileTooLarge(_))),
+            "{done:?}"
+        );
+        server.abort();
+
+        let (base, server) = serve_403_on_put_and_move("Forbidden".to_string()).await;
+        let mut p = nextcloud_provider(&base).await;
+        let handle = p
+            .begin_multipart_upload("/f.bin", 3, None, None)
+            .await
+            .expect("begin");
+        let done = p.complete_multipart_upload(handle, Vec::new()).await;
+        assert!(
+            matches!(&done, Err(ProviderError::TransferFailed(m)) if m.contains("Nextcloud assemble failed: 403")),
+            "{done:?}"
+        );
+        server.abort();
     }
 
     #[test]

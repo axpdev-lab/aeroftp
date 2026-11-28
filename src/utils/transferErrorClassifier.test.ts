@@ -34,4 +34,14 @@ describe('classifyErrorFast: a file over the destination limit', () => {
             ),
         ).toEqual({ kind: 'quota_exceeded', retryable: false });
     });
+
+    it('checks quota before the file-size phrases, matching sync.rs', () => {
+        // A quota error whose quoted server reason mentions a size limit must
+        // stay quota_exceeded, so the circuit breaker stops the batch.
+        expect(
+            classifyErrorFast(
+                'Storage quota exceeded: the account is full. Server says: file size limit reached',
+            ),
+        ).toEqual({ kind: 'quota_exceeded', retryable: false });
+    });
 });
