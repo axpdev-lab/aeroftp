@@ -8059,9 +8059,16 @@ fn upload_failure_error(status: StatusCode, reason: Option<&str>) -> ProviderErr
 /// Free.", LifetimeCloud; "the per-file quota is 50 MB"). Narrow on
 /// purpose: any other 403 keeps its mapping, and on a 413 it wins over the
 /// storage-full words, because a per-file quota is not a full account.
+/// "per-file" counts only as a size limit named as such, and not when the
+/// reason says there is none: a per-file ACL is a permission, and "no
+/// per-file limit applies" leaves the account limit as the reason.
 fn reason_says_file_too_large(reason: &str) -> bool {
     let lower = reason.to_lowercase();
-    lower.contains("too large") || lower.contains("file size limit") || lower.contains("per-file")
+    let per_file_size_limit = ["per-file quota", "per-file limit", "per-file size"]
+        .iter()
+        .any(|phrase| lower.contains(phrase))
+        && !lower.contains("no per-file");
+    lower.contains("too large") || lower.contains("file size limit") || per_file_size_limit
 }
 
 /// A 413 reason that says the account is full ("Storage limit reached",
@@ -11127,6 +11134,25 @@ exit 1
         // Control: an account-full reason stays QuotaExceeded.
         assert!(matches!(
             upload_failure_error(StatusCode::PAYLOAD_TOO_LARGE, Some("Storage limit reached")),
+            ProviderError::QuotaExceeded(_)
+        ));
+    }
+
+    #[test]
+    fn per_file_words_that_name_no_size_limit_keep_their_mapping() {
+        // A per-file ACL is a permission, not a size limit: the 403 keeps
+        // the mapping a plain 403 has.
+        assert!(matches!(
+            upload_failure_error(StatusCode::FORBIDDEN, Some("Access denied by per-file ACL")),
+            ProviderError::TransferFailed(_)
+        ));
+        // A reason that says no per-file limit applies leaves the account
+        // limit: the 413 stays QuotaExceeded.
+        assert!(matches!(
+            upload_failure_error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Some("Storage limit reached; no per-file limit applies")
+            ),
             ProviderError::QuotaExceeded(_)
         ));
     }
