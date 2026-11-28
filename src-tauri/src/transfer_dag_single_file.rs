@@ -80,13 +80,15 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
+use crate::providers::{
+    MultipartHandle, ProviderError, RemoteEntry, StorageProvider, UploadedPart,
+};
 use crate::transfer_dag::executor::{
     execute_dag_with_options, DagExecuteOptions, DagNodeRunner, NodeFuture, NodeOutcome,
 };
@@ -343,6 +345,39 @@ impl CopyProviderHandle {
         }
     }
 
+    async fn stat(&self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.stat(path).await
+            }
+            Self::Required(provider) => provider.lock().await.stat(path).await,
+        }
+    }
+
+    async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.list(path).await
+            }
+            Self::Required(provider) => provider.lock().await.list(path).await,
+        }
+    }
+
+    async fn mkdir(&self, path: &str) -> Result<(), ProviderError> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.mkdir(path).await
+            }
+            Self::Required(provider) => provider.lock().await.mkdir(path).await,
+        }
+    }
+
     async fn download(&self, remote: &str, local: &str) -> Result<(), ProviderError> {
         match self {
             Self::Optional(provider) => {
@@ -468,6 +503,313 @@ impl DagObserver for SingleFileMetricsObserver {
     }
 }
 
+/// The form a folder-copy path is checked in: its empty components dropped,
+/// refused when one is `.` or `..` (`/other/../src/inner` would pass a prefix
+/// check against `/src` while naming a folder inside it). Only the checks use
+/// it: the provider receives the path as given, since on S3 `/reports/` (a
+/// folder marker) and `/reports` (a file) are different objects.
+fn folder_copy_path(path: &str) -> Result<String, ProviderError> {
+    let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    if parts.iter().any(|part| *part == "." || *part == "..") {
+        return Err(ProviderError::InvalidPath(format!(
+            "{path} holds a . or .. component: a folder copy needs a plain path, nothing was copied"
+        )));
+    }
+    let lead = if path.starts_with('/') { "/" } else { "" };
+    Ok(format!("{lead}{}", parts.join("/")))
+}
+
+/// Refuses, before any write and for the native and the file-by-file copy
+/// alike, a folder copy from or to the root, into the source itself, or onto
+/// a path that exists (it would merge two trees). Only `NotFound` means the
+/// destination is free: any other `stat` error is returned as it is. On an
+/// object store a folder can exist with no object at its name (`dst/a.txt`
+/// and no `dst/` marker), so after `NotFound` the destination is listed too:
+/// entries mean it exists, an empty listing or `NotFound` means it is free,
+/// any other error is returned. The checks compare the [`folder_copy_path`]
+/// forms; `stat` and `list` get `to` as given.
+async fn folder_copy_preflight(
+    provider: &CopyProviderHandle,
+    from: &str,
+    to: &str,
+) -> Result<(), ProviderError> {
+    let from_root = folder_copy_path(from)?;
+    let to_root = folder_copy_path(to)?;
+    if from_root.trim_matches('/').is_empty() || to_root.trim_matches('/').is_empty() {
+        return Err(ProviderError::InvalidPath(format!(
+            "cannot copy the folder {from} to {to}"
+        )));
+    }
+    if to_root == from_root || to_root.starts_with(&format!("{from_root}/")) {
+        return Err(ProviderError::InvalidPath(format!(
+            "cannot copy the folder {from} into itself ({to})"
+        )));
+    }
+    match provider.stat(to).await {
+        Ok(_) => Err(ProviderError::AlreadyExists(format!(
+            "{to}: copying a folder onto it would merge the two, nothing was copied"
+        ))),
+        Err(ProviderError::NotFound(_)) => match provider.list(to).await {
+            Ok(entries) if entries.is_empty() => Ok(()),
+            Ok(_) => Err(ProviderError::AlreadyExists(format!(
+                "{to} holds objects: copying a folder onto it would merge the two, nothing was copied"
+            ))),
+            Err(ProviderError::NotFound(_)) => Ok(()),
+            Err(error) => Err(error),
+        },
+        Err(error) => Err(error),
+    }
+}
+
+/// A name from a folder listing must be one path component: a hostile or
+/// broken listing (`../victim`, `a/b`) would otherwise read and write
+/// outside the two folders. Some servers take `\` as a separator, so a name
+/// whose `\`-separated parts include `.` or `..` is refused too; a `\` in an
+/// ordinary name is a legal character on Unix servers and stays.
+fn listed_name_is_one_component(dir: &str, name: &str) -> Result<(), ProviderError> {
+    let unsafe_name = name.is_empty()
+        || name.contains('/')
+        || name.contains('\0')
+        || name.split('\\').any(|part| part == "." || part == "..");
+    if unsafe_name {
+        return Err(ProviderError::InvalidPath(format!(
+            "the listing of {dir} names {name:?}, which is not one path component"
+        )));
+    }
+    Ok(())
+}
+
+/// `error` with the partial-copy note added to its message and its variant
+/// kept: callers map the variant to an exit code (CLI `cp`) or a status
+/// (WebDAV `COPY`), so a denied listing stays `PermissionDenied`. A variant
+/// with no message of its own keeps its text, and the note goes to the log.
+fn with_partial_copy_note(error: ProviderError, note: &str) -> ProviderError {
+    use ProviderError as E;
+    let add = |message: String| format!("{message}. {note}");
+    match error {
+        E::ConnectionFailed(m) => E::ConnectionFailed(add(m)),
+        E::AuthenticationFailed(m) => E::AuthenticationFailed(add(m)),
+        E::HostKeyRejected(m) => E::HostKeyRejected(add(m)),
+        E::NotFound(m) => E::NotFound(add(m)),
+        E::PermissionDenied(m) => E::PermissionDenied(add(m)),
+        E::FileTooLarge(m) => E::FileTooLarge(add(m)),
+        E::AlreadyExists(m) => E::AlreadyExists(add(m)),
+        E::DirectoryNotEmpty(m) => E::DirectoryNotEmpty(add(m)),
+        E::InvalidPath(m) => E::InvalidPath(add(m)),
+        E::InvalidConfig(m) => E::InvalidConfig(add(m)),
+        E::NotSupported(m) => E::NotSupported(add(m)),
+        E::TransferFailed(m) => E::TransferFailed(add(m)),
+        E::NetworkError(m) => E::NetworkError(add(m)),
+        E::ParseError(m) => E::ParseError(add(m)),
+        E::ServerError(m) => E::ServerError(add(m)),
+        E::ConnectionLost(m) => E::ConnectionLost(add(m)),
+        E::ReadOnly(m) => E::ReadOnly(add(m)),
+        E::Unknown(m) => E::Unknown(add(m)),
+        E::Other(m) => E::Other(add(m)),
+        other => {
+            tracing::warn!(target: "copy_fallback", error = %other, "{note}");
+            other
+        }
+    }
+}
+
+/// Forwards each file's events to the folder's observer, with the node ids
+/// of the files already copied moved out of the way and their metrics added:
+/// progress grows across the folder and the last snapshot is the folder's
+/// total, not the last file's.
+struct FolderCopyObserver {
+    inner: Arc<dyn DagObserver>,
+    node_base: AtomicUsize,
+    node_next: AtomicUsize,
+    done: StdMutex<TransferDagMetrics>,
+}
+
+impl FolderCopyObserver {
+    fn new(inner: Arc<dyn DagObserver>) -> Self {
+        Self {
+            inner,
+            node_base: AtomicUsize::new(0),
+            node_next: AtomicUsize::new(0),
+            done: StdMutex::new(TransferDagMetrics::default()),
+        }
+    }
+
+    /// A file finished: the next file's nodes start after its own, and its
+    /// metrics join the base every later snapshot adds to.
+    fn file_done(&self, metrics: &TransferDagMetrics) {
+        self.node_base
+            .store(self.node_next.load(Ordering::SeqCst), Ordering::SeqCst);
+        self.done
+            .lock()
+            .expect("folder copy metrics poisoned")
+            .absorb(metrics);
+    }
+
+    fn node(&self, node_id: usize) -> usize {
+        let id = self.node_base.load(Ordering::SeqCst) + node_id;
+        self.node_next.fetch_max(id + 1, Ordering::SeqCst);
+        id
+    }
+}
+
+impl DagObserver for FolderCopyObserver {
+    fn on_node_start(&self, node_id: usize, kind: TransferNodeKind) {
+        self.inner.on_node_start(self.node(node_id), kind);
+    }
+
+    fn on_node_complete(&self, node_id: usize, outcome: ObservedOutcome) {
+        self.inner.on_node_complete(self.node(node_id), outcome);
+    }
+
+    fn on_scan_progress(&self, scanned: usize, in_flight: usize) {
+        self.inner.on_scan_progress(scanned, in_flight);
+    }
+
+    fn on_metrics(&self, metrics: &TransferDagMetrics) {
+        let mut merged = self
+            .done
+            .lock()
+            .expect("folder copy metrics poisoned")
+            .clone();
+        merged.absorb(metrics);
+        self.inner.on_metrics(&merged);
+    }
+}
+
+/// Execute one production copy: a file through the shaped file DAG, a folder
+/// natively when the provider copies folders, otherwise file by file.
+///
+/// The file DAG's download-then-upload fallback moves one file: given a
+/// folder it failed ("is not a file" on MEGA, "not supported" on Proton).
+pub async fn execute_copy_dag(
+    provider: CopyProviderHandle,
+    from: String,
+    to: String,
+    observer: Arc<dyn DagObserver>,
+) -> Result<CopyDagOutcome, ProviderError> {
+    // A stat the provider cannot answer (S3 has no object at a folder name)
+    // keeps the file path, where such providers handle folders themselves.
+    let source_is_dir = matches!(provider.stat(&from).await, Ok(entry) if entry.is_dir);
+    if !source_is_dir {
+        return execute_copy_file_dag(provider, from, to, observer).await;
+    }
+    folder_copy_preflight(&provider, &from, &to).await?;
+    let caps = provider.transfer_capabilities().await?;
+    let trigger = if TransferDagBuilder::shaped_copy(&caps).server_side {
+        // The native copy takes the endpoint's job slot, as a file copy's
+        // graph does; the slot is given back before a file-by-file fallback,
+        // whose per-file graphs take their own.
+        let endpoint = provider.endpoint_identity().await?;
+        let job_lease = crate::transfer_dag::governor::global()
+            .acquire_job(endpoint, TransferPriority::Foreground, Vec::new())
+            .await;
+        let native = job_lease.scope(provider.server_side_copy(&from, &to)).await;
+        match native {
+            Ok(()) => {
+                let metrics = TransferDagMetrics::default();
+                observer.on_metrics(&metrics);
+                return Ok(CopyDagOutcome {
+                    decision: CopyDecision::ServerSide,
+                    metrics,
+                });
+            }
+            Err(error) if crate::copy_fallback::should_attempt_copy_fallback(&error) => {
+                tracing::warn!(
+                    target: "copy_fallback",
+                    error = %error,
+                    "folder server copy refused, copying its files one by one"
+                );
+                CopyFallbackTrigger::ServerRejected {
+                    kind: TransferError::from_provider(&error).kind,
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    } else {
+        CopyFallbackTrigger::CapabilityUnavailable
+    };
+    copy_folder_by_files(provider, &from, &to, observer, trigger).await
+}
+
+/// Copy a folder as its files, after [`folder_copy_preflight`]: create `to`,
+/// copy each file through the file DAG, descend into subfolders. A link to a
+/// folder is not followed (`up -> ..` would copy the tree into itself without
+/// end) and is reported in the log; a listed name that is not one path
+/// component stops the copy.
+async fn copy_folder_by_files(
+    provider: CopyProviderHandle,
+    from: &str,
+    to: &str,
+    observer: Arc<dyn DagObserver>,
+    trigger: CopyFallbackTrigger,
+) -> Result<CopyDagOutcome, ProviderError> {
+    // Children are joined with one `/`, so the roots lose a trailing one.
+    let from_root = from.trim_end_matches('/');
+    let to_root = to.trim_end_matches('/');
+    let folder_observer = Arc::new(FolderCopyObserver::new(Arc::clone(&observer)));
+    let mut metrics = TransferDagMetrics::default();
+    let mut copied_files: u64 = 0;
+    let mut root_created = false;
+    let mut pending = vec![(from_root.to_string(), to_root.to_string())];
+    let result: Result<(), ProviderError> = async {
+        while let Some((source_dir, target_dir)) = pending.pop() {
+            provider.mkdir(&target_dir).await?;
+            root_created = true;
+            for entry in provider.list(&source_dir).await? {
+                // The listing's own entries, not children.
+                if entry.name == "." || entry.name == ".." {
+                    continue;
+                }
+                listed_name_is_one_component(&source_dir, &entry.name)?;
+                let source = format!("{source_dir}/{}", entry.name);
+                let target = format!("{target_dir}/{}", entry.name);
+                if entry.is_dir && !entry.is_walkable_dir() {
+                    tracing::warn!(
+                        target: "copy_fallback",
+                        link = %source,
+                        "a link to a folder is not followed by a folder copy, it was not copied"
+                    );
+                    continue;
+                }
+                if entry.is_walkable_dir() {
+                    pending.push((source, target));
+                    continue;
+                }
+                let child: Arc<dyn DagObserver> = Arc::clone(&folder_observer) as _;
+                let outcome =
+                    execute_copy_file_dag(provider.clone(), source, target, child).await?;
+                metrics.absorb(&outcome.metrics);
+                folder_observer.file_done(&outcome.metrics);
+                copied_files += 1;
+            }
+        }
+        Ok(())
+    }
+    .await;
+    match result {
+        Ok(()) => {
+            observer.on_metrics(&metrics);
+            Ok(CopyDagOutcome {
+                decision: CopyDecision::DownloadUpload { trigger },
+                metrics,
+            })
+        }
+        Err(error @ ProviderError::Cancelled) => Err(error),
+        Err(error) => {
+            let note = if root_created {
+                format!(
+                    "The folder copy stopped after {copied_files} files: {to_root} holds a partial copy, {from_root} is unchanged"
+                )
+            } else {
+                format!("Nothing was copied, {from_root} is unchanged")
+            };
+            Err(with_partial_copy_note(error, &note))
+        }
+    }
+}
+
+/// One file. A folder goes through [`execute_copy_dag`].
+///
 /// Execute one production copy through [`TransferDagBuilder::shaped_copy`].
 ///
 /// Capability-unavailable providers run the observable `DownloadFile` then
@@ -476,7 +818,7 @@ impl DagObserver for SingleFileMetricsObserver {
 /// second shaped graph with server copy disabled performs the two payload
 /// legs. Non-recoverable errors retain their typed file scope and never reach
 /// the fallback graph.
-pub async fn execute_copy_dag(
+async fn execute_copy_file_dag(
     provider: CopyProviderHandle,
     from: String,
     to: String,
@@ -1928,7 +2270,17 @@ mod tests {
         server_copy_calls: AtomicU64,
         download_calls: AtomicU64,
         upload_calls: AtomicU64,
+        mkdir_calls: AtomicU64,
         files: StdMutex<HashMap<String, Vec<u8>>>,
+        dirs: StdMutex<std::collections::BTreeSet<String>>,
+        stat_denied: StdMutex<Option<String>>,
+        list_denied: StdMutex<Option<String>>,
+        listed: StdMutex<Vec<String>>,
+        server_copy_args: StdMutex<Vec<(String, String)>>,
+        /// An endpoint of the test's own, so a test that fills its job slots
+        /// never blocks the other tests' mocks.
+        endpoint_host: StdMutex<Option<String>>,
+        extra_entries: StdMutex<HashMap<String, Vec<RemoteEntry>>>,
     }
 
     struct DagCopyMockProvider {
@@ -1976,6 +2328,17 @@ mod tests {
             "dag-copy-mock".to_string()
         }
 
+        fn endpoint_identity(&self) -> crate::transfer_dag::EndpointIdentity {
+            let host = self
+                .state
+                .endpoint_host
+                .lock()
+                .expect("copy mock endpoint poisoned")
+                .clone()
+                .unwrap_or_else(|| self.display_name());
+            crate::transfer_dag::EndpointIdentity::new("s3", host, "")
+        }
+
         async fn connect(&mut self) -> Result<(), ProviderError> {
             Ok(())
         }
@@ -1988,8 +2351,56 @@ mod tests {
             true
         }
 
-        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-            Ok(Vec::new())
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.state
+                .listed
+                .lock()
+                .expect("copy mock listed poisoned")
+                .push(path.to_string());
+            if let Some(denied) = self
+                .state
+                .list_denied
+                .lock()
+                .expect("copy mock list_denied poisoned")
+                .clone()
+            {
+                if denied == path {
+                    return Err(ProviderError::PermissionDenied(path.to_string()));
+                }
+            }
+            let prefix = format!("{path}/");
+            let mut entries = Vec::new();
+            for dir in self
+                .state
+                .dirs
+                .lock()
+                .expect("copy mock dirs poisoned")
+                .iter()
+            {
+                if let Some(rest) = dir.strip_prefix(&prefix) {
+                    if !rest.is_empty() && !rest.contains('/') {
+                        entries.push(entry(dir, true, 0));
+                    }
+                }
+            }
+            let files = self.state.files.lock().expect("copy mock files poisoned");
+            for (file, data) in files.iter() {
+                if let Some(rest) = file.strip_prefix(&prefix) {
+                    if !rest.is_empty() && !rest.contains('/') {
+                        entries.push(entry(file, false, data.len() as u64));
+                    }
+                }
+            }
+            if let Some(extra) = self
+                .state
+                .extra_entries
+                .lock()
+                .expect("copy mock extra_entries poisoned")
+                .get(path)
+            {
+                entries.extend(extra.clone());
+            }
+            Ok(entries)
         }
 
         async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -2048,7 +2459,13 @@ mod tests {
             Ok(())
         }
 
-        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.state.mkdir_calls.fetch_add(1, Ordering::SeqCst);
+            self.state
+                .dirs
+                .lock()
+                .expect("copy mock dirs poisoned")
+                .insert(path.to_string());
             Ok(())
         }
 
@@ -2068,8 +2485,32 @@ mod tests {
             Ok(())
         }
 
-        async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
-            Err(ProviderError::NotSupported("stat".to_string()))
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            if let Some(denied) = self
+                .state
+                .stat_denied
+                .lock()
+                .expect("copy mock stat_denied poisoned")
+                .clone()
+            {
+                if denied == path {
+                    return Err(ProviderError::PermissionDenied(path.to_string()));
+                }
+            }
+            if self
+                .state
+                .dirs
+                .lock()
+                .expect("copy mock dirs poisoned")
+                .contains(path)
+            {
+                return Ok(entry(path, true, 0));
+            }
+            let files = self.state.files.lock().expect("copy mock files poisoned");
+            if let Some(data) = files.get(path) {
+                return Ok(entry(path, false, data.len() as u64));
+            }
+            Err(ProviderError::NotFound(path.to_string()))
         }
 
         async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
@@ -2094,6 +2535,11 @@ mod tests {
 
         async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
             self.state.server_copy_calls.fetch_add(1, Ordering::SeqCst);
+            self.state
+                .server_copy_args
+                .lock()
+                .expect("copy mock server copy args poisoned")
+                .push((from.to_string(), to.to_string()));
             if let Some(error) = self
                 .server_copy_error
                 .lock()
@@ -2114,6 +2560,26 @@ mod tests {
         CopyProviderHandle::optional(Arc::new(Mutex::new(Some(
             Box::new(provider) as Box<dyn StorageProvider>
         ))))
+    }
+
+    fn entry(path: &str, is_dir: bool, size: u64) -> RemoteEntry {
+        let name = path.rsplit('/').next().unwrap_or_default().to_string();
+        if is_dir {
+            RemoteEntry::directory(name, path.to_string())
+        } else {
+            RemoteEntry::file(name, path.to_string(), size)
+        }
+    }
+
+    fn seed_tree(state: &CopyMockState) {
+        {
+            let mut dirs = state.dirs.lock().expect("copy mock dirs poisoned");
+            dirs.insert("/src".to_string());
+            dirs.insert("/src/sub".to_string());
+        }
+        let mut files = state.files.lock().expect("copy mock files poisoned");
+        files.insert("/src/a.txt".to_string(), b"alpha".to_vec());
+        files.insert("/src/sub/b.txt".to_string(), b"beta".to_vec());
     }
 
     #[tokio::test]
@@ -2315,6 +2781,559 @@ mod tests {
         assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
         assert_eq!(state.download_calls.load(Ordering::SeqCst), 0);
         assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_folder_without_native_copy_is_copied_file_by_file() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("folder copy by files");
+
+        {
+            let files = state.files.lock().expect("copy mock files poisoned");
+            assert_eq!(
+                files.get("/dst/a.txt").map(Vec::as_slice),
+                Some(&b"alpha"[..])
+            );
+            assert_eq!(
+                files.get("/dst/sub/b.txt").map(Vec::as_slice),
+                Some(&b"beta"[..])
+            );
+            assert_eq!(
+                files.get("/src/a.txt").map(Vec::as_slice),
+                Some(&b"alpha"[..])
+            );
+            assert_eq!(
+                files.get("/src/sub/b.txt").map(Vec::as_slice),
+                Some(&b"beta"[..])
+            );
+        }
+        {
+            let dirs = state.dirs.lock().expect("copy mock dirs poisoned");
+            assert!(dirs.contains("/dst"));
+            assert!(dirs.contains("/dst/sub"));
+        }
+        assert_eq!(
+            outcome.decision,
+            CopyDecision::DownloadUpload {
+                trigger: CopyFallbackTrigger::CapabilityUnavailable
+            }
+        );
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_folder_whose_native_copy_is_refused_is_copied_file_by_file() {
+        let (provider, state) =
+            DagCopyMockProvider::new(true, Some(ProviderError::NotSupported("folder".into())), 0);
+        seed_tree(&state);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("refused folder copy falls back to files");
+
+        {
+            let files = state.files.lock().expect("copy mock files poisoned");
+            assert_eq!(
+                files.get("/dst/a.txt").map(Vec::as_slice),
+                Some(&b"alpha"[..])
+            );
+            assert_eq!(
+                files.get("/dst/sub/b.txt").map(Vec::as_slice),
+                Some(&b"beta"[..])
+            );
+        }
+        assert!(matches!(
+            outcome.decision,
+            CopyDecision::DownloadUpload {
+                trigger: CopyFallbackTrigger::ServerRejected { .. }
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_folder_the_provider_copies_natively_stays_one_server_copy() {
+        let (provider, state) = DagCopyMockProvider::new(true, None, 0);
+        seed_tree(&state);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("native folder copy");
+
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.download_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_folder_copy_into_an_existing_destination_writes_nothing() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        state
+            .dirs
+            .lock()
+            .expect("copy mock dirs poisoned")
+            .insert("/dst".to_string());
+        let observer = Arc::new(CollectingDagObserver::default());
+        let error = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect_err("existing destination refused");
+
+        assert!(matches!(error, ProviderError::AlreadyExists(_)));
+        assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_folder_copy_into_itself_is_refused() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let error = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/src/inner".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect_err("copy into itself refused");
+
+        assert!(matches!(error, ProviderError::InvalidPath(_)));
+        assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_file_copy_still_takes_the_file_dag() {
+        let (provider, state) = DagCopyMockProvider::new(true, None, 13);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src.bin".to_string(),
+            "/dst.bin".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("file copy DAG");
+
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_folder_copy_onto_an_existing_folder_writes_nothing_with_or_without_native_copy() {
+        for native in [true, false] {
+            let (provider, state) = DagCopyMockProvider::new(native, None, 0);
+            seed_tree(&state);
+            state
+                .dirs
+                .lock()
+                .expect("copy mock dirs poisoned")
+                .insert("/dst".to_string());
+            let observer = Arc::new(CollectingDagObserver::default());
+            let error = execute_copy_dag(
+                copy_handle(provider),
+                "/src".to_string(),
+                "/dst".to_string(),
+                Arc::clone(&observer) as Arc<dyn DagObserver>,
+            )
+            .await
+            .expect_err("existing destination refused");
+            assert!(matches!(error, ProviderError::AlreadyExists(_)));
+            assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+
+            let (provider, state) = DagCopyMockProvider::new(native, None, 0);
+            seed_tree(&state);
+            let observer = Arc::new(CollectingDagObserver::default());
+            let error = execute_copy_dag(
+                copy_handle(provider),
+                "/src".to_string(),
+                "/src/inner".to_string(),
+                Arc::clone(&observer) as Arc<dyn DagObserver>,
+            )
+            .await
+            .expect_err("copy into itself refused");
+            assert!(matches!(error, ProviderError::InvalidPath(_)));
+            assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+        }
+    }
+
+    /// On S3 `/reports/` is a folder marker and `/reports` a different object,
+    /// a file: the provider gets the folder path as written, never a spelling
+    /// the checks normalized.
+    #[tokio::test]
+    async fn a_folder_path_reaches_the_provider_as_written() {
+        let (provider, state) = DagCopyMockProvider::new(true, None, 0);
+        state
+            .dirs
+            .lock()
+            .expect("copy mock dirs poisoned")
+            .insert("/reports/".to_string());
+        state
+            .files
+            .lock()
+            .expect("copy mock files poisoned")
+            .insert("/reports".to_string(), b"a file".to_vec());
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/reports/".to_string(),
+            "/out/".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("native folder copy");
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(
+            *state
+                .server_copy_args
+                .lock()
+                .expect("copy mock server copy args poisoned"),
+            vec![("/reports/".to_string(), "/out/".to_string())]
+        );
+        let files = state.files.lock().expect("copy mock files poisoned");
+        assert!(!files.contains_key("/out"), "the file /reports was copied");
+        assert!(!files.contains_key("/out/"), "the file /reports was copied");
+    }
+
+    /// On an object store `dst/a.txt` can exist with no `dst/` marker: `stat`
+    /// answers `NotFound`, so the listing decides, and the copy is refused
+    /// before it overwrites `dst/a.txt`.
+    #[tokio::test]
+    async fn a_destination_holding_objects_without_a_marker_is_refused() {
+        for native in [true, false] {
+            let (provider, state) = DagCopyMockProvider::new(native, None, 0);
+            seed_tree(&state);
+            state
+                .files
+                .lock()
+                .expect("copy mock files poisoned")
+                .insert("/dst/a.txt".to_string(), b"theirs".to_vec());
+            let observer = Arc::new(CollectingDagObserver::default());
+            let error = execute_copy_dag(
+                copy_handle(provider),
+                "/src".to_string(),
+                "/dst".to_string(),
+                Arc::clone(&observer) as Arc<dyn DagObserver>,
+            )
+            .await
+            .expect_err("a destination holding objects is refused");
+            assert!(
+                matches!(error, ProviderError::AlreadyExists(_)),
+                "{error:?}"
+            );
+            assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+            let files = state.files.lock().expect("copy mock files poisoned");
+            assert_eq!(
+                files.get("/dst/a.txt").map(Vec::as_slice),
+                Some(&b"theirs"[..])
+            );
+        }
+    }
+
+    /// A native folder copy takes the endpoint's job slot: with every slot
+    /// held it does not start, and it runs once one is given back.
+    #[tokio::test]
+    async fn a_native_folder_copy_waits_for_the_endpoint_slot() {
+        let host = "native-folder-copy-lease.test";
+        let (provider, state) = DagCopyMockProvider::new(true, None, 0);
+        seed_tree(&state);
+        *state
+            .endpoint_host
+            .lock()
+            .expect("copy mock endpoint poisoned") = Some(host.to_string());
+        let endpoint = crate::transfer_dag::governor::global()
+            .endpoint(&crate::transfer_dag::EndpointIdentity::new("s3", host, ""));
+        let mut held = Vec::new();
+        while endpoint.available_ops() > 0 {
+            held.push(endpoint.acquire_op().await);
+        }
+        let observer: Arc<dyn DagObserver> = Arc::new(CollectingDagObserver::default());
+        let copy = tokio::spawn(execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            observer,
+        ));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(
+            state.server_copy_calls.load(Ordering::SeqCst),
+            0,
+            "the native copy started with every endpoint slot held"
+        );
+        drop(held);
+        let outcome = copy.await.expect("copy task").expect("native folder copy");
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_destination_with_dot_segments_is_refused_before_any_write() {
+        for native in [true, false] {
+            let (provider, state) = DagCopyMockProvider::new(native, None, 0);
+            seed_tree(&state);
+            let observer = Arc::new(CollectingDagObserver::default());
+            let error = execute_copy_dag(
+                copy_handle(provider),
+                "/src".to_string(),
+                "/other/../src/inner".to_string(),
+                Arc::clone(&observer) as Arc<dyn DagObserver>,
+            )
+            .await
+            .expect_err("dot segments refused");
+            assert!(matches!(error, ProviderError::InvalidPath(_)));
+            assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_destination_stat_error_other_than_not_found_stops_the_copy() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        *state
+            .stat_denied
+            .lock()
+            .expect("copy mock stat_denied poisoned") = Some("/dst".to_string());
+        let observer = Arc::new(CollectingDagObserver::default());
+        let error = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect_err("stat error stops the copy");
+        assert!(matches!(error, ProviderError::PermissionDenied(_)));
+        assert_eq!(state.mkdir_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_listed_name_that_leaves_the_folder_is_refused() {
+        for hostile in ["../victim", "..\\victim"] {
+            let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+            seed_tree(&state);
+            state
+                .files
+                .lock()
+                .expect("copy mock files poisoned")
+                .insert("/victim".to_string(), b"secret".to_vec());
+            state
+                .extra_entries
+                .lock()
+                .expect("copy mock extra_entries poisoned")
+                .insert(
+                    "/src".to_string(),
+                    vec![RemoteEntry::file(
+                        hostile.to_string(),
+                        "/victim".to_string(),
+                        6,
+                    )],
+                );
+            let observer = Arc::new(CollectingDagObserver::default());
+            let error = execute_copy_dag(
+                copy_handle(provider),
+                "/src".to_string(),
+                "/dst".to_string(),
+                Arc::clone(&observer) as Arc<dyn DagObserver>,
+            )
+            .await
+            .expect_err("hostile listed name refused");
+            assert!(matches!(error, ProviderError::InvalidPath(_)));
+            let files = state.files.lock().expect("copy mock files poisoned");
+            assert!(!files.keys().any(|key| key.starts_with("/dst/../")));
+            assert_eq!(
+                files.get("/victim").map(Vec::as_slice),
+                Some(&b"secret"[..])
+            );
+        }
+
+        // A backslash in an ordinary name is legal on Unix servers: it is copied.
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        state
+            .files
+            .lock()
+            .expect("copy mock files poisoned")
+            .insert("/src/a\\b".to_string(), b"ab".to_vec());
+        state
+            .extra_entries
+            .lock()
+            .expect("copy mock extra_entries poisoned")
+            .insert(
+                "/src".to_string(),
+                vec![RemoteEntry::file(
+                    "a\\b".to_string(),
+                    "/src/a\\b".to_string(),
+                    2,
+                )],
+            );
+        let observer = Arc::new(CollectingDagObserver::default());
+        execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("ordinary name with a backslash is copied");
+        let files = state.files.lock().expect("copy mock files poisoned");
+        assert_eq!(files.get("/dst/a\\b").map(Vec::as_slice), Some(&b"ab"[..]));
+    }
+
+    #[tokio::test]
+    async fn a_link_to_a_folder_is_never_followed() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        let mut link = RemoteEntry::directory("up".to_string(), "/src".to_string());
+        link.is_symlink = true;
+        state
+            .extra_entries
+            .lock()
+            .expect("copy mock extra_entries poisoned")
+            .insert("/src/sub".to_string(), vec![link]);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("folder copy skips the folder link");
+        assert!(matches!(
+            outcome.decision,
+            CopyDecision::DownloadUpload { .. }
+        ));
+        {
+            let listed = state.listed.lock().expect("copy mock listed poisoned");
+            assert!(!listed.contains(&"/src/sub/up".to_string()));
+        }
+        {
+            let dirs = state.dirs.lock().expect("copy mock dirs poisoned");
+            assert!(!dirs.contains("/dst/sub/up"));
+        }
+        let files = state.files.lock().expect("copy mock files poisoned");
+        assert_eq!(
+            files.get("/dst/a.txt").map(Vec::as_slice),
+            Some(&b"alpha"[..])
+        );
+        assert_eq!(
+            files.get("/dst/sub/b.txt").map(Vec::as_slice),
+            Some(&b"beta"[..])
+        );
+    }
+
+    #[tokio::test]
+    async fn a_denied_listing_keeps_its_error_kind() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        *state
+            .list_denied
+            .lock()
+            .expect("copy mock list_denied poisoned") = Some("/src/sub".to_string());
+        let observer = Arc::new(CollectingDagObserver::default());
+        let error = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect_err("denied listing fails");
+        match error {
+            ProviderError::PermissionDenied(msg) => assert!(msg.contains("partial copy")),
+            other => panic!("expected PermissionDenied with the partial-copy note, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_observer_ends_on_the_folder_totals() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        seed_tree(&state);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("folder copy by files");
+        assert_eq!(outcome.metrics.logical_bytes, 9);
+        assert_eq!(observer.metrics(), outcome.metrics);
+        let ids: Vec<usize> = observer.started_nodes().iter().map(|(id, _)| *id).collect();
+        let mut unique = ids.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(ids.len(), unique.len(), "node ids must be distinct");
+
+        // An empty folder publishes its snapshot too: the default metrics of
+        // a collecting observer would equal the outcome without one, so the
+        // snapshot itself is recorded.
+        let (provider, state) = DagCopyMockProvider::new(false, None, 0);
+        state
+            .dirs
+            .lock()
+            .expect("copy mock dirs poisoned")
+            .insert("/src".to_string());
+        let observer = Arc::new(LastMetricsObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src".to_string(),
+            "/dst".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("empty folder copy");
+        assert_eq!(
+            *observer.last.lock().expect("last metrics poisoned"),
+            Some(outcome.metrics)
+        );
+    }
+
+    /// The last metrics snapshot an observer received, `None` before any.
+    #[derive(Default)]
+    struct LastMetricsObserver {
+        last: StdMutex<Option<TransferDagMetrics>>,
+    }
+
+    impl DagObserver for LastMetricsObserver {
+        fn on_metrics(&self, metrics: &TransferDagMetrics) {
+            *self.last.lock().expect("last metrics poisoned") = Some(metrics.clone());
+        }
     }
 
     #[test]
